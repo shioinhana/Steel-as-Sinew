@@ -1,0 +1,5 @@
+FSVOXEL	1	scene
+summary	{"kind":"scene","purpose":"workbench_review"}
+id	"workbench.scene.a2d716dd-ae91-4d35-88e1-e956f37bde16"
+name	"工作台检阅场景"
+scene	{"resources":[{"id":"actioncombat.rapier.rig","copyId":"cc0febf2-e9fc-4de2-b3c2-384c90de9ace","version":3,"sourcePath":""},{"id":"actioncombat.rapier.rapier_thrust_miss","copyId":"5b365b9c-ae0f-47fa-8ecd-92d5b5c4496f","version":2,"sourcePath":""}],"time":0,"camera":{"position":[2.8649135207398477,2.349895802095528,4.488560135292801],"target":[0.15317931556319106,0.9940286995071993,0.6146541278975761],"projection":"perspective","orthoSize":1.9677002110500126},"selection":{"resourceId":"actioncombat.rapier.rapier_thrust_miss","partId":"root"},"mount":false,"ik":false,"gaze":false,"bones":true,"sockets":true,"layers":[{"layer":"full","id":"actioncombat.rapier.rapier_thrust_miss"}]}

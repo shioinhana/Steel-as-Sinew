@@ -35,11 +35,12 @@ public final class CombatHud {
 
         Vec3 origin = camera.position();
         Vec3 look = Vec3.directionFromRotation(camera.xRot(), camera.yRot());
-        double range = CombatConstants.ATTACK_RANGE + 1.0;
+        boolean rapier = ClientCombat.localWeaponCategory() == com.actioncombat.combat.WeaponCategory.SINGLE;
+        double range = rapier ? 16.0 : CombatConstants.ATTACK_RANGE + 1.0;
         Vec3 end = origin.add(look.scale(range));
 
         HitResult block = mc.level.clip(new ClipContext(
-                origin, end, ClipContext.Block.VISUAL, ClipContext.Fluid.NONE, player));
+                origin, end, ClipContext.Block.COLLIDER, ClipContext.Fluid.NONE, player));
         Vec3 impact = block.getType() == HitResult.Type.MISS ? end : block.getLocation();
         boolean onEntity = false;
 
@@ -80,9 +81,12 @@ public final class CombatHud {
         double bestDist = Double.MAX_VALUE;
         for (Entity entity : player.level().getEntities(player, search, e ->
                 e instanceof LivingEntity living && living.isAlive() && !living.isSpectator())) {
-            AABB bb = entity.getBoundingBox().inflate(0.15);
+            boolean rapier = ClientCombat.localWeaponCategory() == com.actioncombat.combat.WeaponCategory.SINGLE;
+            AABB bb = rapier ? entity.getBoundingBox() : entity.getBoundingBox().inflate(0.15);
             var hit = bb.clip(start, end);
             if (hit.isEmpty()) continue;
+            if (rapier && player.getEyePosition().distanceToSqr(hit.get()) > CombatConstants.RAPIER_RANGE * CombatConstants.RAPIER_RANGE) continue;
+            if (rapier && !player.hasLineOfSight(entity)) continue;
             double d = start.distanceToSqr(hit.get());
             if (d < bestDist) {
                 bestDist = d;

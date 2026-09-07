@@ -205,10 +205,16 @@ tasks.register('generateDualSlash', Exec) {
 
 // Re-derives per-clip attack windows from the animation data. Runs after
 // generateLocomotion so it reads the final animation files.
+tasks.register('generateRapier', Exec) {
+    workingDir = projectDir
+    commandLine 'node', 'tools/generate_rapier.mjs'
+    dependsOn 'generateFpSwings'
+}
+
 tasks.register('generateAttackTimings', Exec) {
     workingDir = projectDir
     commandLine 'node', 'tools/generate_attack_timings.mjs'
-    dependsOn 'generateFpSwings'
+    dependsOn 'generateRapier'
 }
 
 // Verifies Java animation/model references match the GeckoLib asset files before packaging.
@@ -216,6 +222,12 @@ tasks.register('generateYsmVanilla', Exec) {
     workingDir = projectDir
     commandLine 'python3', 'tools/generate_ysm_vanilla.py'
     dependsOn 'generateAttackTimings'
+}
+
+tasks.register('checkRapier', Exec) {
+    workingDir = projectDir
+    commandLine 'node', 'tools/check_rapier.mjs'
+    dependsOn 'generateRapier'
 }
 
 tasks.register('checkAssets', Exec) {
@@ -227,7 +239,7 @@ tasks.register('checkFpThirdPerson', Exec) {
     group = 'verification'
     workingDir = projectDir
     commandLine 'node', 'tools/check_fp_third_person.mjs'
-    dependsOn 'generateFpSwings'
+    dependsOn 'generateRapier'
 }
 tasks.register('checkLocomotion', Exec) {
     group = 'verification'
@@ -239,9 +251,10 @@ tasks.register('checkFpGeometry', Exec) {
     group = 'verification'
     workingDir = projectDir
     commandLine 'node', 'tools/check_fp_geometry.mjs'
-    dependsOn 'generateFpSwings'
+    dependsOn 'generateRapier'
 }
 tasks.named('processResources') {
+    dependsOn 'checkRapier'
     dependsOn 'checkAssets'
     dependsOn 'checkFpThirdPerson'
     dependsOn 'checkLocomotion'

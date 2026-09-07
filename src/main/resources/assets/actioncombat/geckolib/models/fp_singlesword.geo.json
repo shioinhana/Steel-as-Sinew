@@ -116,11 +116,11 @@
         },
         {
           "name": "elucidator",
-          "parent": "knife_R",
+          "parent": "right",
           "pivot": [
-            1,
-            12,
-            -7
+            -6.5,
+            6,
+            0
           ],
           "rotation": [
             145,

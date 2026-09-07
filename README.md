@@ -7,43 +7,26 @@ An action-game combat layer: draw-sword combat mode, alternating left/right swin
 layered animation, and a Genshin/Zelda-style third-person camera. This covers combat
 *feel* only — no stamina, spirit, level or attribute systems.
 
-Controls
---------
+Current controls (rapier / dual swords)
+---------------------------------------
 
-All bindings are regular key mappings and can be rebound in vanilla Controls under
-"Action Combat".
+See [西洋剑与双持更新](docs/西洋剑与双持更新.md) for the current rules and Workbench sources.
 
-| Input | Sheathed | Drawn (combat mode) |
+| Input | Single main-hand sword (rapier) | Dual swords |
 | --- | --- | --- |
-| `R` | draw (needs a sword) | sheathe |
-| Left mouse | vanilla attack/mine | **left swing** |
-| Right mouse | vanilla item use | **right swing** |
-| `X` | — | hold to guard |
-| `V` | — | inspect weapon |
-| `Shift` | sneak | **dodge** (WASD direction, or back if none) |
-| `C` | — | crouch |
-| `WASD` | vanilla | camera-relative movement |
-| `I` `J` `K` `L` | — | move the camera (forward / left / back / right) |
+| R | Draw / sheathe | Draw / sheathe |
+| Left mouse | Random authored attack; crosshair required | Left swing chain |
+| Right mouse | Instant thrust; 2s cooldown, 1s recovery only on miss | Right swing chain |
+| X | Guard; perfect at 0.05–0.30s | Guard; perfect at 0.05–0.30s |
+| Ctrl+W during guard | Normal sprint | One radial sword bash per raised guard |
+| Shift | 2-block short dodge | 4.5-block dodge |
+| C | Crouch | Crouch |
+| V | Inspect | Inspect |
 
-While sheathed nothing is intercepted: attacking, mining and item use are exactly
-vanilla. `F5` selects the perspective; drawing and sheathing preserve that choice.
-
-Combos and recovery
--------------------
-
-Left click slashes left, leading with the left hand; right click slashes right,
-leading with the right hand. A second press in the same direction uses the other
-hand. Once both hands rest on that side, slash back the other way. Holding a mouse
-button past the charge delay releases a charged opener.
-
-All accepted swings use a fixed 0.30-second (6-tick) gate. Windup is
-0–0.12 seconds, contact 0.12–0.18, follow-through 0.18–0.30, followed by an
-optional 0.10-second settle. Full clip duration is 0.40 seconds. There is no
-progressive fatigue interval. First- and third-person playback share the action
-clock. Shift dodge travels up to 4.5 blocks over 4 ticks (0.20 seconds).
-
-The input buffer and server gate are verified by the smoke tests. Current numeric
-behavior is defined by CombatConstants and the combat state machine.
+Normal attacks retain the 0.30s gate and 0.40s clip. Rapier thrust hits are resolved
+immediately by the server, with no windup. On hit another action can begin immediately;
+on miss attacks, guard and dodge are gated for 1s. Its separate 2s cooldown survives
+sheathing and weapon changes. Vanilla interactions remain available while sheathed.
 
 Camera and body orientation
 ---------------------------

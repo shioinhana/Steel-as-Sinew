@@ -117,6 +117,9 @@ public final class ClientCombat {
     /** Duration of the local swing, for the cancel window. */
     private static float localAttackSeconds;
     private static boolean shiftWasDown;
+    private static long thrustReadyNanos;
+    private static long thrustRecoveryNanos;
+    private static boolean rapierLeftDown, rapierRightDown;
     private static int localDodgeTicks;
     private static Vec3 localDodgeStep = Vec3.ZERO;
     private static boolean wasAimLocked;
@@ -308,8 +311,7 @@ public final class ClientCombat {
     }
 
     private static boolean isHoldingSword(Player player) {
-        return player.getMainHandItem().is(ItemTags.SWORDS)
-                || player.getOffhandItem().is(ItemTags.SWORDS);
+        return player.getMainHandItem().is(ItemTags.SWORDS);
     }
 
     // ===== draw / sheathe =====
@@ -611,6 +613,8 @@ public final class ClientCombat {
         int dirs = CombatMoves.packDirs(keys);
         float yaw = facingYaw(player);
         Vec3 total = CombatMoves.dodgeOffset(yaw, dirs);
+        if (localWeaponCategory() == WeaponCategory.SINGLE)
+            total = total.scale(CombatConstants.RAPIER_DODGE_DISTANCE / CombatConstants.DODGE_DISTANCE);
         int ticks = Math.max(1, CombatConstants.DODGE_TICKS);
         localDodgeStep = total.scale(1.0 / ticks);
         localDodgeTicks = ticks;
@@ -640,6 +644,10 @@ public final class ClientCombat {
      *  @return true if the vanilla interaction should be swallowed. */
     public static boolean onAttackPress() {
         if (!localDrawn) return false;
+        if (localWeaponCategory() == WeaponCategory.SINGLE) {
+            if (!rapierLeftDown) { rapierLeftDown = true; requestRapier(false); }
+            return true;
+        }
         lmbCaptured = true;
         lmbDownNanos = System.nanoTime();
         markAction();
@@ -652,12 +660,69 @@ public final class ClientCombat {
      *  @return true if the vanilla interaction should be swallowed. */
     public static boolean onUsePress() {
         if (!localDrawn) return false;
+        if (localWeaponCategory() == WeaponCategory.SINGLE) {
+            if (!rapierRightDown) { rapierRightDown = true; requestRapier(true); }
+            return true;
+        }
         rmbCaptured = true;
         rmbDownNanos = System.nanoTime();
         markAction();
         if (tryDualSlash()) return true;
         stopDefending(true);
         return true;
+    }
+
+    private static void requestRapier(boolean thrust) {
+        if (!canActNow() || mc().screen != null || (thrust && System.nanoTime() < thrustReadyNanos)) return;
+        INPUT_BUFFER.clear();
+        lmbCaptured = rmbCaptured = false;
+        stopDefending(true);
+        var camera = mc().gameRenderer.getMainCamera();
+        var origin = camera.position();
+        ClientPacketDistributor.sendToServer(new ModPayloads.ServerboundAim(camera.yRot(), camera.xRot(), origin.x, origin.y, origin.z));
+        if (thrust) {
+            thrustReadyNanos = System.nanoTime() + 2_000_000_000L;
+            // Prediction shows contact immediately; the server decides hit/miss recovery.
+            thrustRecoveryNanos = System.nanoTime() + 1_000_000_000L;
+            playThrustVisual(mc().player.getId(), false);
+        }
+        ClientPacketDistributor.sendToServer(new ModPayloads.ServerboundAttack((thrust ? SwingSide.RIGHT : SwingSide.LEFT).id(), false, false));
+        markAction();
+    }
+
+    private static void playThrustVisual(int playerId, boolean hit) {
+        PlayerAnimatable dummy = DUMMIES.get(playerId);
+        String clip = hit ? "rapier_thrust_hit" : "rapier_thrust_miss";
+        float seconds = hit ? 0.12F : 1.0F;
+        if (dummy != null) {
+            dummy.defending = false;
+            dummy.aiming = false;
+            dummy.playUpper(clip + "_upper", seconds);
+        }
+        if (mc().player != null && mc().player.getId() == playerId) {
+            FpViewmodel.INSTANCE.playAction(clip, seconds);
+            localAttackSide = null;
+            fpAttackUntilNanos = System.nanoTime() + (long)(seconds * 1.0E9);
+        }
+    }
+
+    public static void onThrust(int playerId, boolean accepted, boolean hit, int cooldownTicks, int recoveryTicks) {
+        boolean self = mc().player != null && mc().player.getId() == playerId;
+        if (self) {
+            thrustReadyNanos = System.nanoTime() + Math.max(0, cooldownTicks) * 50_000_000L;
+            thrustRecoveryNanos = System.nanoTime() + Math.max(0, recoveryTicks) * 50_000_000L;
+        }
+        if (accepted) {
+            playThrustVisual(playerId, hit);
+            if (self && hit) onHitConfirm(true);
+        }
+    }
+
+    public static void onGuardBash(int playerId) {
+        PlayerAnimatable dummy = DUMMIES.get(playerId);
+        if (dummy != null) dummy.playUpper("guard_bash_upper", 0.25F);
+        if (mc().player != null && mc().player.getId() == playerId)
+            FpViewmodel.INSTANCE.playAction("guard_bash", 0.25F);
     }
 
     private static boolean tryDualSlash() {
@@ -718,6 +783,8 @@ public final class ClientCombat {
 
     private static void tickInput(Minecraft mc, LocalPlayer player, long now) {
         boolean blocked = mc.screen != null;
+        if (!mc.options.keyAttack.isDown()) rapierLeftDown = false;
+        if (!mc.options.keyUse.isDown()) rapierRightDown = false;
         if (blocked) INPUT_BUFFER.clear();
 
         // each mouse button owns one swing side; release decides tap vs charge
@@ -875,7 +942,8 @@ public final class ClientCombat {
     }
 
     private static boolean canActNow(boolean charged) {
-        return localDodgeTicks <= 0 && mc().level != null
+        return System.nanoTime() >= thrustRecoveryNanos
+                && localDodgeTicks <= 0 && mc().level != null
                 && LOCAL_CADENCE.canStart(mc().level.getGameTime())
                 && System.nanoTime() >= nextAttackAtNanos(charged);
     }
@@ -1161,9 +1229,10 @@ public final class ClientCombat {
             float aimYaw = facingYaw(mc.player);
             float aimPitch = mc.options.getCameraType().isFirstPerson()
                     ? mc.player.getXRot() : CombatCamera.pitch();
-            var eye = mc.player.getEyePosition();
+            var camera = mc.gameRenderer.getMainCamera();
+            var eye = camera.position();
             ClientPacketDistributor.sendToServer(new ModPayloads.ServerboundAim(
-                    aimYaw, aimPitch, eye.x, eye.y, eye.z));
+                    camera.yRot(), camera.xRot(), eye.x, eye.y, eye.z));
         }
         if (localDodgeTicks > 0) {
             mc.player.move(MoverType.SELF, localDodgeStep);
@@ -1266,6 +1335,8 @@ public final class ClientCombat {
     }
 
     private static void clearAll() {
+        thrustReadyNanos = thrustRecoveryNanos = 0L;
+        rapierLeftDown = rapierRightDown = false;
         ATTACK_ACKNOWLEDGEMENTS.clear();
         LOCAL_CADENCE.reset();
         localAttackIntervalTicks = CombatConstants.ATTACK_INTERVAL_TICKS;

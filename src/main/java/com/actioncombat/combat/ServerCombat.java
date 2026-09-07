@@ -27,7 +27,7 @@ import net.neoforged.neoforge.network.PacketDistributor;
 public final class ServerCombat {
 
     public static boolean isHoldingSword(ServerPlayer player) {
-        return isSword(player.getMainHandItem()) || isSword(player.getOffhandItem());
+        return isSword(player.getMainHandItem());
     }
 
     public static WeaponCategory categoryOf(ServerPlayer player) {
@@ -66,7 +66,9 @@ public final class ServerCombat {
     public static void handleAim(ServerPlayer player, float yaw, float pitch,
                                  double camX, double camY, double camZ) {
         CombatData data = player.getData(ModAttachments.COMBAT);
-        if (!data.drawn) return;
+        if (!data.drawn || !Float.isFinite(yaw) || !Float.isFinite(pitch)
+                || !Double.isFinite(camX) || !Double.isFinite(camY) || !Double.isFinite(camZ)) return;
+        if (player.getEyePosition().distanceToSqr(new Vec3(camX, camY, camZ)) > 144.0) return;
         data.aimYaw = yaw;
         data.aimPitch = net.minecraft.util.Mth.clamp(pitch, -90.0F, 90.0F);
         data.camX = camX;
@@ -92,6 +94,8 @@ public final class ServerCombat {
             data.active = null;
             data.resetHandsApart();
             data.defendStartGameTime = now;
+            data.guardBashUsed = false;
+            data.sprintWasDown = player.isSprinting();
             broadcastDefendState(player, true);
             return;
         }
@@ -114,9 +118,17 @@ public final class ServerCombat {
         broadcastDefendState(player, false);
     }
 
-    static float defendReduction(CombatData data, long now) {
+    public static boolean isPerfectGuard(CombatData data, long now) {
+        if (!data.defending || data.defendStartGameTime == Long.MIN_VALUE) return false;
+        long elapsed = now - data.defendStartGameTime;
+        return elapsed >= Math.round(CombatConstants.PARRY_START_SECONDS * 20)
+                && elapsed <= Math.round(CombatConstants.PARRY_WINDOW_SECONDS * 20);
+    }
+
+    public static float defendReduction(CombatData data, long now) {
         if (!data.defending || data.defendStartGameTime == Long.MIN_VALUE) return 0.0F;
         float t = (now - data.defendStartGameTime) / 20.0F;
+        if (t < CombatConstants.PARRY_START_SECONDS) return 0.0F;
         if (t <= CombatConstants.PARRY_WINDOW_SECONDS) return 1.0F;
         if (data.defendHold || data.defendHeld) {
             if (t >= CombatConstants.DEFEND_HOLD_DECAY_END_SECONDS) {
@@ -141,6 +153,7 @@ public final class ServerCombat {
      * play the dual cut.
      */
     public static void handleAttack(ServerPlayer player, SwingSide side, boolean charged, boolean dual) {
+        if (categoryOf(player) == WeaponCategory.SINGLE && side == SwingSide.RIGHT) { handleThrust(player); return; }
         CombatData data = player.getData(ModAttachments.COMBAT);
         if (!data.drawn || !isHoldingSword(player)) return;
         long now = player.level().getGameTime();
@@ -149,6 +162,15 @@ public final class ServerCombat {
         if (!canCancelAttack(data, now)) return;
         expireParry(data, now);
         WeaponCategory cat = categoryOf(player);
+        if (cat == WeaponCategory.SINGLE) {
+            if (side == SwingSide.RIGHT) { handleThrust(player); return; }
+            int variant = player.getRandom().nextInt(4);
+            SwingSide clipSide = variant < 2 ? SwingSide.LEFT : SwingSide.RIGHT;
+            int hand = variant % 2;
+            startAttack(player, data, cat, clipSide, hand, false, false,
+                    cat.attackDuration(clipSide, hand), cat.attackAnim(clipSide, hand), now);
+            return;
+        }
 
         if (dual) {
             if (!data.parryReady) return;
@@ -173,7 +195,8 @@ public final class ServerCombat {
     }
 
     private static boolean canCancelAttack(CombatData data, long now) {
-        return data.active == null || now - data.active.startGameTime >= data.active.cancelStartTick;
+        return now >= data.thrustRecoveryUntil
+                && (data.active == null || now - data.active.startGameTime >= data.active.cancelStartTick);
     }
 
     public static void handleDodge(ServerPlayer player, float yaw, int dirs) {
@@ -185,6 +208,8 @@ public final class ServerCombat {
         data.active = null;
         if (data.defending) endDefend(player, data);
         Vec3 total = CombatMoves.dodgeOffset(yaw, dirs);
+        if (categoryOf(player) == WeaponCategory.SINGLE)
+            total = total.scale(CombatConstants.RAPIER_DODGE_DISTANCE / CombatConstants.DODGE_DISTANCE);
         int ticks = Math.max(1, CombatConstants.DODGE_TICKS);
         data.dodgeDx = total.x / ticks;
         data.dodgeDz = total.z / ticks;
@@ -200,6 +225,7 @@ public final class ServerCombat {
         float length = timing.length() > 0.05F ? timing.length() : duration;
         CombatData.ActiveAttack attack =
                 new CombatData.ActiveAttack(side, hand, charged, dual, now, length);
+        attack.category = cat;
         float activeStart = timing.activeStart();
         float activeEnd = timing.activeEnd();
         attack.activeStartSeconds = activeStart;
@@ -277,6 +303,9 @@ public final class ServerCombat {
             long now = player.level().getGameTime();
             expireParry(data, now);
             expireDefend(player, data, now);
+            boolean sprint = player.isSprinting();
+            if (sprint && !data.sprintWasDown) tryGuardBash(player);
+            data.sprintWasDown = sprint;
             if (data.dodgeTicksLeft > 0) {
                 player.move(MoverType.SELF, new Vec3(data.dodgeDx, 0.0, data.dodgeDz));
                 data.dodgeTicksLeft--;
@@ -314,6 +343,15 @@ public final class ServerCombat {
     private static void scanTargets(ServerPlayer player, CombatData.ActiveAttack attack) {
         ServerLevel level = player.level();
         CombatData data = player.getData(ModAttachments.COMBAT);
+        if (attack.category == WeaponCategory.SINGLE) {
+            LivingEntity target = rapierTarget(player);
+            if (target != null && hitTarget(player, target, attack)) {
+                markHit(attack, target);
+                var hit = new ModPayloads.ClientboundHitConfirm(true);
+                if (((ICommonPacketListener)player.connection).hasChannel(hit)) PacketDistributor.sendToPlayer(player, hit);
+            }
+            return;
+        }
         float yaw = data.hasAim ? data.aimYaw : player.getYRot();
         Vec3 origin = attack.dual
                 ? player.position().add(0.0, CombatConstants.ATTACK_HAND_HEIGHT, 0.0)
@@ -340,8 +378,8 @@ public final class ServerCombat {
     }
 
     private static boolean hitTarget(ServerPlayer player, LivingEntity target, CombatData.ActiveAttack attack) {
-        WeaponCategory cat = categoryOf(player);
-        float damage = attack.dual
+        WeaponCategory cat = attack.category != null ? attack.category : categoryOf(player);
+        float damage = cat == WeaponCategory.SINGLE ? (attack.durationSeconds == 0 ? 9.0F : 6.0F) : attack.dual
                 ? cat.attackDamage(SwingSide.LEFT, 0) + cat.attackDamage(SwingSide.RIGHT, 0)
                 : cat.attackDamage(attack.side, attack.depth)
                 * (attack.charged ? CombatConstants.CHARGED_DAMAGE_MULTIPLIER : 1.0F);
@@ -387,10 +425,7 @@ public final class ServerCombat {
             long now = player.level().getGameTime();
             long elapsed = now - data.defendStartGameTime;
             float reduction = defendReduction(data, now);
-            boolean perfect = reduction >= 0.999F
-                    && data.defendStartGameTime != Long.MIN_VALUE
-                    && elapsed >= 0
-                    && elapsed <= Math.round(CombatConstants.PARRY_WINDOW_SECONDS * 20.0F);
+            boolean perfect = isPerfectGuard(data, now);
             if (perfect) {
                 event.setCanceled(true);
                 if (attacker instanceof LivingEntity) {
@@ -434,6 +469,83 @@ public final class ServerCombat {
             broadcastDrawState(player, false);
             broadcastDefendState(player, false);
         }
+    }
+
+
+    /** Camera ray picks exactly one visible target; eye LOS prevents reaching around walls. */
+    public static LivingEntity rapierTarget(ServerPlayer player) {
+        CombatData d = player.getData(ModAttachments.COMBAT);
+        Vec3 eye = player.getEyePosition();
+        Vec3 origin = d.hasAim ? new Vec3(d.camX, d.camY, d.camZ) : eye;
+        if (origin.distanceToSqr(eye) > 144) origin = eye;
+        Vec3 direction = Vec3.directionFromRotation(d.hasAim ? d.aimPitch : player.getXRot(),
+                d.hasAim ? d.aimYaw : player.getYRot());
+        Vec3 end = origin.add(direction.scale(16));
+        var block = player.level().clip(new net.minecraft.world.level.ClipContext(origin, end,
+                net.minecraft.world.level.ClipContext.Block.COLLIDER,
+                net.minecraft.world.level.ClipContext.Fluid.NONE, player));
+        end = block.getLocation();
+        LivingEntity nearest = null;
+        double distance = origin.distanceToSqr(end);
+        for (LivingEntity target : player.level().getEntitiesOfClass(LivingEntity.class,
+                player.getBoundingBox().inflate(CombatConstants.RAPIER_RANGE + 1),
+                e -> e != player && e.isAlive() && !e.isSpectator())) {
+            var intersection = target.getBoundingBox().clip(origin, end);
+            if (intersection.isEmpty()) continue;
+            Vec3 point = intersection.get();
+            if (eye.distanceToSqr(point) > CombatConstants.RAPIER_RANGE * CombatConstants.RAPIER_RANGE) continue;
+            var wall = player.level().clip(new net.minecraft.world.level.ClipContext(eye, point,
+                    net.minecraft.world.level.ClipContext.Block.COLLIDER,
+                    net.minecraft.world.level.ClipContext.Fluid.NONE, player));
+            if (wall.getType() != net.minecraft.world.phys.HitResult.Type.MISS
+                    && eye.distanceToSqr(wall.getLocation()) + 0.0001 < eye.distanceToSqr(point)) continue;
+            double dist = origin.distanceToSqr(point);
+            if (dist < distance) { distance = dist; nearest = target; }
+        }
+        return nearest;
+    }
+
+    public static void handleThrust(ServerPlayer player) {
+        CombatData d = player.getData(ModAttachments.COMBAT);
+        long now = player.level().getGameTime();
+        boolean accepted = d.drawn && isHoldingSword(player) && categoryOf(player) == WeaponCategory.SINGLE
+                && d.dodgeTicksLeft == 0 && now >= d.thrustReadyAt && d.cadence.canStart(now)
+                && canCancelAttack(d, now);
+        boolean hit = false;
+        if (accepted) {
+            d.active = null;
+            endDefend(player, d);
+            d.thrustReadyAt = now + CombatConstants.THRUST_COOLDOWN_TICKS;
+            LivingEntity target = rapierTarget(player);
+            CombatData.ActiveAttack thrust = new CombatData.ActiveAttack(SwingSide.RIGHT, 1, false, false, now, 0);
+            thrust.category = WeaponCategory.SINGLE;
+            hit = target != null && hitTarget(player, target, thrust);
+            d.thrustRecoveryUntil = now + (hit ? 0 : CombatConstants.THRUST_MISS_RECOVERY_TICKS);
+        }
+        var result = new ModPayloads.ClientboundThrust(player.getId(), accepted, hit,
+                (int)Math.max(0, d.thrustReadyAt == Long.MIN_VALUE ? 0 : d.thrustReadyAt - now),
+                (int)Math.max(0, d.thrustRecoveryUntil == Long.MIN_VALUE ? 0 : d.thrustRecoveryUntil - now));
+        if (accepted) sendToTrackers(player, result);
+        else if (((ICommonPacketListener)player.connection).hasChannel(result)) PacketDistributor.sendToPlayer(player, result);
+    }
+
+    /** One radial shove per raised guard, on a new sprint press. No damage and no repeated ticks. */
+    public static void tryGuardBash(ServerPlayer player) {
+        CombatData d = player.getData(ModAttachments.COMBAT);
+        if (!d.drawn || !d.defending || d.guardBashUsed || categoryOf(player) != WeaponCategory.DOUBLE
+                || !player.isSprinting()) return;
+        d.guardBashUsed = true;
+        for (LivingEntity target : player.level().getEntitiesOfClass(LivingEntity.class,
+                player.getBoundingBox().inflate(CombatConstants.GUARD_BASH_RADIUS),
+                e -> e != player && e.isAlive() && !e.isSpectator())) {
+            Vec3 delta = target.position().subtract(player.position());
+            if (delta.lengthSqr() > CombatConstants.GUARD_BASH_RADIUS * CombatConstants.GUARD_BASH_RADIUS
+                    || !player.hasLineOfSight(target)) continue;
+            if (delta.horizontalDistanceSqr() < 1.0E-6) delta = player.getLookAngle();
+            target.knockback(CombatConstants.GUARD_BASH_KNOCKBACK, -delta.x, -delta.z);
+            target.hurtMarked = true;
+        }
+        sendToTrackers(player, new ModPayloads.ClientboundGuardBash(player.getId()));
     }
 
     private ServerCombat() {}

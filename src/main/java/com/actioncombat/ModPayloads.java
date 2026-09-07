@@ -154,13 +154,32 @@ public final class ModPayloads {
         @Override public Type<? extends CustomPacketPayload> type() { return TYPE; }
     }
 
+    public record ClientboundThrust(int playerId, boolean accepted, boolean hit, int cooldownTicks, int recoveryTicks) implements CustomPacketPayload {
+        public static final Type<ClientboundThrust> TYPE = new Type<>(Identifier.fromNamespaceAndPath(ActionCombat.MODID, "thrust"));
+        public static final StreamCodec<RegistryFriendlyByteBuf, ClientboundThrust> STREAM_CODEC = StreamCodec.composite(
+                ByteBufCodecs.VAR_INT, ClientboundThrust::playerId, ByteBufCodecs.BOOL, ClientboundThrust::accepted,
+                ByteBufCodecs.BOOL, ClientboundThrust::hit, ByteBufCodecs.VAR_INT, ClientboundThrust::cooldownTicks,
+                ByteBufCodecs.VAR_INT, ClientboundThrust::recoveryTicks, ClientboundThrust::new);
+        @Override public Type<? extends CustomPacketPayload> type() { return TYPE; }
+    }
+    public record ClientboundGuardBash(int playerId) implements CustomPacketPayload {
+        public static final Type<ClientboundGuardBash> TYPE = new Type<>(Identifier.fromNamespaceAndPath(ActionCombat.MODID, "guard_bash"));
+        public static final StreamCodec<RegistryFriendlyByteBuf, ClientboundGuardBash> STREAM_CODEC = StreamCodec.composite(
+                ByteBufCodecs.VAR_INT, ClientboundGuardBash::playerId, ClientboundGuardBash::new);
+        @Override public Type<? extends CustomPacketPayload> type() { return TYPE; }
+    }
+
     public static void register(IEventBus modBus) {
         modBus.addListener(ModPayloads::onRegisterPayloads);
     }
 
     private static void onRegisterPayloads(RegisterPayloadHandlersEvent event) {
-        PayloadRegistrar registrar = event.registrar("7");
+        PayloadRegistrar registrar = event.registrar("8");
 
+        registrar.playToClient(ClientboundThrust.TYPE, ClientboundThrust.STREAM_CODEC,
+                (p, c) -> c.enqueueWork(() -> ClientCombat.onThrust(p.playerId(), p.accepted(), p.hit(), p.cooldownTicks(), p.recoveryTicks())));
+        registrar.playToClient(ClientboundGuardBash.TYPE, ClientboundGuardBash.STREAM_CODEC,
+                (p, c) -> c.enqueueWork(() -> ClientCombat.onGuardBash(p.playerId())));
         registrar.playToServer(
                 ServerboundSetDrawn.TYPE, ServerboundSetDrawn.STREAM_CODEC,
                 (payload, context) -> context.enqueueWork(() ->

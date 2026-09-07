@@ -109,14 +109,14 @@
           "name": "RightArm",
           "parent": "Body",
           "pivot": [
-            5,
+            -5,
             22,
             0
           ],
           "cubes": [
             {
               "origin": [
-                4,
+                -8,
                 19,
                 -2
               ],
@@ -136,14 +136,14 @@
           "name": "RightForeArm",
           "parent": "RightArm",
           "pivot": [
-            5,
+            -5,
             19,
             0
           ],
           "cubes": [
             {
               "origin": [
-                4,
+                -8,
                 14,
                 -2
               ],
@@ -163,14 +163,14 @@
           "name": "RightHand",
           "parent": "RightForeArm",
           "pivot": [
-            5,
+            -5,
             14,
             0
           ],
           "cubes": [
             {
               "origin": [
-                4,
+                -8,
                 12,
                 -2
               ],
@@ -190,14 +190,14 @@
           "name": "RightHandLocator",
           "parent": "RightHand",
           "pivot": [
-            5.6,
+            -5.6,
             14,
             0.5
           ],
           "cubes": [
             {
               "origin": [
-                5.6,
+                -5.6,
                 13,
                 -16.5
               ],
@@ -217,14 +217,14 @@
           "name": "LeftArm",
           "parent": "Body",
           "pivot": [
-            -5,
+            5,
             22,
             0
           ],
           "cubes": [
             {
               "origin": [
-                -8,
+                4,
                 19,
                 -2
               ],
@@ -244,14 +244,14 @@
           "name": "LeftForeArm",
           "parent": "LeftArm",
           "pivot": [
-            -5,
+            5,
             19,
             0
           ],
           "cubes": [
             {
               "origin": [
-                -8,
+                4,
                 14,
                 -2
               ],
@@ -271,14 +271,14 @@
           "name": "LeftHand",
           "parent": "LeftForeArm",
           "pivot": [
-            -5,
+            5,
             14,
             0
           ],
           "cubes": [
             {
               "origin": [
-                -8,
+                4,
                 12,
                 -2
               ],
@@ -298,14 +298,14 @@
           "name": "RightLeg",
           "parent": "Root",
           "pivot": [
-            2,
+            -2,
             12,
             0
           ],
           "cubes": [
             {
               "origin": [
-                0,
+                -4,
                 6,
                 -2
               ],
@@ -325,14 +325,14 @@
           "name": "RightForeLeg",
           "parent": "RightLeg",
           "pivot": [
-            2,
+            -2,
             6,
             0
           ],
           "cubes": [
             {
               "origin": [
-                0,
+                -4,
                 2,
                 -2
               ],
@@ -352,14 +352,14 @@
           "name": "RightFoot",
           "parent": "RightForeLeg",
           "pivot": [
-            2,
+            -2,
             2,
             0
           ],
           "cubes": [
             {
               "origin": [
-                0,
+                -4,
                 0,
                 -2
               ],
@@ -379,14 +379,14 @@
           "name": "LeftLeg",
           "parent": "Root",
           "pivot": [
-            -2,
+            2,
             12,
             0
           ],
           "cubes": [
             {
               "origin": [
-                -4,
+                0,
                 6,
                 -2
               ],
@@ -406,14 +406,14 @@
           "name": "LeftForeLeg",
           "parent": "LeftLeg",
           "pivot": [
-            -2,
+            2,
             6,
             0
           ],
           "cubes": [
             {
               "origin": [
-                -4,
+                0,
                 2,
                 -2
               ],
@@ -433,14 +433,14 @@
           "name": "LeftFoot",
           "parent": "LeftForeLeg",
           "pivot": [
-            -2,
+            2,
             2,
             0
           ],
           "cubes": [
             {
               "origin": [
-                -4,
+                0,
                 0,
                 -2
               ],

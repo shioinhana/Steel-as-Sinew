@@ -48,7 +48,9 @@
       "run_hold_right": "run_hold_right",
       "walk_hold_back": "walk_hold_back",
       "crouch_walk_back": "crouch_walk_back",
-      "run_hold_back": "run_hold_back"
+      "run_hold_back": "run_hold_back",
+      "rapier_thrust_hit": "rapier_thrust_hit",
+      "rapier_thrust_miss": "rapier_thrust_miss"
     },
     "preview_animation": "idle"
   },

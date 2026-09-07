@@ -1,0 +1,43 @@
+FSVOXEL	1	model
+summary	{"kind":"model","purpose":"rapier_rig_review","status":"candidate"}
+id	"actioncombat.rapier.rig"
+name	"西洋剑 · 官方单手骨架"
+type	"humanoid"
+units	{"voxel_cm":1}
+material	"body"	{"color":"#82aabc"}
+material	"sword"	{"color":"#dce8f3"}
+part	"root"	{"transform":{"position":[0,0,0],"rotation":[0,180,0]}}
+part	"lower_body"	{"parent":"root","transform":{"position":[-0.0,150.0,0.0],"rotation":[0,0,0]}}
+box	"lower_body"	"set"	"body"	[-25.0,-75.0,-12.5]	[50.0,31.25,25.0]
+part	"upper_body"	{"parent":"lower_body","transform":{"position":[-0.0,-43.75,0.0],"rotation":[0,0,0]}}
+box	"upper_body"	"set"	"body"	[-25.0,0.0,-12.5]	[50.0,43.75,25.0]
+part	"head"	{"parent":"upper_body","transform":{"position":[-0.0,43.75,0.0],"rotation":[0,0,0]}}
+box	"head"	"set"	"body"	[-25.0,0.0,-25.0]	[50.0,50.0,50.0]
+part	"upper_arm_r"	{"parent":"upper_body","transform":{"position":[31.25,31.25,0],"rotation":[0,0,0]}}
+box	"upper_arm_r"	"set"	"body"	[-6.25,-18.75,-12.5]	[25,31.25,25]
+part	"forearm_r"	{"parent":"upper_arm_r","transform":{"position":[-0.0,-18.75,0.0],"rotation":[0,0,0]}}
+box	"forearm_r"	"set"	"body"	[-6.25,-31.25,-12.5]	[25,31.25,25]
+part	"hand_r"	{"parent":"forearm_r","transform":{"position":[-0.0,-31.25,0.0],"rotation":[0,0,0]}}
+box	"hand_r"	"set"	"body"	[-6.25,-12.5,-12.5]	[25,12.5,25]
+part	"hand_item_r"	{"parent":"hand_r","transform":{"position":[3.749999999999998,0,3.125],"rotation":[0,0,0]}}
+box	"hand_item_r"	"set"	"sword"	[-1,-1,-105]	[2,2,100]
+part	"upper_arm_l"	{"parent":"upper_body","transform":{"position":[-31.25,31.25,0],"rotation":[0,0,0]}}
+box	"upper_arm_l"	"set"	"body"	[-18.75,-18.75,-12.5]	[25,31.25,25]
+part	"forearm_l"	{"parent":"upper_arm_l","transform":{"position":[-0.0,-18.75,0.0],"rotation":[0,0,0]}}
+box	"forearm_l"	"set"	"body"	[-18.75,-31.25,-12.5]	[25,31.25,25]
+part	"hand_l"	{"parent":"forearm_l","transform":{"position":[-0.0,-31.25,0.0],"rotation":[0,0,0]}}
+box	"hand_l"	"set"	"body"	[-18.75,-12.5,-12.5]	[25,12.5,25]
+part	"leg_r"	{"parent":"root","transform":{"position":[12.5,75,0],"rotation":[0,0,0]}}
+box	"leg_r"	"set"	"body"	[-12.5,-37.5,-12.5]	[25.0,37.5,25.0]
+part	"lower_leg_r"	{"parent":"leg_r","transform":{"position":[-0.0,-37.5,0.0],"rotation":[0,0,0]}}
+box	"lower_leg_r"	"set"	"body"	[-12.5,-25.0,-12.5]	[25.0,25.0,25.0]
+part	"foot_r"	{"parent":"lower_leg_r","transform":{"position":[-0.0,-25.0,0.0],"rotation":[0,0,0]}}
+box	"foot_r"	"set"	"body"	[-12.5,-12.5,-12.5]	[25.0,12.5,25.0]
+part	"leg_l"	{"parent":"root","transform":{"position":[-12.5,75,0],"rotation":[0,0,0]}}
+box	"leg_l"	"set"	"body"	[-12.5,-37.5,-12.5]	[25.0,37.5,25.0]
+part	"lower_leg_l"	{"parent":"leg_l","transform":{"position":[-0.0,-37.5,0.0],"rotation":[0,0,0]}}
+box	"lower_leg_l"	"set"	"body"	[-12.5,-25.0,-12.5]	[25.0,25.0,25.0]
+part	"foot_l"	{"parent":"lower_leg_l","transform":{"position":[-0.0,-25.0,0.0],"rotation":[0,0,0]}}
+box	"foot_l"	"set"	"body"	[-12.5,-12.5,-12.5]	[25.0,12.5,25.0]
+
+box	"hand_item_r"	"set"	"sword"	[-8,-1,-6]	[16,2,2]

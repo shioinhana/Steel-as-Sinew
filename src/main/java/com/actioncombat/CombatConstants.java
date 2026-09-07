@@ -105,9 +105,16 @@ public final class CombatConstants {
     /** Hold guard ends this long after the press, even if X is still down. */
     public static final float DEFEND_HOLD_SECONDS = 0.5F;
     /** Hits in this window after raising the guard deal no damage. */
-    public static final float PARRY_WINDOW_SECONDS = 0.2F;
+    public static final float PARRY_WINDOW_SECONDS = 0.30F;
+    public static final float PARRY_START_SECONDS = 0.05F;
+    public static final float RAPIER_DODGE_DISTANCE = 2.0F;
+    public static final float RAPIER_RANGE = 3.0F;
+    public static final int THRUST_COOLDOWN_TICKS = 40;
+    public static final int THRUST_MISS_RECOVERY_TICKS = 20;
+    public static final double GUARD_BASH_RADIUS = 2.0;
+    public static final double GUARD_BASH_KNOCKBACK = 1.2;
     /** Hold damage-reduction lerp: 100% until 0.2s, 50% at 0.5s. */
-    public static final float DEFEND_HOLD_DECAY_START_SECONDS = 0.2F;
+    public static final float DEFEND_HOLD_DECAY_START_SECONDS = 0.3F;
     public static final float DEFEND_HOLD_DECAY_END_SECONDS = 0.5F;
     public static final float DEFEND_HOLD_END_REDUCTION = 0.5F;
     /** After a successful parry, both buttons together can fire the dual cut. */

@@ -5,6 +5,11 @@ import net.minecraft.world.entity.LivingEntity;
 /** Per-player server-side combat state, kept as an in-memory attachment (never saved to disk). */
 public class CombatData {
     public boolean drawn;
+    // Cooldowns survive sheathing and weapon changes.
+    public long thrustReadyAt = Long.MIN_VALUE;
+    public long thrustRecoveryUntil = Long.MIN_VALUE;
+    public boolean guardBashUsed;
+    public boolean sprintWasDown;
     public boolean defending;
     /** True while the block key is physically down. */
     public boolean defendHeld;
@@ -36,6 +41,7 @@ public class CombatData {
     public boolean hasAim;
 
     public static class ActiveAttack {
+        public WeaponCategory category;
         public final SwingSide side;
         /** Which hand is swinging this clip: 0 = left, 1 = right. Dual uses 0. */
         public final int depth;

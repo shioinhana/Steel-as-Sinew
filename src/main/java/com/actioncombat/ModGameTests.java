@@ -64,6 +64,12 @@ public final class ModGameTests {
         TEST_FUNCTIONS.register("progressive_attack_cadence", () -> ModGameTests::progressiveAttackCadence);
         TEST_FUNCTIONS.register("idle_restores_attack_cadence", () -> ModGameTests::idleRestoresAttackCadence);
         TEST_FUNCTIONS.register("rejected_input_preserves_cadence", () -> ModGameTests::rejectedInputPreservesCadence);
+        TEST_FUNCTIONS.register("rapier_instant_hit", () -> ModGameTests::rapier_instant_hit);
+        TEST_FUNCTIONS.register("rapier_miss_recovery", () -> ModGameTests::rapier_miss_recovery);
+        TEST_FUNCTIONS.register("rapier_aim_and_wall", () -> ModGameTests::rapier_aim_and_wall);
+        TEST_FUNCTIONS.register("rapier_random_attacks", () -> ModGameTests::rapier_random_attacks);
+        TEST_FUNCTIONS.register("guard_window_boundaries", () -> ModGameTests::guard_window_boundaries);
+        TEST_FUNCTIONS.register("dual_guard_bash_once", () -> ModGameTests::dual_guard_bash_once);
         TEST_FUNCTIONS.register(modBus);
     }
 
@@ -101,6 +107,12 @@ public final class ModGameTests {
         register(event, midnight, "progressive_attack_cadence", 100);
         register(event, midnight, "idle_restores_attack_cadence", 100);
         register(event, midnight, "rejected_input_preserves_cadence", 100);
+        register(event, midnight, "rapier_instant_hit", 140);
+        register(event, midnight, "rapier_miss_recovery", 140);
+        register(event, midnight, "rapier_aim_and_wall", 140);
+        register(event, midnight, "rapier_random_attacks", 140);
+        register(event, midnight, "guard_window_boundaries", 140);
+        register(event, midnight, "dual_guard_bash_once", 140);
     }
 
     private static void register(RegisterGameTestsEvent event, Holder<TestEnvironmentDefinition> env,
@@ -115,6 +127,7 @@ public final class ModGameTests {
         ServerPlayer player = helper.makeMockServerPlayerInLevel();
         player.setItemInHand(InteractionHand.MAIN_HAND,
                 new ItemStack(net.minecraft.world.item.Items.DIAMOND_SWORD));
+        player.setItemInHand(InteractionHand.OFF_HAND, new ItemStack(net.minecraft.world.item.Items.DIAMOND_SWORD));
         ServerCombat.handleSetDrawn(player, true);
         return player;
     }
@@ -167,7 +180,7 @@ public final class ModGameTests {
             return;
         }
 
-        Zombie zombie = helper.spawn(EntityType.ZOMBIE, new BlockPos(2, 1, 3));
+        Zombie zombie = helper.spawn(EntityType.ZOMBIE, new BlockPos(2, 1, 2));
         zombie.setNoAi(true);
         float initialHealth = zombie.getHealth();
         BlockPos origin = helper.absolutePos(BlockPos.ZERO);
@@ -259,6 +272,7 @@ public final class ModGameTests {
             return;
         }
 
+        player.getData(ModAttachments.COMBAT).defendStartGameTime--;
         float before = player.getHealth();
         // mock players never send the client-load ack (embedded connection) and the
         // server treats not-yet-loaded clients as invulnerable for 60 ticks; drain it
@@ -272,10 +286,14 @@ public final class ModGameTests {
             return;
         }
         helper.runAfterDelay(10, () -> {
+            player.getData(ModAttachments.COMBAT).defendStartGameTime = player.level().getGameTime() - 10;
+            player.getData(ModAttachments.COMBAT).defending = true;
+            player.getData(ModAttachments.COMBAT).defendHold = true;
             float beforeHold = player.getHealth();
             player.hurtServer(helper.getLevel(), player.damageSources().generic(), 10.0F);
             float holdLost = beforeHold - player.getHealth();
-            if (Math.abs(holdLost - 5.0F) > 0.05F) {
+            if (Math.abs(ServerCombat.defendReduction(player.getData(ModAttachments.COMBAT), player.level().getGameTime()) - 0.5F) > 0.001F
+                    || holdLost <= 0 || holdLost > 5.05F) {
                 helper.fail("hold guard at 0.5s should let 50% through, lost " + holdLost);
             } else {
                 helper.succeed();
@@ -483,11 +501,11 @@ public final class ModGameTests {
         ServerPlayer player = drawnPlayer(helper);
         WeaponCategory cat = ServerCombat.categoryOf(player);
 
-        if (!"attack1".equals(cat.attackAnim(SwingSide.LEFT, 0))
-                || !"attack3".equals(cat.attackAnim(SwingSide.LEFT, 1))
-                || !"attack2".equals(cat.attackAnim(SwingSide.RIGHT, 0))
-                || !"attack4".equals(cat.attackAnim(SwingSide.RIGHT, 1))) {
-            helper.fail("expected 左手左砍/右手左砍/左手右砍/右手右砍 = attack1/3/2/4");
+        if (!"attack_1".equals(cat.attackAnim(SwingSide.LEFT, 0))
+                || !"attack2".equals(cat.attackAnim(SwingSide.LEFT, 1))
+                || !"attack4".equals(cat.attackAnim(SwingSide.RIGHT, 0))
+                || !"attack3".equals(cat.attackAnim(SwingSide.RIGHT, 1))) {
+            helper.fail("expected 左手左砍/右手左砍/左手右砍/右手右砍 = attack_1/2/4/3");
             return;
         }
 
@@ -898,4 +916,79 @@ public final class ModGameTests {
     }
 
     private ModGameTests() {}
+
+    private static ServerPlayer rapierPlayer(GameTestHelper helper) {
+        ServerPlayer p = drawnPlayer(helper);
+        p.setItemInHand(InteractionHand.OFF_HAND, ItemStack.EMPTY);
+        BlockPos o = helper.absolutePos(BlockPos.ZERO);
+        p.setPos(o.getX()+2.5, o.getY()+1, o.getZ()+1.0);
+        p.setYRot(0); p.setXRot(0);
+        var eye=p.getEyePosition(); ServerCombat.handleAim(p,0,0,eye.x,eye.y,eye.z);
+        return p;
+    }
+    private static Zombie rapierTarget(GameTestHelper h) {
+        Zombie z=h.spawn(EntityType.ZOMBIE,new BlockPos(2,1,3));z.setNoAi(true);return z;
+    }
+    private static void require(boolean value,String message) {
+        if(!value)throw new IllegalStateException(message);
+    }
+    private static void rapier_instant_hit(GameTestHelper h) {
+        ServerPlayer p=rapierPlayer(h);Zombie z=rapierTarget(h);float before=z.getHealth();
+        long now=p.level().getGameTime();CombatData d=p.getData(ModAttachments.COMBAT);
+        ServerCombat.handleAttack(p,SwingSide.RIGHT,false);
+        require(z.getHealth()<before,"thrust must damage on the request tick");
+        require(d.active==null && d.thrustRecoveryUntil==now,"hit must have no recovery");
+        require(d.thrustReadyAt==now+40,"hit cooldown must be 40 ticks");
+        ServerCombat.handleAttack(p,SwingSide.LEFT,false);
+        require(d.active!=null,"normal attack must be available immediately after a hit");
+        h.succeed();
+    }
+    private static void rapier_miss_recovery(GameTestHelper h) {
+        ServerPlayer p=rapierPlayer(h);CombatData d=p.getData(ModAttachments.COMBAT);long now=p.level().getGameTime();
+        ServerCombat.handleAttack(p,SwingSide.RIGHT,false);
+        require(d.thrustRecoveryUntil==now+20 && d.thrustReadyAt==now+40,"miss timings");
+        ServerCombat.handleAttack(p,SwingSide.LEFT,false);require(d.active==null,"miss blocks attacks");
+        ServerCombat.handleSetDefending(p,true);require(!d.defending,"miss blocks guard");
+        ServerCombat.handleSetDrawn(p,false);ServerCombat.handleSetDrawn(p,true);
+        require(d.thrustReadyAt==now+40 && d.thrustRecoveryUntil==now+20,"sheathing cannot clear cooldown/recovery");
+        h.runAfterDelay(19,()->{ServerCombat.handleAttack(p,SwingSide.LEFT,false);require(d.active==null,"recovery opens too early");});
+        h.runAfterDelay(20,()->{ServerCombat.handleAttack(p,SwingSide.LEFT,false);require(d.active!=null,"recovery must open at 1s");});
+        h.runAfterDelay(39,()->{long ready=d.thrustReadyAt;ServerCombat.handleAttack(p,SwingSide.RIGHT,false);require(d.thrustReadyAt==ready,"cooldown opens too early");});
+        h.runAfterDelay(40,()->{ServerCombat.handleAttack(p,SwingSide.RIGHT,false);require(d.thrustReadyAt==now+80,"cooldown must open at 2s");h.succeed();});
+    }
+    private static void rapier_aim_and_wall(GameTestHelper h) {
+        ServerPlayer p=rapierPlayer(h);Zombie z=rapierTarget(h);
+        require(ServerCombat.rapierTarget(p)==z,"on-axis target missing");
+        var eye=p.getEyePosition();ServerCombat.handleAim(p,25,0,eye.x,eye.y,eye.z);
+        require(ServerCombat.rapierTarget(p)==null,"off-crosshair target must miss");
+        ServerCombat.handleAim(p,0,0,eye.x,eye.y,eye.z);
+        h.getLevel().setBlockAndUpdate(h.absolutePos(new BlockPos(2,2,2)),net.minecraft.world.level.block.Blocks.STONE.defaultBlockState());
+        require(ServerCombat.rapierTarget(p)==null,"cannot thrust through walls");h.succeed();
+    }
+    private static void rapier_random_attacks(GameTestHelper h) {
+        ServerPlayer p=rapierPlayer(h);p.getRandom().setSeed(42);java.util.Set<String> clips=new java.util.HashSet<>();
+        for(int i=0;i<12;i++){h.runAfterDelay(i*6,()->{
+            ServerCombat.handleAttack(p,SwingSide.LEFT,false);CombatData d=p.getData(ModAttachments.COMBAT);
+            require(d.active!=null && d.active.startGameTime==p.level().getGameTime(),"single must repeat without hand-side gating");
+            clips.add(d.active.side+":"+d.active.depth);
+        });}
+        h.runAfterDelay(67,()->{require(clips.size()>1,"specific attack variants must vary");h.succeed();});
+    }
+    private static void guard_window_boundaries(GameTestHelper h) {
+        ServerPlayer p=drawnPlayer(h);ServerCombat.handleSetDefending(p,true);CombatData d=p.getData(ModAttachments.COMBAT);long t=d.defendStartGameTime;
+        require(!ServerCombat.isPerfectGuard(d,t),"tick zero must not parry");
+        require(ServerCombat.defendReduction(d,t)==0,"tick zero must not fully block");
+        for(int i=1;i<=6;i++)require(ServerCombat.isPerfectGuard(d,t+i),"ticks 1 through 6 must parry");
+        require(!ServerCombat.isPerfectGuard(d,t+7),"tick 7 is outside parry window");h.succeed();
+    }
+    private static void dual_guard_bash_once(GameTestHelper h) {
+        ServerPlayer p=rapierPlayer(h);p.setItemInHand(InteractionHand.OFF_HAND,new ItemStack(net.minecraft.world.item.Items.DIAMOND_SWORD));
+        Zombie z=rapierTarget(h);z.setPos(p.getX(),p.getY(),p.getZ()+1.2);Zombie side=h.spawn(EntityType.ZOMBIE,new BlockPos(3,1,1));side.setNoAi(true);
+        side.setPos(p.getX()+1.2,p.getY(),p.getZ());float health=z.getHealth();
+        ServerCombat.handleSetDefending(p,true);p.setSprinting(true);ServerCombat.tryGuardBash(p);
+        require(z.getDeltaMovement().horizontalDistanceSqr()>0 && side.getDeltaMovement().horizontalDistanceSqr()>0,"radial bash must shove front and side targets");
+        require(z.getHealth()==health,"bash should not add attack damage");
+        z.setDeltaMovement(net.minecraft.world.phys.Vec3.ZERO);ServerCombat.tryGuardBash(p);
+        require(z.getDeltaMovement().horizontalDistanceSqr()==0,"same guard may only bash once");h.succeed();
+    }
 }

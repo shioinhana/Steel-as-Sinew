@@ -9,15 +9,15 @@
       "cancelStart": 0.3,
       "length": 0.4,
       "recoveryPoseShare": 1,
-      "authoredActiveStart": 0.1167,
-      "authoredActiveEnd": 0.1967,
+      "authoredActiveStart": 0.048,
+      "authoredActiveEnd": 0.15,
       "authoredLength": 0.4,
-      "source": "bone:upper_body+upper_arm_r+forearm_r+hand_item_r+upper_arm_l+forearm_l",
+      "source": "bone:upper_body+upper_arm_r+forearm_r+hand_r+hand_item_r+upper_arm_l+forearm_l+hand_l",
       "firstPerson": {
-        "authoredActiveStart": 0.1226,
-        "authoredActiveEnd": 0.18,
+        "authoredActiveStart": 0.1,
+        "authoredActiveEnd": 0.26,
         "authoredLength": 0.4,
-        "source": "keyframe-speed:left+right+elucidator"
+        "source": "keyframe-speed:right+elucidator"
       }
     },
     "attack2": {
@@ -28,15 +28,15 @@
       "cancelStart": 0.3,
       "length": 0.4,
       "recoveryPoseShare": 1,
-      "authoredActiveStart": 0.1167,
-      "authoredActiveEnd": 0.1967,
+      "authoredActiveStart": 0.048,
+      "authoredActiveEnd": 0.15,
       "authoredLength": 0.4,
-      "source": "bone:upper_body+upper_arm_r+forearm_r+hand_item_r+upper_arm_l+forearm_l",
+      "source": "bone:upper_body+upper_arm_r+forearm_r+hand_r+hand_item_r+upper_arm_l+forearm_l+hand_l",
       "firstPerson": {
-        "authoredActiveStart": 0.12,
-        "authoredActiveEnd": 0.18,
+        "authoredActiveStart": 0.1,
+        "authoredActiveEnd": 0.26,
         "authoredLength": 0.4,
-        "source": "keyframe-speed:left+right+elucidator"
+        "source": "keyframe-speed:right+elucidator"
       }
     },
     "attack3": {
@@ -47,15 +47,15 @@
       "cancelStart": 0.3,
       "length": 0.4,
       "recoveryPoseShare": 1,
-      "authoredActiveStart": 0.1167,
-      "authoredActiveEnd": 0.1967,
+      "authoredActiveStart": 0.048,
+      "authoredActiveEnd": 0.15,
       "authoredLength": 0.4,
-      "source": "bone:upper_body+upper_arm_r+forearm_r+hand_item_r+upper_arm_l+forearm_l",
+      "source": "bone:upper_body+upper_arm_r+forearm_r+hand_r+hand_item_r+upper_arm_l+forearm_l+hand_l",
       "firstPerson": {
-        "authoredActiveStart": 0.1247,
-        "authoredActiveEnd": 0.18,
+        "authoredActiveStart": 0.1,
+        "authoredActiveEnd": 0.26,
         "authoredLength": 0.4,
-        "source": "keyframe-speed:left+right+elucidator"
+        "source": "keyframe-speed:right+elucidator"
       }
     },
     "attack4": {
@@ -66,15 +66,15 @@
       "cancelStart": 0.3,
       "length": 0.4,
       "recoveryPoseShare": 1,
-      "authoredActiveStart": 0.1167,
-      "authoredActiveEnd": 0.1967,
+      "authoredActiveStart": 0.048,
+      "authoredActiveEnd": 0.15,
       "authoredLength": 0.4,
-      "source": "bone:upper_body+upper_arm_r+forearm_r+hand_item_r+upper_arm_l+forearm_l",
+      "source": "bone:upper_body+upper_arm_r+forearm_r+hand_r+hand_item_r+upper_arm_l+forearm_l+hand_l",
       "firstPerson": {
-        "authoredActiveStart": 0.1174,
-        "authoredActiveEnd": 0.1771,
+        "authoredActiveStart": 0.12,
+        "authoredActiveEnd": 0.18,
         "authoredLength": 0.4,
-        "source": "keyframe-speed:left+right+elucidator"
+        "source": "copied-third-person:right+elucidator"
       }
     },
     "attack_dual": {

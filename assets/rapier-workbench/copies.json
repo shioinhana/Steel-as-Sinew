@@ -1,0 +1,50 @@
+[
+  {
+    "file": "rapier.model.fsvox",
+    "copyId": "cc0febf2-e9fc-4de2-b3c2-384c90de9ace",
+    "version": 3,
+    "revision": 2
+  },
+  {
+    "file": "rapier_attack1.motion.fsvox",
+    "copyId": "685b645b-53bd-45ad-8b20-5a6ed491ea9e",
+    "version": 2,
+    "revision": 1
+  },
+  {
+    "file": "rapier_attack2.motion.fsvox",
+    "copyId": "733a47f7-85ee-4267-a6a4-80234ebfa5b8",
+    "version": 2,
+    "revision": 1
+  },
+  {
+    "file": "rapier_attack3.motion.fsvox",
+    "copyId": "28293f88-698f-41d9-be1c-1ff65fb1dda4",
+    "version": 2,
+    "revision": 1
+  },
+  {
+    "file": "rapier_attack4.motion.fsvox",
+    "copyId": "1569b69c-47e6-477d-9c2d-19e2402bcce5",
+    "version": 2,
+    "revision": 1
+  },
+  {
+    "file": "rapier_idle.motion.fsvox",
+    "copyId": "2bb98755-3d18-4ba9-a488-e071b2844b93",
+    "version": 2,
+    "revision": 1
+  },
+  {
+    "file": "rapier_thrust_hit.motion.fsvox",
+    "copyId": "9a6f5eac-bd50-4a34-8abe-749c7a821626",
+    "version": 2,
+    "revision": 1
+  },
+  {
+    "file": "rapier_thrust_miss.motion.fsvox",
+    "copyId": "5b365b9c-ae0f-47fa-8ecd-92d5b5c4496f",
+    "version": 2,
+    "revision": 1
+  }
+]
