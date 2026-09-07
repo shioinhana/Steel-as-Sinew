@@ -1,0 +1,208 @@
+{
+  "format_version": "1.12.0",
+  "minecraft:geometry": [
+    {
+      "description": {
+        "identifier": "geometry.actioncombat.ysm_player.arm",
+        "texture_width": 64,
+        "texture_height": 64,
+        "visible_bounds_width": 2,
+        "visible_bounds_height": 3.5,
+        "visible_bounds_offset": [
+          0,
+          1.25,
+          0
+        ]
+      },
+      "bones": [
+        {
+          "name": "RightArm",
+          "pivot": [
+            5,
+            22,
+            0
+          ],
+          "cubes": [
+            {
+              "origin": [
+                4,
+                19,
+                -2
+              ],
+              "size": [
+                4,
+                5,
+                4
+              ],
+              "uv": [
+                40,
+                16
+              ]
+            }
+          ]
+        },
+        {
+          "name": "RightForeArm",
+          "parent": "RightArm",
+          "pivot": [
+            5,
+            19,
+            0
+          ],
+          "cubes": [
+            {
+              "origin": [
+                4,
+                14,
+                -2
+              ],
+              "size": [
+                4,
+                5,
+                4
+              ],
+              "uv": [
+                40,
+                21
+              ]
+            }
+          ]
+        },
+        {
+          "name": "RightHand",
+          "parent": "RightForeArm",
+          "pivot": [
+            5,
+            14,
+            0
+          ],
+          "cubes": [
+            {
+              "origin": [
+                4,
+                12,
+                -2
+              ],
+              "size": [
+                4,
+                2,
+                4
+              ],
+              "uv": [
+                40,
+                26
+              ]
+            }
+          ]
+        },
+        {
+          "name": "RightHandLocator",
+          "parent": "RightHand",
+          "pivot": [
+            5.6,
+            14,
+            0.5
+          ],
+          "cubes": [
+            {
+              "origin": [
+                5.6,
+                13,
+                -16.5
+              ],
+              "size": [
+                0,
+                2,
+                16
+              ],
+              "uv": [
+                -14,
+                -14
+              ]
+            }
+          ]
+        },
+        {
+          "name": "LeftArm",
+          "pivot": [
+            -5,
+            22,
+            0
+          ],
+          "cubes": [
+            {
+              "origin": [
+                -8,
+                19,
+                -2
+              ],
+              "size": [
+                4,
+                5,
+                4
+              ],
+              "uv": [
+                32,
+                48
+              ]
+            }
+          ]
+        },
+        {
+          "name": "LeftForeArm",
+          "parent": "LeftArm",
+          "pivot": [
+            -5,
+            19,
+            0
+          ],
+          "cubes": [
+            {
+              "origin": [
+                -8,
+                14,
+                -2
+              ],
+              "size": [
+                4,
+                5,
+                4
+              ],
+              "uv": [
+                32,
+                53
+              ]
+            }
+          ]
+        },
+        {
+          "name": "LeftHand",
+          "parent": "LeftForeArm",
+          "pivot": [
+            -5,
+            14,
+            0
+          ],
+          "cubes": [
+            {
+              "origin": [
+                -8,
+                12,
+                -2
+              ],
+              "size": [
+                4,
+                2,
+                4
+              ],
+              "uv": [
+                32,
+                58
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

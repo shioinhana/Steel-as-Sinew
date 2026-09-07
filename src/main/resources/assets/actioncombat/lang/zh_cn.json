@@ -1,0 +1,12 @@
+{
+  "item.actioncombat.longsword": "长剑",
+  "key.category.actioncombat.combat": "动作战斗",
+  "key.actioncombat.draw": "拔刀 / 收刀",
+  "key.actioncombat.block": "格挡",
+  "key.actioncombat.inspect": "武器检视",
+  "key.actioncombat.crouch": "下蹲（拔刀）",
+  "key.actioncombat.cam_forward": "镜头前移",
+  "key.actioncombat.cam_back": "镜头后移",
+  "key.actioncombat.cam_left": "镜头左移",
+  "key.actioncombat.cam_right": "镜头右移"
+}

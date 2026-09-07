@@ -1,0 +1,12 @@
+{
+  "item.actioncombat.longsword": "Longsword",
+  "key.category.actioncombat.combat": "Action Combat",
+  "key.actioncombat.draw": "Draw / Sheathe",
+  "key.actioncombat.block": "Block",
+  "key.actioncombat.inspect": "Inspect Weapon",
+  "key.actioncombat.crouch": "Crouch (Drawn)",
+  "key.actioncombat.cam_forward": "Camera Forward",
+  "key.actioncombat.cam_back": "Camera Back",
+  "key.actioncombat.cam_left": "Camera Left",
+  "key.actioncombat.cam_right": "Camera Right"
+}

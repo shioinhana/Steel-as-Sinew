@@ -1,0 +1,72 @@
+{
+  "spec": 2,
+  "metadata": {
+    "name": "动作战斗",
+    "tips": "太刀模组全部第三人称动画的 YSM 骨骼转换（动作原样保留）。",
+    "license": {
+      "type": "CC 0",
+      "desc": "与动作战斗模组一同分发"
+    },
+    "authors": [
+      {
+        "name": "actioncombat",
+        "role": "动画转换"
+      }
+    ]
+  },
+  "properties": {
+    "height_scale": 0.9375,
+    "width_scale": 0.9375,
+    "extra_animation": {
+      "draw": "draw",
+      "inspect": "inspect",
+      "run_start": "run_start",
+      "run_hold": "run_hold",
+      "run_end": "run_end",
+      "put_away": "put_away",
+      "defend": "defend",
+      "aiming": "aiming",
+      "attack1": "attack1",
+      "attack2": "attack2",
+      "attack3": "attack3",
+      "attack4": "attack4",
+      "walk_start": "walk_start",
+      "walk_hold": "walk_hold",
+      "walk_end": "walk_end",
+      "crouch_idle": "crouch_idle",
+      "fall": "fall",
+      "hurt": "hurt",
+      "attack_dual": "attack_dual",
+      "defend_end": "defend_end",
+      "jump_start": "jump_start",
+      "crouch_walk": "crouch_walk",
+      "walk_hold_left": "walk_hold_left",
+      "crouch_walk_left": "crouch_walk_left",
+      "run_hold_left": "run_hold_left",
+      "walk_hold_right": "walk_hold_right",
+      "crouch_walk_right": "crouch_walk_right",
+      "run_hold_right": "run_hold_right",
+      "walk_hold_back": "walk_hold_back",
+      "crouch_walk_back": "crouch_walk_back",
+      "run_hold_back": "run_hold_back"
+    },
+    "preview_animation": "idle"
+  },
+  "files": {
+    "player": {
+      "model": {
+        "main": "models/main.json",
+        "arm": "models/arm.json"
+      },
+      "animation": {
+        "main": "animations/main.animation.json",
+        "arm": "animations/arm.animation.json",
+        "extra": "animations/extra.animation.json"
+      },
+      "texture": [
+        "textures/steve.png"
+      ]
+    },
+    "language_path": "lang"
+  }
+}
