@@ -39,7 +39,8 @@ public class FpViewmodelModel extends GeoModel<FpViewmodel> {
     @Override
     public void addAdditionalStateData(FpViewmodel animatable, Object context, GeoRenderState renderState) {
         animationFileId = clips().animationsId();
-        var dummy = FpViewmodel.localDualDummy();
+        Minecraft mc = Minecraft.getInstance();
+        var dummy = mc.player == null ? null : ClientCombat.dummyOf(mc.player.getId());
         if (dummy != null) {
             renderState.addGeckolibData(software.bernie.geckolib.constant.DataTickets.TICK,
                     dummy.animationTick);

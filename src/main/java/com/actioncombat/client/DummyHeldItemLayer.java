@@ -34,6 +34,8 @@ public class DummyHeldItemLayer
 
     @Override
     public void addRenderData(PlayerAnimatable dummy, Void related, PlayerGeoRenderState state, float partialTick) {
+        state.spear = dummy.weaponCategory == com.actioncombat.combat.WeaponCategory.SPEAR;
+        state.rapier = dummy.weaponCategory == com.actioncombat.combat.WeaponCategory.SINGLE;
         EnumMap<EquipmentSlot, ItemStack> equipment = equipmentMap(state);
         for (EquipmentSlot slot : EquipmentSlot.values()) {
             equipment.put(slot, dummy.getItemBySlot(slot));
@@ -47,9 +49,9 @@ public class DummyHeldItemLayer
         List<RenderData<PlayerGeoRenderState>> bones = new ArrayList<>(2);
         String right = YsmStyle.enabled() ? YsmStyle.RIGHT_HAND : "hand_item_r";
         String left = YsmStyle.enabled() ? YsmStyle.LEFT_HAND : "hand_item_l";
-        bones.add(new RenderData<>(right, ItemDisplayContext.THIRD_PERSON_RIGHT_HAND,
+        bones.add(new RenderData<>(right, (state.rapier || state.spear) ? ItemDisplayContext.NONE : ItemDisplayContext.THIRD_PERSON_RIGHT_HAND,
                 (bone, s) -> Either.left(stack(s, EquipmentSlot.MAINHAND))));
-        if (model.getBone(left).isPresent()) {
+        if (!state.spear && model.getBone(left).isPresent()) {
             bones.add(new RenderData<>(left, ItemDisplayContext.THIRD_PERSON_LEFT_HAND,
                     (bone, s) -> Either.left(stack(s, EquipmentSlot.OFFHAND))));
         }
@@ -62,7 +64,13 @@ public class DummyHeldItemLayer
                                          SubmitNodeCollector collector, CameraRenderState camera,
                                          int packedLight, int packedOverlay, int outlineColor) {
         poseStack.pushPose();
-        if (context == ItemDisplayContext.THIRD_PERSON_RIGHT_HAND
+        if (state.spear) {
+            poseStack.mulPose(Axis.XN.rotationDegrees(90.0F));
+            SpearItemPose.apply(poseStack);
+        } else if (state.rapier && context == ItemDisplayContext.NONE) {
+            poseStack.mulPose(Axis.XN.rotationDegrees(90.0F));
+            RapierItemPose.apply(poseStack);
+        } else if (context == ItemDisplayContext.THIRD_PERSON_RIGHT_HAND
                 || context == ItemDisplayContext.THIRD_PERSON_LEFT_HAND) {
             poseStack.mulPose(Axis.XN.rotationDegrees(90.0F));
             poseStack.translate(0.0F, 0.125F, -0.0625F);

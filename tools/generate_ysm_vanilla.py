@@ -42,6 +42,11 @@ BONE_MAP = {
 
 SETS = [
     {
+        "geo": "player_longsword.geo.json", "anim": "third_person_spear.animation.json",
+        "out_geo": None, "out_anim": "ysm_player_spear.animation.json",
+        "identifier": "geometry.actioncombat.ysm_player", "ysm_main": False,
+    },
+    {
         "geo": "player_longsword.geo.json",
         "anim": "third_person_singlesword.animation.json",
         "out_geo": "ysm_player.geo.json",
@@ -55,6 +60,14 @@ SETS = [
         "out_geo": "ysm_player_dual.geo.json",
         "out_anim": "ysm_player_dual.animation.json",
         "identifier": "geometry.actioncombat.ysm_player_dual",
+        "ysm_main": False,
+    },
+    {
+        "geo": "player_longsword.geo.json",
+        "anim": "third_person_katana.animation.json",
+        "out_geo": None,
+        "out_anim": "ysm_player_katana.animation.json",
+        "identifier": "geometry.actioncombat.ysm_player",
         "ysm_main": False,
     },
 ]
@@ -204,7 +217,8 @@ def main() -> None:
         geo_out = convert_geo(geo, spec["identifier"])
         anim_out = convert_anim(anim)
         add_ysm_aliases(anim_out["animations"])
-        dump(GEO_DIR / spec["out_geo"], geo_out)
+        if spec["out_geo"]:
+            dump(GEO_DIR / spec["out_geo"], geo_out)
         dump(ANIM_DIR / spec["out_anim"], anim_out)
         converted.append((spec, geo_out, anim_out))
         print(f"geckolib {spec['out_geo']} / {spec['out_anim']} "

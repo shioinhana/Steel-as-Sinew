@@ -38,7 +38,7 @@ public class FpHeldItemLayer extends BlockAndItemGeoLayer<FpViewmodel, Void, Geo
     protected List<RenderData<GeoRenderState>> getRelevantBones(GeoRenderState state, BakedGeoModel model) {
         List<RenderData<GeoRenderState>> bones = new ArrayList<>(2);
         if (model.getBone("elucidator").isPresent()) {
-            bones.add(new RenderData<>("elucidator", ItemDisplayContext.THIRD_PERSON_RIGHT_HAND,
+            bones.add(new RenderData<>("elucidator", ItemDisplayContext.NONE,
                     (bone, s) -> Either.left(mainHand())));
         }
         if (model.getBone("right_arm_item").isPresent()) {
@@ -59,8 +59,8 @@ public class FpHeldItemLayer extends BlockAndItemGeoLayer<FpViewmodel, Void, Geo
                                          int packedLight, int packedOverlay, int outlineColor) {
         poseStack.pushPose();
         if ("elucidator".equals(bone.name())) {
-            poseStack.translate(0.0F, 0.04F, 0.0F);
-            poseStack.scale(0.85F, 0.85F, 0.85F);
+            if (ClientCombat.localWeaponCategory() == com.actioncombat.combat.WeaponCategory.SPEAR) SpearItemPose.apply(poseStack);
+            else RapierItemPose.apply(poseStack);
         } else {
             poseStack.mulPose(Axis.XN.rotationDegrees(90.0F));
             poseStack.translate(0.0F, 0.125F, -0.0625F);

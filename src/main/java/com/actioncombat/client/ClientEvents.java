@@ -2,6 +2,7 @@ package com.actioncombat.client;
 
 import com.actioncombat.ActionCombat;
 import com.actioncombat.CombatConstants;
+import com.actioncombat.combat.CombatAttributes;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.player.AbstractClientPlayer;
 import net.minecraft.client.player.LocalPlayer;
@@ -11,6 +12,7 @@ import net.neoforged.api.distmarker.Dist;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.common.EventBusSubscriber;
 import net.neoforged.neoforge.client.event.ClientTickEvent;
+import net.neoforged.neoforge.client.event.ComputeFovModifierEvent;
 import net.neoforged.neoforge.client.event.EntityRenderersEvent;
 import net.neoforged.neoforge.client.event.InputEvent;
 import net.neoforged.neoforge.client.event.MovementInputUpdateEvent;
@@ -37,6 +39,8 @@ public final class ClientEvents {
         event.register(ModKeybinds.BLOCK);
         event.register(ModKeybinds.INSPECT);
         event.register(ModKeybinds.CROUCH);
+        event.register(ModKeybinds.LOCK_PREV);
+        event.register(ModKeybinds.LOCK_NEXT);
     }
 
     @SubscribeEvent
@@ -46,6 +50,12 @@ public final class ClientEvents {
         }
         while (ModKeybinds.INSPECT.consumeClick()) {
             ClientCombat.onInspectKey();
+        }
+        while (ModKeybinds.LOCK_PREV.consumeClick()) {
+            ClientCombat.onLockSwitch(false);
+        }
+        while (ModKeybinds.LOCK_NEXT.consumeClick()) {
+            ClientCombat.onLockSwitch(true);
         }
         ClientCombat.clientTick();
     }
@@ -60,6 +70,8 @@ public final class ClientEvents {
     @SubscribeEvent
     static void onPlayerTickPre(PlayerTickEvent.Pre event) {
         if (event.getEntity() instanceof LocalPlayer player && ClientCombat.isLocalDodging()) {
+            if (ClientCombat.localWeaponCategory() == com.actioncombat.combat.WeaponCategory.SPEAR)
+                player.setDeltaMovement(0, player.getDeltaMovement().y, 0);
             player.xxa = 0.0F;
             player.zza = 0.0F;
             player.setShiftKeyDown(false);
@@ -89,6 +101,25 @@ public final class ClientEvents {
     /** Real-time clock for the per-frame camera/orientation easing. */
     private static long lastFovNanos;
 
+    /**
+     * The dual dash is a {@code MOVEMENT_SPEED} boost, and vanilla scales the FOV by
+     * that attribute — at 4x it would peg the 0.1–1.5 clamp and read as a zoom-out.
+     * Report the modifier the attribute would give without the dash so the dash only
+     * changes how fast the player moves.
+     */
+    @SubscribeEvent
+    static void onComputeFovModifier(ComputeFovModifierEvent event) {
+        if (ClientCombat.isLocalDrawn()) {
+            // 拔刀模式视野恒定: sprinting and the dual dash must not zoom the camera.
+            event.setNewFovModifier(1.0F);
+            return;
+        }
+        float neutral = CombatAttributes.fovModifierWithoutDash(event.getPlayer(), event.getFovModifier());
+        if (neutral != event.getFovModifier()) {
+            event.setNewFovModifier(Mth.lerp(event.getFovScale(), 1.0F, neutral));
+        }
+    }
+
     @SubscribeEvent
     static void onComputeFov(ViewportEvent.ComputeFov event) {
         long now = System.nanoTime();
@@ -101,11 +132,6 @@ public final class ClientEvents {
         ClientCombat.renderTickSync();
 
         event.setFOV(event.getFOV() + ClientCombat.currentFovBias());
-
-        float punch = FovPunch.envelope();
-        if (punch > 0.0F) {
-            event.setFOV(event.getFOV() + CombatConstants.FOV_PUNCH_DEGREES * punch);
-        }
     }
 
     /** Impact shake, layered on top of whatever the camera director produced. */
@@ -115,8 +141,8 @@ public final class ClientEvents {
         float pitch = HitFeedback.shakePitch();
         float roll = HitFeedback.shakeRoll();
         if (ClientCombat.isLocalDrawn()) {
-            if (Minecraft.getInstance().options.getCameraType().isFirstPerson()
-                    || ClientCombat.isAimLocked()) {
+            // Third person always renders from the orbit camera — even mid-swing.
+            if (Minecraft.getInstance().options.getCameraType().isFirstPerson()) {
                 event.setYaw(event.getYaw() + yaw);
                 event.setPitch(event.getPitch() + pitch);
             } else {
@@ -134,9 +160,12 @@ public final class ClientEvents {
 
     @SubscribeEvent
     static void onRenderCrosshair(RenderGuiLayerEvent.Pre event) {
-        if (!event.getName().equals(VanillaGuiLayers.CROSSHAIR)) return;
         if (!ClientCombat.isLocalDrawn()) return;
+        var name = event.getName();
+        if (!name.equals(VanillaGuiLayers.CROSSHAIR)) return;
+        // Vanilla crosshair is replaced by the lock marker (rapier) or combat reticle (dual).
         event.setCanceled(true);
+        CombatHud.render(event.getGuiGraphics());
     }
 
     /** Attach the back-weapon layer to every player skin variant. */

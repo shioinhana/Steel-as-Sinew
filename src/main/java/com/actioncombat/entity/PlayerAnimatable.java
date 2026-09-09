@@ -72,6 +72,8 @@ public class PlayerAnimatable extends LivingEntity implements GeoEntity {
     public boolean aiming;
     public boolean inspecting;
     /** Tracks the run-hold state so the run_end transition fires exactly once. */
+    public long sprintStartNanos;
+    public boolean spearSprintCarry;
     public boolean running;
     /** Tracks the walk-hold state so the walk_end transition fires exactly once. */
     public boolean walking;
@@ -205,9 +207,11 @@ public class PlayerAnimatable extends LivingEntity implements GeoEntity {
         this.firstPersonActionTiming = attack
                 ? AttackTimings.firstPersonOf(this.weaponCategory, clip).withInterval(intervalTicks) : null;
         this.actionClip = clip;
-        this.actionUntilNanos = started + Math.round((double) Math.max(
-                attack ? this.actionTiming.length() : seconds, 0.05F) * 1.0E9);
-        this.actionFullBody = fullBody;
+        float playback = attack
+                ? AttackTimings.playbackSeconds(this.weaponCategory, this.actionTiming.length())
+                : Math.max(seconds, 0.05F);
+        this.actionUntilNanos = started + Math.round((double) playback * 1.0E9);
+        this.actionFullBody = fullBody || (weaponCategory == WeaponCategory.SPEAR && attack);
         this.actionStartAnimationTick = this.animationTick;
         this.actionStartNanos = started;
     }
@@ -217,13 +221,21 @@ public class PlayerAnimatable extends LivingEntity implements GeoEntity {
         if (actionClip == null || !actionClip.startsWith("attack") || actionTiming == null) return;
         actionTiming = actionTiming.withInterval(intervalTicks);
         firstPersonActionTiming = firstPersonActionTiming.withInterval(intervalTicks);
-        actionUntilNanos = actionStartNanos + Math.round((double) actionTiming.length() * 1.0E9);
+        actionUntilNanos = actionStartNanos + Math.round((double)
+                AttackTimings.playbackSeconds(this.weaponCategory, actionTiming.length()) * 1.0E9);
     }
 
     public double actionElapsedSeconds() {
-        if (actionClip != null && actionClip.startsWith("attack")) {
-            return Math.max(0.0, (System.nanoTime() - actionStartNanos) / 1.0E9);
+        if (actionClip != null && (actionClip.startsWith("attack") || actionClip.startsWith("rapier_thrust"))) {
+            double elapsed = Math.max(0.0, (System.nanoTime() - actionStartNanos) / 1.0E9);
+            if (actionClip.startsWith("rapier_thrust")) {
+                double playback = Math.max(0.05, (actionUntilNanos - actionStartNanos) / 1.0E9);
+                return elapsed * CombatConstants.RAPIER_THRUST_SECONDS / playback;
+            }
+            return elapsed;
         }
+        if (weaponCategory == WeaponCategory.SPEAR && actionClip != null)
+            return Math.max(0.0, (System.nanoTime() - actionStartNanos) / 1.0E9);
         return Math.max(0.0, (animationTick - actionStartAnimationTick) / 20.0);
     }
 
@@ -299,6 +311,11 @@ public class PlayerAnimatable extends LivingEntity implements GeoEntity {
             boolean launching = !descending && nowNanos - jumpStartNanos < 280_000_000L;
             return descending ? cat.fall : (launching ? ANIM_JUMP_START : cat.jump);
         }
+        if (cat == WeaponCategory.SPEAR && !airborne) {
+            if (spearSprintCarry) return "run_carry";
+            if (moveSpeed > CombatConstants.WALK_SPEED_THRESHOLD) return cat.gaitClip(false, false, moveForward, moveStrafe);
+            return cat.idle;
+        }
         if (moveSpeed > CombatConstants.WALK_SPEED_THRESHOLD) {
             return cat.gaitClip(moveSpeed > CombatConstants.RUN_SPEED_THRESHOLD,
                     crouching, moveForward, moveStrafe);
@@ -318,8 +335,11 @@ public class PlayerAnimatable extends LivingEntity implements GeoEntity {
             PlayerAnimatable self = test.animatable();
 
             if (self.hasFullBodyAction()) {
-                test.controller().setTransitionTicks(2);
+                test.controller().setTransitionTicks(0);
                 return test.setAndContinue(RawAnimation.begin().thenPlay(self.actionClip));
+            }
+            if (self.weaponCategory == WeaponCategory.SPEAR && self.defending) {
+                return test.setAndContinue(RawAnimation.begin().thenPlayAndHold("defend"));
             }
             test.controller().setTransitionTicks(self.airborne ? 2 : 4);
             String clip = self.locomotionClip(System.nanoTime());
@@ -344,6 +364,7 @@ public class PlayerAnimatable extends LivingEntity implements GeoEntity {
                 test.controller().setTransitionTicks(0);
                 return test.setAndContinue(RawAnimation.begin().thenPlay(self.actionClip));
             }
+            if (self.defending && cat == WeaponCategory.SPEAR) return PlayState.STOP;
             if (self.defending) {
                 return test.setAndContinue(RawAnimation.begin().thenPlayAndHold(cat.defend));
             }

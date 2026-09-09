@@ -18,7 +18,7 @@
         {
           "name": "RightArm",
           "pivot": [
-            -5,
+            -6,
             22,
             0
           ],
@@ -26,12 +26,12 @@
             {
               "origin": [
                 -8,
-                19,
+                16,
                 -2
               ],
               "size": [
                 4,
-                5,
+                8,
                 4
               ],
               "uv": [
@@ -45,20 +45,20 @@
           "name": "RightForeArm",
           "parent": "RightArm",
           "pivot": [
-            -5,
-            19,
+            -6,
+            16,
             0
           ],
           "cubes": [
             {
               "origin": [
                 -8,
-                14,
+                10,
                 -2
               ],
               "size": [
                 4,
-                5,
+                6,
                 4
               ],
               "uv": [
@@ -72,15 +72,15 @@
           "name": "RightHand",
           "parent": "RightForeArm",
           "pivot": [
-            -5,
-            14,
+            -6,
+            10,
             0
           ],
           "cubes": [
             {
               "origin": [
                 -8,
-                12,
+                9,
                 -2
               ],
               "size": [
@@ -99,9 +99,9 @@
           "name": "RightHandLocator",
           "parent": "RightHand",
           "pivot": [
-            -5.6,
-            14,
-            0.5
+            -6,
+            10,
+            0
           ],
           "cubes": [
             {
@@ -125,7 +125,7 @@
         {
           "name": "LeftArm",
           "pivot": [
-            5,
+            6,
             22,
             0
           ],
@@ -133,12 +133,12 @@
             {
               "origin": [
                 4,
-                19,
+                16,
                 -2
               ],
               "size": [
                 4,
-                5,
+                8,
                 4
               ],
               "uv": [
@@ -152,20 +152,20 @@
           "name": "LeftForeArm",
           "parent": "LeftArm",
           "pivot": [
-            5,
-            19,
+            6,
+            16,
             0
           ],
           "cubes": [
             {
               "origin": [
                 4,
-                14,
+                10,
                 -2
               ],
               "size": [
                 4,
-                5,
+                6,
                 4
               ],
               "uv": [
@@ -179,15 +179,15 @@
           "name": "LeftHand",
           "parent": "LeftForeArm",
           "pivot": [
-            5,
-            14,
+            6,
+            10,
             0
           ],
           "cubes": [
             {
               "origin": [
                 4,
-                12,
+                9,
                 -2
               ],
               "size": [

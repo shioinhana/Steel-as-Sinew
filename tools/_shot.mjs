@@ -1,0 +1,27 @@
+import pw from '/Users/mac/.workbuddy/binaries/node/workspace/node_modules/playwright-core/index.js';
+const { chromium } = pw;
+import fs from 'node:fs';
+const url = process.argv[2];
+const out = process.argv[3];
+const script = process.argv[4] ?? '';
+const browser = await chromium.launch();
+const page = await browser.newPage({ viewport: { width: 1240, height: 1100 }, deviceScaleFactor: 1 });
+const errors = [];
+page.on('pageerror', e => errors.push(String(e)));
+page.on('console', m => { if (m.type() === 'error') errors.push(m.text()); });
+await page.goto(url, { waitUntil: 'load' });
+await page.waitForTimeout(600);
+if (script) await page.evaluate(script);
+await page.waitForTimeout(400);
+const dbg = await page.evaluate(() => {
+  const out = [];
+  const svg = document.getElementById('main');
+  out.push('main children: ' + (svg ? svg.childElementCount : 'null'));
+  const errEl = document.getElementById('err');
+  out.push('err display: ' + (errEl ? errEl.style.display : 'none') + ' text: ' + (errEl ? errEl.textContent.slice(0, 200) : ''));
+  return out;
+});
+console.log(dbg.join('\n'));
+await page.screenshot({ path: out, fullPage: true });
+console.log('errors:', errors.length ? errors : 'none');
+await browser.close();

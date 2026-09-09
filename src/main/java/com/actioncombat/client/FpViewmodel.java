@@ -84,6 +84,11 @@ public final class FpViewmodel implements GeoAnimatable {
                 return test.setAndContinue(hold("static_pose"));
             }
             var dummy = localDummy();
+            if (ClientCombat.localWeaponCategory() == WeaponCategory.SPEAR && dummy != null) {
+                if (dummy.hasAction()) return test.setAndContinue(playOnce(dummy.actionClip.replace("_upper", "")));
+                if (dummy.defending) return test.setAndContinue(hold("defend_1"));
+                return test.setAndContinue(RawAnimation.begin().thenLoop(dummy.locomotionClip(System.nanoTime())));
+            }
             if (dummy != null && dummy.hasUpperAction() && dummy.actionClip.startsWith("attack")) {
                 String clip = dummy.actionClip.endsWith("_upper")
                         ? dummy.actionClip.substring(0, dummy.actionClip.length() - "_upper".length())
@@ -111,6 +116,11 @@ public final class FpViewmodel implements GeoAnimatable {
             return test.setAndContinue(hold(fp.idle()));
         }, self -> {
             var dummy = localDummy();
+            if (dummy != null && ClientCombat.localWeaponCategory() == WeaponCategory.SPEAR && dummy.hasAction())
+                return dummy.actionAnimationSeconds();
+            if (dummy != null && dummy.hasFullBodyAction() && dummy.actionClip.startsWith("rapier_thrust")) {
+                return dummy.actionElapsedSeconds();
+            }
             return dummy != null && ClientCombat.isLocalAttackActive() && dummy.hasUpperAction()
                     ? dummy.firstPersonActionAnimationSeconds() : -1.0;
         }));

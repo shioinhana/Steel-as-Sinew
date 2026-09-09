@@ -23,8 +23,10 @@ import java.util.Set;
  * Preserve it when placing the viewmodel, including for attached item renders.
  */
 public class FpViewmodelRenderer extends GeoObjectRenderer<FpViewmodel, Void, GeoRenderState> {
-    private static final float SINGLE_OFFSET_Y = -1.40F;
-    private static final float SINGLE_OFFSET_Z = -0.10F;
+    /** Rapier FP: blade on the look vector, hilt a little below the crosshair. */
+    private static final float SINGLE_OFFSET_X = 0.0F;
+    private static final float SINGLE_OFFSET_Y = -0.65F;
+    private static final float SINGLE_OFFSET_Z = -0.65F;
     private static final float DUAL_OFFSET_Y = -1.62F;
     private static final float DUAL_OFFSET_Z = -0.60F;
     private static final float LEFT_SHOULDER_X = -0.60F;
@@ -36,7 +38,7 @@ public class FpViewmodelRenderer extends GeoObjectRenderer<FpViewmodel, Void, Ge
     private static final float ELBOW_OVERLAP = 0.0625F;
     private static final Set<String> ARM_MESH_BONES = Set.of(
             "fp_upper_arm_r", "fp_upper_arm_l", "right_sleve_bottom", "left_arm_bottom",
-            "hand_r", "hand_l", "dissipate_view_0", "dissipate_view_452");
+            "hand_r", "hand_l", "dissipate_view_0", "dissipate_view_452", "fp_forearm_r");
 
     public FpViewmodelRenderer() {
         super(new FpViewmodelModel());
@@ -59,16 +61,32 @@ public class FpViewmodelRenderer extends GeoObjectRenderer<FpViewmodel, Void, Ge
     public void preRenderPass(RenderPassInfo<GeoRenderState> pass, SubmitNodeCollector collector) {
         super.preRenderPass(pass, collector);
         pass.addBoneUpdater((info, snapshots) -> {
-            for (GeoBone bone : info.model().boneLookup().get().values()) {
-                snapshots.get(bone).skipRender(!isFirstPersonArmMesh(bone.name()));
+            boolean dual = ClientCombat.isLocalDualWield();
+            if (dual) {
+                for (GeoBone bone : info.model().boneLookup().get().values()) {
+                    snapshots.get(bone).skipRender(!isFirstPersonArmMesh(bone.name()));
+                }
+                var dummy = FpViewmodel.localDualDummy();
+                if (dummy != null && !dummy.hasFullBodyAction()) {
+                    float hipYaw = snapshots.get("lower_body").map(BoneSnapshot::getRotY).orElse(0.0F);
+                    snapshots.ifPresent("upper_body", snapshot -> snapshot.setRotY(snapshot.getRotY() - hipYaw));
+                }
+                anchorUpperArm(snapshots, false);
+                anchorUpperArm(snapshots, true);
+            } else if (ClientCombat.localWeaponCategory() == com.actioncombat.combat.WeaponCategory.SPEAR) {
+                snapshots.ifPresent("elucidator", snapshot -> snapshot.skipRender(true));
+            } else {
+                // Rapier: hide the baked blade (item layer draws the real sword)
+                // and keep only the anatomical right arm in the first-person view.
+                snapshots.ifPresent("elucidator", snapshot -> snapshot.skipRender(true));
+                snapshots.ifPresent("left", snapshot -> snapshot.skipChildrenRender(true));
+                snapshots.ifPresent("dissipate_view_452", snapshot -> snapshot.skipRender(true));
+                snapshots.ifPresent("dissipate_view_0", snapshot -> snapshot.skipRender(false));
+                snapshots.ifPresent("fp_forearm_r", snapshot -> snapshot.skipRender(false));
+                BladeVfx.apply(snapshots,
+                        ClientCombat.localSwingProgress(),
+                        BladeVfx.sparkProgress(ClientCombat.lastHitNanos()));
             }
-            var dummy = FpViewmodel.localDualDummy();
-            if (dummy != null && !dummy.hasFullBodyAction()) {
-                float hipYaw = snapshots.get("lower_body").map(BoneSnapshot::getRotY).orElse(0.0F);
-                snapshots.ifPresent("upper_body", snapshot -> snapshot.setRotY(snapshot.getRotY() - hipYaw));
-            }
-            anchorUpperArm(snapshots, false);
-            anchorUpperArm(snapshots, true);
         });
     }
 
@@ -147,7 +165,7 @@ public class FpViewmodelRenderer extends GeoObjectRenderer<FpViewmodel, Void, Ge
         if (dualWield) {
             poseStack.translate(0.0F, DUAL_OFFSET_Y, DUAL_OFFSET_Z);
         } else {
-            poseStack.translate(0.0F, SINGLE_OFFSET_Y, SINGLE_OFFSET_Z);
+            poseStack.translate(SINGLE_OFFSET_X, SINGLE_OFFSET_Y, SINGLE_OFFSET_Z);
         }
     }
 }

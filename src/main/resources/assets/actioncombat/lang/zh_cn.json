@@ -8,5 +8,7 @@
   "key.actioncombat.cam_forward": "镜头前移",
   "key.actioncombat.cam_back": "镜头后移",
   "key.actioncombat.cam_left": "镜头左移",
-  "key.actioncombat.cam_right": "镜头右移"
+  "key.actioncombat.cam_right": "镜头右移",
+  "key.actioncombat.lock_prev": "太刀锁敌（左）",
+  "key.actioncombat.lock_next": "太刀锁敌（右）"
 }

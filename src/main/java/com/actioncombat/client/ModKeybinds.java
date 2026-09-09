@@ -73,5 +73,21 @@ public final class ModKeybinds {
             CATEGORY_COMBAT
     );
 
+    /** Q: rapier lock-on — switch to the enemy left of the current target. */
+    public static final KeyMapping LOCK_PREV = new KeyMapping(
+            "key.actioncombat.lock_prev",
+            InputConstants.Type.KEYSYM,
+            GLFW.GLFW_KEY_Q,
+            CATEGORY_COMBAT
+    );
+
+    /** E: rapier lock-on — switch to the enemy right of the current target. */
+    public static final KeyMapping LOCK_NEXT = new KeyMapping(
+            "key.actioncombat.lock_next",
+            InputConstants.Type.KEYSYM,
+            GLFW.GLFW_KEY_E,
+            CATEGORY_COMBAT
+    );
+
     private ModKeybinds() {}
 }

@@ -66,10 +66,33 @@ public final class FpWeaponClips {
             new float[]{0.4F, 0.4F},
             new float[]{0.4F, 0.4F});
 
+    /** Two-handed katana: same FP rig as the rapier, its own clip set. */
+    public static final Clips KATANA = new Clips(
+            "fp_singlesword", "fp_katana",
+            "static_idle", "inspect",
+            "run_start", "run_hold", "run_end",
+            "walk_start", "walk_hold", "walk_end",
+            "draw", "put_away", "defend_1", "aiming",
+            new String[]{"attack1", "attack3"},
+            new String[]{"attack2", "attack4"},
+            0.73333F,
+            new float[]{0.4F, 0.4F},
+            new float[]{0.4F, 0.4F});
+
+    public static final Clips SPEAR = new Clips(
+            "fp_spear", "fp_spear", "static_idle", "inspect",
+            "run_start", "run_hold", "run_end", "walk_start", "walk_hold", "walk_end",
+            "draw", "put_away", "defend_1", "aiming",
+            new String[]{"attack1", "attack3"}, new String[]{"attack2", "attack4"},
+            0.73333F, new float[]{0.4F, 0.4F}, new float[]{0.4F, 0.4F});
+
     private FpWeaponClips() {
     }
 
     public static Clips of(WeaponCategory category) {
-        return category == WeaponCategory.DOUBLE ? DOUBLE : SINGLE;
+        if (category == WeaponCategory.SPEAR) return SPEAR;
+        if (category == WeaponCategory.DOUBLE) return DOUBLE;
+        if (category == WeaponCategory.KATANA) return KATANA;
+        return SINGLE;
     }
 }

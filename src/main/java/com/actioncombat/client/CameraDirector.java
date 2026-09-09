@@ -21,8 +21,8 @@ public final class CameraDirector {
         SHEATHED,
         /**
          * Drawn Genshin-style third-person: camera sits behind the player with
-         * no shoulder offset. Mouse orbits while unlocked; a swing briefly
-         * glues mouse to body yaw without changing this rig.
+         * no shoulder offset. The mouse always orbits; attacking never steals
+         * the camera or glues it to the body.
          */
         FREE,
         /** Unused leftover; same framing as {@link #FREE}. */
@@ -31,19 +31,21 @@ public final class CameraDirector {
         ATTACKING,
         /** Guarding: same Genshin framing so walk+parry does not cut the camera. */
         GUARDING,
-        /** Sprinting: further back and widened, which reads as speed. */
+        /** Sprinting: same framing as {@link #FREE}; speed never moves the camera. */
         SPRINTING,
         /** Inspecting the weapon: slightly closer, still centered. */
         INSPECTING,
     }
 
+    /**
+     * 拔刀模式 keeps one constant framing: attacking, guarding and speeding up must
+     * not zoom the camera. Only inspecting pushes in, and it never touches the FOV.
+     */
     private static Rig rigFor(State state) {
         return switch (state) {
-            case SHEATHED, FREE, COMBAT, ATTACKING, GUARDING ->
+            case SHEATHED, FREE, COMBAT, ATTACKING, GUARDING, SPRINTING ->
                     new Rig(CombatConstants.THIRD_PERSON_DISTANCE, 0.0F, 0.15F, 0.0F);
-            case SPRINTING -> new Rig(CombatConstants.THIRD_PERSON_DISTANCE + 1.2F,
-                    0.0F, 0.25F, 4.0F);
-            case INSPECTING -> new Rig(3.2F, 0.0F, 0.25F, -2.0F);
+            case INSPECTING -> new Rig(3.2F, 0.0F, 0.25F, 0.0F);
         };
     }
 

@@ -36,6 +36,10 @@ const FILES = {
     clips: ['attack_1', 'attack2', 'attack3', 'attack4', 'attack_dual'],
     chain: THIRD_PERSON_CHAIN,
     upper: true,
+    // 双刀连击: every swing opens and settles on the idle stance so consecutive
+    // clips connect. Without this each clip returned to its own opening pose and
+    // the combo jumped 70-135 degrees between swings (错位抽搐).
+    stance: true,
   },
   'fp_singlesword.animation.json': {
     clips: ['attack1', 'attack2', 'attack3', 'attack4', 'attack_dual'],
@@ -224,7 +228,23 @@ function mapAuthoredTime(t, phases) {
   return SLASH_SECONDS;
 }
 
-function remapChannel(channel, phases) {
+/**
+ * Pose of the idle stance at t=0, keyed by "bone/channel". Attack clips that ask for
+ * a stance settle here instead of on their own opening pose.
+ */
+function stanceOf(clip) {
+  const out = new Map();
+  for (const [name, channels] of Object.entries(clip?.bones ?? {})) {
+    if (!channels || typeof channels !== 'object') continue;
+    for (const channel of ['rotation', 'position', 'scale']) {
+      const vec = sampleChannelAt(channels[channel], 0);
+      if (vec) out.set(`${name}/${channel}`, vec);
+    }
+  }
+  return out;
+}
+
+function remapChannel(channel, phases, stanceVec) {
   if (!channel || Array.isArray(channel) || typeof channel !== 'object') return channel;
   const times = timesOf(channel);
   if (!times.length) return channel;
@@ -246,14 +266,15 @@ function remapChannel(channel, phases) {
     }
     return out;
   }
-  keyed.set(0, start);
+  const settleTo = stanceVec ?? start;
+  keyed.set(0, settleTo);
   keyed.set(WINDUP_DST, windup);
   keyed.set(CONTACT_DST, impact);
   keyed.set(SLASH_SECONDS, end);
-  // Linger on the impact pose, then ease back to the opening pose.
-  keyed.set(round(SLASH_SECONDS + 0.04, 4), lerpVec(end, start, 0.22));
-  keyed.set(round(SLASH_SECONDS + 0.08, 4), lerpVec(end, start, 0.72));
-  keyed.set(TOTAL_SECONDS, start);
+  // Linger on the impact pose, then ease back to the shared stance.
+  keyed.set(round(SLASH_SECONDS + 0.04, 4), lerpVec(end, settleTo, 0.22));
+  keyed.set(round(SLASH_SECONDS + 0.08, 4), lerpVec(end, settleTo, 0.72));
+  keyed.set(TOTAL_SECONDS, settleTo);
   const out = {};
   for (const t of [...keyed.keys()].sort((a, b) => a - b)) {
     out[timeKey(t)] = makeNode(keyed.get(t), 'catmullrom');
@@ -261,7 +282,7 @@ function remapChannel(channel, phases) {
   return out;
 }
 
-function retargetClip(clip, boneNames) {
+function retargetClip(clip, boneNames, stance) {
   const oldLen = clip.animation_length;
   if (!(oldLen > 0)) throw new Error('attack clip missing animation_length');
   const phases = detectPhases(clip, boneNames);
@@ -273,7 +294,9 @@ function retargetClip(clip, boneNames) {
     }
     const next = { ...channels };
     for (const channel of ['rotation', 'position', 'scale']) {
-      if (channels[channel]) next[channel] = remapChannel(channels[channel], phases);
+      if (channels[channel]) {
+        next[channel] = remapChannel(channels[channel], phases, stance?.get(`${name}/${channel}`));
+      }
     }
     bones[name] = next;
   }
@@ -303,10 +326,11 @@ for (const [file, spec] of Object.entries(FILES)) {
   const livePath = path.join(ANIM_DIR, file);
   const source = JSON.parse(fs.readFileSync(fs.existsSync(restorePath) ? restorePath : livePath, 'utf8'));
   const live = JSON.parse(fs.readFileSync(livePath, 'utf8'));
+  const stance = spec.stance ? stanceOf(live.animations.static_idle) : null;
   for (const name of spec.clips) {
     const src = source.animations[name];
     if (!src) throw new Error(`${file}: missing ${name} in restore/source`);
-    const { clip, phases } = retargetClip(src, spec.chain);
+    const { clip, phases } = retargetClip(src, spec.chain, stance);
     live.animations[name] = clip;
     if (spec.upper) live.animations[`${name}_upper`] = upperBodyOnly(clip);
     console.log(`  ${file} ${name}: src windup ${phases.windup}s contact ${phases.contact}s follow ${phases.follow}s -> 0-0.12 / 0.12-0.18 / 0.18-0.30 + 0.10 settle`);

@@ -8,5 +8,7 @@
   "key.actioncombat.cam_forward": "Camera Forward",
   "key.actioncombat.cam_back": "Camera Back",
   "key.actioncombat.cam_left": "Camera Left",
-  "key.actioncombat.cam_right": "Camera Right"
+  "key.actioncombat.cam_right": "Camera Right",
+  "key.actioncombat.lock_prev": "Katana Lock Left",
+  "key.actioncombat.lock_next": "Katana Lock Right"
 }

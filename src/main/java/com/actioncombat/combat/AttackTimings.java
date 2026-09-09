@@ -78,6 +78,16 @@ public final class AttackTimings {
         }
     }
 
+    /**
+     * Wall-clock playback length of a clip: its runtime length plus, for dual-wield
+     * swings, the extra hold on the final frame. The attack's cancel window is a
+     * separate value and does not change.
+     */
+    public static float playbackSeconds(WeaponCategory category, float clipSeconds) {
+        return clipSeconds + (category == WeaponCategory.DOUBLE
+                ? CombatConstants.DUAL_ATTACK_LAST_FRAME_HOLD_SECONDS : 0.0F);
+    }
+
     /** Base and upper-body clip names share a runtime clock and authored phase mapping. */
     public static Timing of(WeaponCategory category, String clip) {
         return of(category, clip, CombatConstants.ATTACK_DURATION_SECONDS);

@@ -121,6 +121,7 @@ public final class AssetBakeSmokeTest {
         AttackAcknowledgementsSmokeTest.verify();
         CombatAnimationControllerSmokeTest.verify();
         verifyFirstPersonCameraPose();
+        RapierPoseSmokeTest.verify();
         Path resources = Path.of(args.length > 0 ? args[0] : "src/main/resources");
         var pack = new FolderPackResources("asset_smoke", resources);
 
@@ -191,7 +192,8 @@ public final class AssetBakeSmokeTest {
                 }
             }
 
-            for (FpWeaponClips.Clips fp : List.of(FpWeaponClips.SINGLE, FpWeaponClips.DOUBLE)) {
+            for (FpWeaponClips.Clips fp : List.of(FpWeaponClips.SINGLE, FpWeaponClips.DOUBLE,
+                    FpWeaponClips.KATANA, FpWeaponClips.SPEAR)) {
                 Identifier modelFile =
                         Identifier.fromNamespaceAndPath(ActionCombat.MODID, fp.modelId());
                 Identifier animFile =

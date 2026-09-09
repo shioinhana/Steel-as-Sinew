@@ -16,17 +16,42 @@ See [西洋剑与双持更新](docs/西洋剑与双持更新.md) for the current
 | --- | --- | --- |
 | R | Draw / sheathe | Draw / sheathe |
 | Left mouse | Random authored attack; crosshair required | Left swing chain |
-| Right mouse | Instant thrust; 2s cooldown, 1s recovery only on miss | Right swing chain |
+| Right mouse | Instant thrust (0.50s, charged 0.20s); 2s cooldown, 1s recovery only on miss | Right swing chain |
 | X | Guard; perfect at 0.05–0.30s | Guard; perfect at 0.05–0.30s |
 | Ctrl+W during guard | Normal sprint | One radial sword bash per raised guard |
-| Shift | 2-block short dodge | 4.5-block dodge |
+| Shift | 2-block scripted dodge step | 0.2s max-speed dash boost |
 | C | Crouch | Crouch |
 | V | Inspect | Inspect |
 
-Normal attacks retain the 0.30s gate and 0.40s clip. Rapier thrust hits are resolved
-immediately by the server, with no windup. On hit another action can begin immediately;
-on miss attacks, guard and dodge are gated for 1s. Its separate 2s cooldown survives
-sheathing and weapon changes. Vanilla interactions remain available while sheathed.
+Every clip is 0.40s. The rapier chain gates 0.4 / 0.4 / 0.4 / 0.5s, and the fourth slash
+scans its hit 0.05s later than the other three; a charged thrust that lands tightens the
+chain to a flat 0.3s for 3s. Dual wielding gates 0.45s, and a third swing in
+a row on the same hand takes 0.6s - swinging the other hand resets the streak, so L,L,R,R
+never slows down. Dual clips hold their final frame 0.1s past the clip so consecutive
+swings never flash the idle pose; the cancel window is unchanged. All five dual attack
+clips (and their upper overlays) also open and settle on the idle stance, so a combo
+never jumps between two different opening poses - `tools/check_combo_boundaries.mjs`
+guards that invariant.
+
+Server confirmations never restart a clip that is already on screen. The client adopts
+the hand the server reports, mirrors every server-side hand reset (guard, charged swing,
+idle timeout, sheath) and keeps the server's gate verbatim instead of clamping it, so a
+single mismatch cannot cascade into a combo playing on the wrong arm. Other weapons keep the flat 0.30s gate. Rapier
+thrust hits are resolved immediately by the server, with no windup. On hit another action
+can begin immediately; on miss attacks, guard and dodge are gated for 1s. Its separate 2s
+cooldown survives sheathing and weapon changes. Vanilla interactions remain available
+while sheathed.
+
+Every confirmed contact opens its own damage window: vanilla's 10-tick hurt cooldown
+would otherwise swallow a second hit of equal damage, which at 0.3-0.6s cadences meant
+every other cut dealt nothing.
+
+The dual-wield dash is deliberately not a clip and not a state: Shift raises the
+`MOVEMENT_SPEED` attribute (`+300 %`, `ADD_MULTIPLIED_TOTAL` = 4x walking speed) for
+0.20s, so a moving player accelerates into a dash on their own and may jump, swing or
+guard at any point. It cancels nothing, blocks nothing and moves nobody by script. The
+FOV change vanilla derives from that attribute is cancelled in `ComputeFovModifierEvent`,
+so the dash changes movement only.
 
 Camera and body orientation
 ---------------------------
@@ -65,6 +90,33 @@ a rename cannot silently switch the effect off.
 
 Weapon display
 --------------
+
+The rapier sheathe is an authored flourish (挽剑花): the blade whips through four
+reversing turns in front of the chest, is caught, and the right hand crosses the body
+to push it down into the imaginary scabbard on the left hip while the left hand catches
+the scabbard mouth. `put_away` is 1.65s and `CombatConstants.RAPIER_SHEATH_SECONDS`
+tracks it; the first-person viewmodel plays the same beats with the twirl solved so the
+tip traces a real circle on screen. `check_rapier.mjs` pins the spin count, the
+hand-to-hilt gap and the left-hip end pose so a later tweak cannot silently flatten it.
+
+The locked enemy gets three lines over its marker, all in the vanilla font: name,
+current / max health, and the rapier hit streak `n/4`. The fourth hit deprives the
+enemy's AI for 1s, and that line switches to the remaining seconds, rebuilt at most
+every 0.1s. The server reports the streak through `ClientboundRapierCombo`. The streak
+line is green while the enemy is inside attack range (4 blocks, line of sight) and
+yellow once it is not.
+
+The charged thrust and the dodge hold the top interrupt priority: either one cancels
+whatever is playing - a swing, a guard, a dodge or a recovery - and only answers to its own
+cooldown. A plain poke still waits for the current action's cancel frame.
+
+While drawn the FOV is constant. The hit FOV punch is gone and neither sprinting nor the
+dual dash widens or pulls back the camera; the `MOVEMENT_SPEED` dash boost is neutralised
+in `ComputeFovModifierEvent` and every combat camera rig shares one framing.
+
+A rapier thrust also moves the body: the player is carried 0.5 blocks forward as the
+blade extends (at the contact beat, spread over 3 ticks). There is no pull-back - the
+lunge only goes forward, and the player keeps the ground they gained.
 
 While sheathed the sword sits on the player's back rather than in their hand: the hand
 item's render state is cleared and `BackWeaponLayer` draws the weapon off the torso bone,
@@ -146,7 +198,7 @@ the moment a player draws).
 
 The smoke test also checks the first-person transform at 24 camera-angle/rig
 combinations. Visual framing, animation blending and hit feel still need checking in
-HMCL's `gpt` instance: turn through all directions, look up/down, exercise both hands
+HMCL's `dsh 2` instance: turn through all directions, look up/down, exercise both hands
 in both slash directions, and switch F5 during a swing.
 
 Upstream template notes

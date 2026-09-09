@@ -14,6 +14,8 @@ import java.util.Map;
  * overridden here to keep reads and writes on the same map.
  */
 public class PlayerGeoRenderState extends EntityRenderState implements GeoRenderState {
+    public boolean rapier;
+    public boolean spear;
     private final Impl impl = new Impl();
 
     @Override

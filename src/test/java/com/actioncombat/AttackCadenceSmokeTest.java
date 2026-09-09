@@ -29,7 +29,7 @@ public final class AttackCadenceSmokeTest {
                     AttackTimings.firstPersonOf(WeaponCategory.DOUBLE, clip)
                             .equals(AttackTimings.of(WeaponCategory.DOUBLE, clip)));
         }
-        assertTrue("first-person metadata does not count as additional authored attacks", AttackTimings.size() == 10);
+        assertTrue("first-person metadata does not count as additional authored attacks", AttackTimings.size() == java.util.Arrays.stream(WeaponCategory.values()).mapToInt(c -> c.allAttacks().length).sum());
     }
 
     private static void verifyAuthoredTimings() {
@@ -39,7 +39,7 @@ public final class AttackCadenceSmokeTest {
         assertNear("cancel gate", 0.30, CombatConstants.ATTACK_INTERVAL_SECONDS);
         assertNear("clip length", 0.40, CombatConstants.ATTACK_DURATION_SECONDS);
         assertNear("input buffer", 0.10, CombatConstants.INPUT_BUFFER_SECONDS);
-        assertTrue("all generated timings loaded", AttackTimings.size() == 10);
+        assertTrue("all generated timings loaded", AttackTimings.size() == java.util.Arrays.stream(WeaponCategory.values()).mapToInt(c -> c.allAttacks().length).sum());
         int checked = 0;
         for (WeaponCategory category : WeaponCategory.values()) {
             for (String clip : category.allAttacks()) {
@@ -66,7 +66,7 @@ public final class AttackCadenceSmokeTest {
             }
             assertNear(category + " dual attack duration", 0.40, category.dualDuration());
         }
-        assertTrue("both categories' complete attack sets checked", checked == 10);
+        assertTrue("all categories' complete attack sets checked", checked == java.util.Arrays.stream(WeaponCategory.values()).mapToInt(c -> c.allAttacks().length).sum());
     }
 
     private static void assertUniform(String name, AttackTimings.Timing timing) {

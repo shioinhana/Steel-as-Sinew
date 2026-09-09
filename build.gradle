@@ -210,11 +210,28 @@ tasks.register('generateRapier', Exec) {
     commandLine 'node', 'tools/generate_rapier.mjs'
     dependsOn 'generateFpSwings'
 }
+tasks.register('generateKatana', Exec) {
+    workingDir = projectDir
+    commandLine 'node', 'tools/generate_katana.mjs'
+    dependsOn 'generateRapier'
+}
+
+tasks.register('generateSpear', Exec) {
+    workingDir = projectDir
+    commandLine 'node', 'tools/generate_spear.mjs'
+    dependsOn 'generateKatana'
+}
+tasks.register('checkSpear', Exec) {
+    workingDir = projectDir
+    commandLine 'node', 'tools/check_spear.mjs'
+    dependsOn 'generateSpear'
+}
+tasks.named('processResources') { dependsOn 'checkSpear' }
 
 tasks.register('generateAttackTimings', Exec) {
     workingDir = projectDir
     commandLine 'node', 'tools/generate_attack_timings.mjs'
-    dependsOn 'generateRapier'
+    dependsOn 'generateSpear'
 }
 
 // Verifies Java animation/model references match the GeckoLib asset files before packaging.
@@ -241,11 +258,20 @@ tasks.register('checkFpThirdPerson', Exec) {
     commandLine 'node', 'tools/check_fp_third_person.mjs'
     dependsOn 'generateRapier'
 }
+tasks.register('checkComboBoundaries', Exec) {
+    group = 'verification'
+    workingDir = projectDir
+    commandLine 'node', 'tools/check_combo_boundaries.mjs'
+    // 双刀 clip edges settle on the idle stance; regenerate before reading them.
+    dependsOn 'generateRapier'
+}
 tasks.register('checkLocomotion', Exec) {
     group = 'verification'
     workingDir = projectDir
     commandLine 'node', 'tools/check_locomotion.mjs'
-    dependsOn 'generateLocomotion'
+    // generateDualSlash / generateRapier rewrite the same animation JSON;
+    // wait so we never parse a half-written file from a parallel generator.
+    dependsOn 'generateRapier'
 }
 tasks.register('checkFpGeometry', Exec) {
     group = 'verification'
@@ -259,6 +285,7 @@ tasks.named('processResources') {
     dependsOn 'checkFpThirdPerson'
     dependsOn 'checkLocomotion'
     dependsOn 'checkFpGeometry'
+    dependsOn 'checkComboBoundaries'
     dependsOn 'generateYsmVanilla'
 }
 

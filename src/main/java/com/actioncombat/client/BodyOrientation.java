@@ -14,8 +14,8 @@ public final class BodyOrientation {
 
     /**
      * @param player      the mirrored player
-     * @param cameraYaw   the player's yRot, i.e. where the camera looks
-     * @param faceCamera  true while attacking/guarding: turn to the aim direction
+     * @param cameraYaw   the yaw the body should ease (or snap) toward
+     * @param faceCamera  true to snap immediately (attacks, dodge, first person)
      * @param deltaSeconds real time since the previous update
      * @return the yaw the body should render at
      */

@@ -15,6 +15,7 @@ public final class YsmStyle {
     public static final String MODEL_ID_DUAL = "ysm_player_dual";
     public static final String ANIMATIONS_ID = "ysm_player";
     public static final String ANIMATIONS_ID_DUAL = "ysm_player_dual";
+    public static final String ANIMATIONS_ID_KATANA = "ysm_player_katana";
     public static final String HEAD = "Head";
     public static final String BODY = "Body";
     public static final String RIGHT_ARM = "RightArm";
@@ -59,6 +60,9 @@ public final class YsmStyle {
     }
 
     public static String animationsId(WeaponCategory category) {
-        return category == WeaponCategory.DOUBLE ? ANIMATIONS_ID_DUAL : ANIMATIONS_ID;
+        if (category == WeaponCategory.DOUBLE) return ANIMATIONS_ID_DUAL;
+        if (category == WeaponCategory.SPEAR) return "ysm_player_spear";
+        if (category == WeaponCategory.KATANA) return ANIMATIONS_ID_KATANA;
+        return ANIMATIONS_ID;
     }
 }

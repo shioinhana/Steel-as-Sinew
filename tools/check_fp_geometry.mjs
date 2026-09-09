@@ -34,8 +34,9 @@ for (const name of ['root', 'lower_body', 'upper_body', 'head', 'left_arm_item',
 }
 const single = read('models/fp_singlesword.geo.json')['minecraft:geometry'][0];
 const visibleSingle = single.bones.filter(bone => bone.cubes?.length && renderedMeshes.has(bone.name));
-assert.deepEqual(visibleSingle.map(bone => bone.name).sort(), ['dissipate_view_0', 'dissipate_view_452'],
-  'both legacy single-rig skin arms remain visible');
+assert.deepEqual(visibleSingle.map(bone => bone.name).sort(),
+  ['dissipate_view_0', 'dissipate_view_452', 'fp_forearm_r'],
+  'rapier FP shows the split right arm plus the left counterweight arm');
 
 for (const side of ['r', 'l']) {
   const upper = bones.get(`fp_upper_arm_${side}`);

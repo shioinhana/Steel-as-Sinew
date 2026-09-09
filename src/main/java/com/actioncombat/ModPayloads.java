@@ -13,17 +13,43 @@ import net.neoforged.neoforge.network.event.RegisterPayloadHandlersEvent;
 import net.neoforged.neoforge.network.registration.PayloadRegistrar;
 
 public final class ModPayloads {
-    /** C2S: client finished deciding to enter/leave combat mode (predicted locally). */
-    public record ServerboundSetDrawn(boolean drawn) implements CustomPacketPayload {
-        public static final Type<ServerboundSetDrawn> TYPE =
-                new Type<>(Identifier.fromNamespaceAndPath(ActionCombat.MODID, "set_drawn"));
-        public static final StreamCodec<RegistryFriendlyByteBuf, ServerboundSetDrawn> STREAM_CODEC =
-                StreamCodec.composite(ByteBufCodecs.BOOL, ServerboundSetDrawn::drawn, ServerboundSetDrawn::new);
+    public record ClientboundSpearRecovery() implements CustomPacketPayload {
+        public static final Type<ClientboundSpearRecovery> TYPE =
+                new Type<>(Identifier.fromNamespaceAndPath(ActionCombat.MODID, "spear_recovery"));
+        public static final StreamCodec<RegistryFriendlyByteBuf, ClientboundSpearRecovery> STREAM_CODEC =
+                StreamCodec.unit(new ClientboundSpearRecovery());
         @Override public Type<? extends CustomPacketPayload> type() { return TYPE; }
     }
 
-    /** C2S: attack request; side picks the slash direction, dual is the parry follow-up. */
-    public record ServerboundAttack(int side, boolean charged, boolean dual) implements CustomPacketPayload {
+    /** C2S: client finished deciding to enter/leave combat mode (predicted locally).
+     *  {@code katana} is 左手拔刀 — offhand sword, two-handed stance. */
+    public record ServerboundSetDrawn(boolean drawn, boolean katana) implements CustomPacketPayload {
+        public static final Type<ServerboundSetDrawn> TYPE =
+                new Type<>(Identifier.fromNamespaceAndPath(ActionCombat.MODID, "set_drawn"));
+        public static final StreamCodec<RegistryFriendlyByteBuf, ServerboundSetDrawn> STREAM_CODEC =
+                StreamCodec.composite(
+                        ByteBufCodecs.BOOL, ServerboundSetDrawn::drawn,
+                        ByteBufCodecs.BOOL, ServerboundSetDrawn::katana,
+                        ServerboundSetDrawn::new);
+        @Override public Type<? extends CustomPacketPayload> type() { return TYPE; }
+    }
+
+    /** C2S: katana lock-on target; -1 clears the lock. */
+    public record ServerboundKatanaLock(int targetId) implements CustomPacketPayload {
+        public static final Type<ServerboundKatanaLock> TYPE =
+                new Type<>(Identifier.fromNamespaceAndPath(ActionCombat.MODID, "katana_lock"));
+        public static final StreamCodec<RegistryFriendlyByteBuf, ServerboundKatanaLock> STREAM_CODEC =
+                StreamCodec.composite(
+                        ByteBufCodecs.VAR_INT, ServerboundKatanaLock::targetId,
+                        ServerboundKatanaLock::new);
+        @Override public Type<? extends CustomPacketPayload> type() { return TYPE; }
+    }
+
+    /** C2S: attack request; side picks the slash direction, dual is the parry follow-up.
+ *  {@code chargePiercingArmor} is set by rapier players whose last block-key hold
+ *  primed a charge strike — the next rapier thrust consumes it to ignore 30 % armor. */
+    public record ServerboundAttack(int side, boolean charged, boolean dual, boolean chargePiercingArmor)
+            implements CustomPacketPayload {
         public static final Type<ServerboundAttack> TYPE =
                 new Type<>(Identifier.fromNamespaceAndPath(ActionCombat.MODID, "attack"));
         public static final StreamCodec<RegistryFriendlyByteBuf, ServerboundAttack> STREAM_CODEC =
@@ -31,11 +57,25 @@ public final class ModPayloads {
                         ByteBufCodecs.VAR_INT, ServerboundAttack::side,
                         ByteBufCodecs.BOOL, ServerboundAttack::charged,
                         ByteBufCodecs.BOOL, ServerboundAttack::dual,
+                        ByteBufCodecs.BOOL, ServerboundAttack::chargePiercingArmor,
                         ServerboundAttack::new);
         @Override public Type<? extends CustomPacketPayload> type() { return TYPE; }
     }
 
-    /** C2S: drawn-combat dodge; dirs is a bitfield of WASD. */
+    /** C2S: rapier-style charge hold completed; next thrust ping consumes the marker. */
+    public record ServerboundRapierChargeReady() implements CustomPacketPayload {
+        public static final Type<ServerboundRapierChargeReady> TYPE =
+                new Type<>(Identifier.fromNamespaceAndPath(ActionCombat.MODID, "rapier_charge_ready"));
+        public static final StreamCodec<RegistryFriendlyByteBuf, ServerboundRapierChargeReady> STREAM_CODEC =
+                StreamCodec.unit(new ServerboundRapierChargeReady());
+        @Override public Type<? extends CustomPacketPayload> type() { return TYPE; }
+    }
+
+    /**
+     * C2S: drawn-combat dodge. Rapier / katana send the camera yaw and a WASD bitfield
+     * for the scripted step; dual-wield only needs the request itself, because its dash
+     * is a server-side max-speed boost and the client already owns its direction.
+     */
     public record ServerboundDodge(float yaw, int dirs) implements CustomPacketPayload {
         public static final Type<ServerboundDodge> TYPE =
                 new Type<>(Identifier.fromNamespaceAndPath(ActionCombat.MODID, "dodge"));
@@ -73,14 +113,27 @@ public final class ModPayloads {
     }
 
     /** S2C: authoritative drawn state for one player. */
-    public record ClientboundDrawState(int playerId, boolean drawn) implements CustomPacketPayload {
+    public record ClientboundDrawState(int playerId, boolean drawn, boolean katana) implements CustomPacketPayload {
         public static final Type<ClientboundDrawState> TYPE =
                 new Type<>(Identifier.fromNamespaceAndPath(ActionCombat.MODID, "draw_state"));
         public static final StreamCodec<RegistryFriendlyByteBuf, ClientboundDrawState> STREAM_CODEC =
                 StreamCodec.composite(
                         ByteBufCodecs.VAR_INT, ClientboundDrawState::playerId,
                         ByteBufCodecs.BOOL, ClientboundDrawState::drawn,
+                        ByteBufCodecs.BOOL, ClientboundDrawState::katana,
                         ClientboundDrawState::new);
+        @Override public Type<? extends CustomPacketPayload> type() { return TYPE; }
+    }
+
+    /** S2C: authoritative katana cadence for prediction (hit streak / guard haste). */
+    public record ClientboundKatanaSpeed(int intervalTicks, long hasteUntilGameTime) implements CustomPacketPayload {
+        public static final Type<ClientboundKatanaSpeed> TYPE =
+                new Type<>(Identifier.fromNamespaceAndPath(ActionCombat.MODID, "katana_speed"));
+        public static final StreamCodec<RegistryFriendlyByteBuf, ClientboundKatanaSpeed> STREAM_CODEC =
+                StreamCodec.composite(
+                        ByteBufCodecs.VAR_INT, ClientboundKatanaSpeed::intervalTicks,
+                        ByteBufCodecs.LONG, ClientboundKatanaSpeed::hasteUntilGameTime,
+                        ClientboundKatanaSpeed::new);
         @Override public Type<? extends CustomPacketPayload> type() { return TYPE; }
     }
 
@@ -90,6 +143,24 @@ public final class ModPayloads {
                 new Type<>(Identifier.fromNamespaceAndPath(ActionCombat.MODID, "hit_confirm"));
         public static final StreamCodec<RegistryFriendlyByteBuf, ClientboundHitConfirm> STREAM_CODEC =
                 StreamCodec.composite(ByteBufCodecs.BOOL, ClientboundHitConfirm::hit, ClientboundHitConfirm::new);
+        @Override public Type<? extends CustomPacketPayload> type() { return TYPE; }
+    }
+
+    /**
+     * S2C: the sender's rapier hit streak changed. {@code targetId} is the enemy the
+     * streak is counted on (or -1 when it reset), {@code hits} is the streak length
+     * and {@code silenceTicks} the AI-deprivation time that just started (0 = none).
+     */
+    public record ClientboundRapierCombo(int targetId, int hits, int silenceTicks)
+            implements CustomPacketPayload {
+        public static final Type<ClientboundRapierCombo> TYPE =
+                new Type<>(Identifier.fromNamespaceAndPath(ActionCombat.MODID, "rapier_combo"));
+        public static final StreamCodec<RegistryFriendlyByteBuf, ClientboundRapierCombo> STREAM_CODEC =
+                StreamCodec.composite(
+                        ByteBufCodecs.VAR_INT, ClientboundRapierCombo::targetId,
+                        ByteBufCodecs.VAR_INT, ClientboundRapierCombo::hits,
+                        ByteBufCodecs.VAR_INT, ClientboundRapierCombo::silenceTicks,
+                        ClientboundRapierCombo::new);
         @Override public Type<? extends CustomPacketPayload> type() { return TYPE; }
     }
 
@@ -131,7 +202,10 @@ public final class ModPayloads {
         @Override public Type<? extends CustomPacketPayload> type() { return TYPE; }
     }
 
-    /** S2C: this player started a dodge; play the dash clip on their dummy. */
+    /**
+     * S2C: this player started a scripted step dodge; play the dash clip on their
+     * dummy. The dual-wield speed dash never sends this — it has no clip to play.
+     */
     public record ClientboundDodge(int playerId) implements CustomPacketPayload {
         public static final Type<ClientboundDodge> TYPE =
                 new Type<>(Identifier.fromNamespaceAndPath(ActionCombat.MODID, "dodge_anim"));
@@ -174,8 +248,10 @@ public final class ModPayloads {
     }
 
     private static void onRegisterPayloads(RegisterPayloadHandlersEvent event) {
-        PayloadRegistrar registrar = event.registrar("8");
+        PayloadRegistrar registrar = event.registrar("10");
 
+        registrar.playToClient(ClientboundSpearRecovery.TYPE, ClientboundSpearRecovery.STREAM_CODEC,
+                (p, c) -> c.enqueueWork(ClientCombat::onSpearRecovery));
         registrar.playToClient(ClientboundThrust.TYPE, ClientboundThrust.STREAM_CODEC,
                 (p, c) -> c.enqueueWork(() -> ClientCombat.onThrust(p.playerId(), p.accepted(), p.hit(), p.cooldownTicks(), p.recoveryTicks())));
         registrar.playToClient(ClientboundGuardBash.TYPE, ClientboundGuardBash.STREAM_CODEC,
@@ -183,14 +259,25 @@ public final class ModPayloads {
         registrar.playToServer(
                 ServerboundSetDrawn.TYPE, ServerboundSetDrawn.STREAM_CODEC,
                 (payload, context) -> context.enqueueWork(() ->
-                        ServerCombat.handleSetDrawn((ServerPlayer) context.player(), payload.drawn())));
+                        ServerCombat.handleSetDrawn((ServerPlayer) context.player(),
+                                payload.drawn(), payload.katana())));
+
+        registrar.playToServer(
+                ServerboundKatanaLock.TYPE, ServerboundKatanaLock.STREAM_CODEC,
+                (payload, context) -> context.enqueueWork(() ->
+                        ServerCombat.handleKatanaLock((ServerPlayer) context.player(), payload.targetId())));
 
         registrar.playToServer(
                 ServerboundAttack.TYPE, ServerboundAttack.STREAM_CODEC,
                 (payload, context) -> context.enqueueWork(() ->
                         ServerCombat.handleAttack((ServerPlayer) context.player(),
                                 com.actioncombat.combat.SwingSide.byId(payload.side()),
-                                payload.charged(), payload.dual())));
+                                payload.charged(), payload.dual(), payload.chargePiercingArmor())));
+
+        registrar.playToServer(
+                ServerboundRapierChargeReady.TYPE, ServerboundRapierChargeReady.STREAM_CODEC,
+                (payload, context) -> context.enqueueWork(() ->
+                        ServerCombat.handleRapierChargeReady((ServerPlayer) context.player())));
 
         registrar.playToServer(
                 ServerboundDodge.TYPE, ServerboundDodge.STREAM_CODEC,
@@ -213,12 +300,23 @@ public final class ModPayloads {
         registrar.playToClient(
                 ClientboundDrawState.TYPE, ClientboundDrawState.STREAM_CODEC,
                 (payload, context) -> context.enqueueWork(() ->
-                        ClientCombat.onDrawState(payload.playerId(), payload.drawn())));
+                        ClientCombat.onDrawState(payload.playerId(), payload.drawn(), payload.katana())));
+
+        registrar.playToClient(
+                ClientboundKatanaSpeed.TYPE, ClientboundKatanaSpeed.STREAM_CODEC,
+                (payload, context) -> context.enqueueWork(() ->
+                        ClientCombat.onKatanaSpeed(payload.intervalTicks(), payload.hasteUntilGameTime())));
 
         registrar.playToClient(
                 ClientboundHitConfirm.TYPE, ClientboundHitConfirm.STREAM_CODEC,
                 (payload, context) -> context.enqueueWork(() ->
                         ClientCombat.onHitConfirm(payload.hit())));
+
+        registrar.playToClient(
+                ClientboundRapierCombo.TYPE, ClientboundRapierCombo.STREAM_CODEC,
+                (payload, context) -> context.enqueueWork(() ->
+                        ClientCombat.onRapierCombo(payload.targetId(), payload.hits(),
+                                payload.silenceTicks())));
 
         registrar.playToClient(
                 ClientboundAttackAnim.TYPE, ClientboundAttackAnim.STREAM_CODEC,

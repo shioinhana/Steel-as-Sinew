@@ -1,0 +1,164 @@
+{
+  "format_version": "1.12.0",
+  "minecraft:geometry": [
+    {
+      "description": {
+        "identifier": "geometry.actioncombat.fp_spear",
+        "texture_width": 64,
+        "texture_height": 64,
+        "visible_bounds_width": 2,
+        "visible_bounds_height": 3.5,
+        "visible_bounds_offset": [
+          0,
+          1.25,
+          0
+        ]
+      },
+      "bones": [
+        {
+          "name": "root",
+          "pivot": [
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "name": "knife_R",
+          "parent": "root",
+          "pivot": [
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "name": "right",
+          "parent": "knife_R",
+          "pivot": [
+            -4,
+            4,
+            0
+          ],
+          "cubes": [
+            {
+              "origin": [
+                -5.5,
+                -2,
+                -2
+              ],
+              "size": [
+                3,
+                6,
+                4
+              ],
+              "uv": [
+                40,
+                16
+              ]
+            }
+          ]
+        },
+        {
+          "name": "fp_forearm_r",
+          "parent": "right",
+          "pivot": [
+            -4,
+            -2,
+            0
+          ],
+          "cubes": [
+            {
+              "origin": [
+                -5.5,
+                -8,
+                -2
+              ],
+              "size": [
+                3,
+                6,
+                4
+              ],
+              "uv": [
+                40,
+                22
+              ]
+            }
+          ]
+        },
+        {
+          "name": "elucidator",
+          "parent": "fp_forearm_r",
+          "pivot": [
+            -4,
+            -8,
+            0
+          ]
+        },
+        {
+          "name": "left",
+          "parent": "knife_R",
+          "pivot": [
+            4,
+            4,
+            0
+          ],
+          "cubes": [
+            {
+              "origin": [
+                2.5,
+                -2,
+                -2
+              ],
+              "size": [
+                3,
+                6,
+                4
+              ],
+              "uv": [
+                32,
+                48
+              ]
+            }
+          ]
+        },
+        {
+          "name": "fp_forearm_l",
+          "parent": "left",
+          "pivot": [
+            4,
+            -2,
+            0
+          ],
+          "cubes": [
+            {
+              "origin": [
+                2.5,
+                -8,
+                -2
+              ],
+              "size": [
+                3,
+                6,
+                4
+              ],
+              "uv": [
+                32,
+                54
+              ]
+            }
+          ]
+        },
+        {
+          "name": "fp_hand_l",
+          "parent": "fp_forearm_l",
+          "pivot": [
+            4,
+            -8,
+            0
+          ]
+        }
+      ]
+    }
+  ]
+}

@@ -2,6 +2,7 @@ package com.actioncombat.client;
 
 import com.actioncombat.CombatConstants;
 import com.actioncombat.combat.AttackCadence;
+import com.actioncombat.combat.CombatAttributes;
 import com.actioncombat.ModPayloads;
 import com.actioncombat.combat.CombatMoves;
 import com.actioncombat.combat.FpWeaponClips;
@@ -9,14 +10,18 @@ import com.actioncombat.combat.HandRest;
 import com.actioncombat.combat.SwingSide;
 import com.actioncombat.combat.WeaponCategory;
 import com.actioncombat.entity.PlayerAnimatable;
+import com.mojang.blaze3d.platform.InputConstants;
 import net.minecraft.client.CameraType;
+import net.minecraft.client.KeyMapping;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.player.AbstractClientPlayer;
 import net.minecraft.client.player.ClientInput;
 import net.minecraft.client.player.LocalPlayer;
+import org.lwjgl.glfw.GLFW;
 import net.minecraft.client.renderer.entity.state.AvatarRenderState;
 import net.minecraft.core.particles.ParticleTypes;
 import net.minecraft.tags.ItemTags;
+import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.MoverType;
 import net.minecraft.world.entity.player.Input;
 import net.minecraft.world.entity.player.Player;
@@ -113,6 +118,8 @@ public final class ClientCombat {
     private static final AttackCadence LOCAL_CADENCE = new AttackCadence();
     /** Real time the local swing began, for the cancel window. */
     private static long localAttackStartNanos;
+    /** When the local attack clip ends, mirroring the server's lastAttackEndGameTime. */
+    private static long localAttackEndNanos;
     private static int localAttackIntervalTicks = CombatConstants.ATTACK_INTERVAL_TICKS;
     /** Duration of the local swing, for the cancel window. */
     private static float localAttackSeconds;
@@ -120,9 +127,64 @@ public final class ClientCombat {
     private static long thrustReadyNanos;
     private static long thrustRecoveryNanos;
     private static boolean rapierLeftDown, rapierRightDown;
+    private static int localRapierSlashIndex;
+    private static long spearDodgeReadyNanos;
+    private static long spearSprintStopNanos;
+    private static long spearAdvanceAtNanos;
+    private static int spearAdvanceTicks;
+    private static Vec3 spearAdvanceStep = Vec3.ZERO;
+    public static void onSpearRecovery() {
+        if (mc().player == null || mc().player.isPassenger()) return;
+        mc().player.setSprinting(false);
+        spearSprintStopNanos = System.nanoTime() + 200_000_000L;
+    }
+
     private static int localDodgeTicks;
     private static Vec3 localDodgeStep = Vec3.ZERO;
+    /** Dual-wield Shift dash: the local max-speed boost lasts until this nanos deadline. */
+    private static long dodgeBoostUntilNanos;
     private static boolean wasAimLocked;
+    /** Rapier-only: X press timestamp when the player started a potential charge hold. */
+    private static long rapierChargeStartNanos;
+    /** Rapier-only: true once this X hold has armed a charge strike; the next
+     *  released RMB spends it. {@code false} means no charge is primed. */
+    private static boolean localChargeReady;
+    /** True when the thrust in flight was the charged (强化) variant. */
+    private static boolean localThrustCharged;
+    /** Local mirror of the tightened rapier gates after a charged thrust lands. */
+    private static long localRapierFastUntilNanos;
+    /** Local mirror of the server's per-hand dual-wield streaks. */
+    private static int localLeftStreak;
+    private static int localRightStreak;
+
+    // ===== rapier hit streak HUD (server-reported) =====
+    /** Enemy the streak is counted on; -1 = none. */
+    private static int rapierComboTargetId = -1;
+    private static int rapierComboHits;
+    /** When the server last reported a streak change; the streak expires like it does server-side. */
+    private static long rapierComboUpdatedNanos;
+    /** Local deadline of the AI-deprivation window started by the 4th hit. */
+    private static long rapierSilenceUntilNanos;
+
+    // ===== rapier thrust body motion =====
+    /** The lunge starts when the blade extends and is never pulled back. */
+    private static long lungeForwardAtNanos;
+    private static Vec3 lungeDir = Vec3.ZERO;
+    private static int lungeForwardTicks;
+
+    // ===== katana stance (左手拔刀) =====
+    /** entityId -> authoritative katana-stance flag (mirrored from the server). */
+    private static final Map<Integer, Boolean> KATANA_BY_ID = new ConcurrentHashMap<>();
+    /** Local predicted katana stance for instant feedback. */
+    private static boolean localKatana;
+    /** Entity id of the lock-on target; -1 = no lock. */
+    private static int katanaLockId = -1;
+    /** Last server-reported non-haste cadence tier (9 = base, 7 = hit streak). */
+    private static int katanaSpeedTicks = CombatConstants.KATANA_ATTACK_INTERVAL_TICKS;
+    /** Game time the guard haste ends; Long.MIN_VALUE when inactive. */
+    private static long katanaHasteUntilGameTime = Long.MIN_VALUE;
+    /** Game tick the next katana swing may start on (client prediction). */
+    private static long katanaReadyAtTick = Long.MIN_VALUE;
 
     /** Skip the run_end transition if a swing finished less than this long ago. */
     private static final long RUN_END_SUPPRESS_NANOS = 500_000_000L;
@@ -146,7 +208,33 @@ public final class ClientCombat {
     }
 
     public static WeaponCategory localWeaponCategory() {
-        return WeaponCategory.of(isLocalDualWield());
+        return mc().player == null ? WeaponCategory.SINGLE : WeaponCategory.of(mc().player);
+    }
+
+    public static boolean isLocalKatana() {
+        return false;
+    }
+
+    public static boolean isKatana(int entityId) {
+        return false;
+    }
+
+    /** Rapier lock-on: available while drawn with a single sword. Dual-wield does not lock. */
+    public static boolean usesLockOn() {
+        return localDrawn && localWeaponCategory() == WeaponCategory.SINGLE;
+    }
+
+    public static LivingEntity katanaLockTarget() {
+        return lockTarget();
+    }
+
+    public static LivingEntity lockTarget() {
+        if (!usesLockOn() || katanaLockId < 0 || mc().level == null) return null;
+        var entity = mc().level.getEntity(katanaLockId);
+        if (entity instanceof LivingEntity living && living.isAlive() && !living.isSpectator()) {
+            return living;
+        }
+        return null;
     }
 
     public static boolean isLocalDefending() {
@@ -183,12 +271,11 @@ public final class ClientCombat {
     }
 
     /**
-     * During a swing only: mouse turns body and camera together (Genshin lock).
-     * Guard / charge / dodge stay on the free orbit camera so you can walk-parry.
+     * Attack-time camera lock is off. The orbit camera always belongs to the mouse
+     * in third person; the body may still face a katana lock target independently.
      */
     public static boolean isAimLocked() {
-        if (!localDrawn) return false;
-        return isLocalAttackActive();
+        return false;
     }
 
     /** Viewmodel uses the authored FP clip length, which can differ from the body swing. */
@@ -311,12 +398,14 @@ public final class ClientCombat {
     }
 
     private static boolean isHoldingSword(Player player) {
-        return player.getMainHandItem().is(ItemTags.SWORDS);
+        return player.getMainHandItem().is(ItemTags.SPEARS) || player.getMainHandItem().is(ItemTags.SWORDS)
+                || player.getOffhandItem().is(ItemTags.SWORDS);
     }
 
     // ===== draw / sheathe =====
 
-    /** R: enter or leave mod combat mode. Requires a sword to enter. */
+    /** R: enter or leave mod combat mode. Requires a sword to enter.
+     *  One-handed draw is always the rapier; both hands drawn is dual-wield. */
     public static void onDrawKey() {
         Minecraft mc = Minecraft.getInstance();
         if (mc.player == null || mc.screen != null) return;
@@ -324,7 +413,7 @@ public final class ClientCombat {
         if (localDrawn) {
             startSheath(mc.player, true);
         } else if (isHoldingSword(mc.player)) {
-            startDraw(mc.player, true);
+            startDraw(mc.player, true, false);
         }
     }
 
@@ -339,20 +428,32 @@ public final class ClientCombat {
     }
 
     private static void startDraw(LocalPlayer player, boolean sendToServer) {
+        startDraw(player, sendToServer, false);
+    }
+
+    private static void startDraw(LocalPlayer player, boolean sendToServer, boolean katana) {
         localDrawn = true;
+        localKatana = false;
         DRAWN_BY_ID.put(player.getId(), true);
+        KATANA_BY_ID.put(player.getId(), false);
+        katanaLockId = -1;
+        localRapierSlashIndex = 0;
+        katanaSpeedTicks = CombatConstants.KATANA_ATTACK_INTERVAL_TICKS;
+        katanaHasteUntilGameTime = Long.MIN_VALUE;
+        katanaReadyAtTick = Long.MIN_VALUE;
         localAttackSide = null;
         localAttackDepth = 0;
         localDualAttack = false;
-        localLeftHand = HandRest.CENTER;
-        localRightHand = HandRest.CENTER;
+        localAttackEndNanos = 0L;
+        resetLocalHands();
         localParryReady = false;
         FpViewmodel.INSTANCE.clearAction();
         sheathUntilNanos = 0L;
         boolean dual = player.getMainHandItem().is(ItemTags.SWORDS)
                 && player.getOffhandItem().is(ItemTags.SWORDS);
+        WeaponCategory drawCategory = WeaponCategory.of(player);
         fpDrawBusyUntilNanos = System.nanoTime()
-                + (long) (FpWeaponClips.of(WeaponCategory.of(dual)).drawSeconds() * 1.0E9F);
+                + (long) (FpWeaponClips.of(drawCategory).drawSeconds() * 1.0E9F);
 
         orientationFor(player.getId()).reset(player.getYRot());
         CombatCamera.seedFrom(player);
@@ -362,21 +463,31 @@ public final class ClientCombat {
         PlayerAnimatable dummy = ensureDummy(player);
         if (dummy != null) {
             dummy.drawn = true;
-            dummy.weaponCategory = WeaponCategory.of(dual);
+            dummy.weaponCategory = drawCategory;
             dummy.playAction(PlayerAnimatable.ANIM_DRAW,
                 dummy.weaponCategory == WeaponCategory.DOUBLE ? 0.8F : 0.7333F);
         }
         markAction();
         shiftWasDown = true;
         localDodgeTicks = 0;
+        cancelDodgeBoost(player);
+        applyDrawnKeybinds(true, !dual);
+        if (drawCategory == WeaponCategory.SINGLE) {
+            LivingEntity nearest = nearestLockCandidate();
+            if (nearest != null) setKatanaLock(nearest.getId(), true);
+        }
         if (sendToServer) {
-            ClientPacketDistributor.sendToServer(new ModPayloads.ServerboundSetDrawn(true));
+            ClientPacketDistributor.sendToServer(new ModPayloads.ServerboundSetDrawn(true, false));
         }
     }
 
     private static void startSheath(LocalPlayer player, boolean sendToServer) {
         localDrawn = false;
+        localKatana = false;
         DRAWN_BY_ID.put(player.getId(), false);
+        KATANA_BY_ID.put(player.getId(), false);
+        if (katanaLockId >= 0) setKatanaLock(-1, false);
+        applyDrawnKeybinds(false, false);
         CombatCamera.reset();
         wasAimLocked = false;
         lastCameraState = CameraDirector.State.SHEATHED;
@@ -384,8 +495,10 @@ public final class ClientCombat {
 
         boolean dual = player.getMainHandItem().is(ItemTags.SWORDS)
                 && player.getOffhandItem().is(ItemTags.SWORDS);
-        FpWeaponClips.Clips fp = FpWeaponClips.of(WeaponCategory.of(dual));
-        float sheathSeconds = fp.drawSeconds();
+        WeaponCategory sheathCat = WeaponCategory.of(player);
+        FpWeaponClips.Clips fp = FpWeaponClips.of(sheathCat);
+        float sheathSeconds = sheathCat == WeaponCategory.SINGLE
+                ? CombatConstants.RAPIER_SHEATH_SECONDS : fp.drawSeconds();
         sheathUntilNanos = System.nanoTime() + (long) (sheathSeconds * 1.0E9F);
 
         lmbCaptured = false;
@@ -410,24 +523,32 @@ public final class ClientCombat {
             dummy.aiming = false;
             dummy.inspecting = false;
             dummy.playAction(PlayerAnimatable.ANIM_PUT_AWAY,
-                    dummy.weaponCategory == WeaponCategory.DOUBLE ? 0.8F : 0.7333F);
+                    dummy.weaponCategory == WeaponCategory.DOUBLE
+                            ? 0.8F : CombatConstants.RAPIER_SHEATH_SECONDS);
+            if (dummy.weaponCategory == WeaponCategory.SINGLE) {
+                FpViewmodel.INSTANCE.playAction(fp.putAway(), CombatConstants.RAPIER_SHEATH_SECONDS);
+            }
         }
         if (sendToServer) {
-            ClientPacketDistributor.sendToServer(new ModPayloads.ServerboundSetDrawn(false));
+            ClientPacketDistributor.sendToServer(new ModPayloads.ServerboundSetDrawn(false, false));
         }
     }
 
     public static void onDrawState(int playerId, boolean drawn) {
+        onDrawState(playerId, drawn, false);
+    }
+
+    public static void onDrawState(int playerId, boolean drawn, boolean katana) {
         DRAWN_BY_ID.put(playerId, drawn);
+        KATANA_BY_ID.put(playerId, drawn && katana);
 
         Minecraft mc = Minecraft.getInstance();
         if (mc.player != null && mc.player.getId() == playerId) {
-            boolean changed = localDrawn != drawn;
-            localDrawn = drawn;
+            boolean changed = localDrawn != drawn || localKatana != (drawn && katana);
             if (!changed) return;
             // server-initiated state change (e.g. after respawn); mirror it locally
             if (drawn) {
-                startDraw(mc.player, false);
+                startDraw(mc.player, false, katana);
             } else {
                 startSheath(mc.player, false);
             }
@@ -437,6 +558,7 @@ public final class ClientCombat {
                 PlayerAnimatable dummy = ensureDummy(acp);
                 if (dummy != null) {
                     dummy.drawn = drawn;
+                    dummy.weaponCategory = katana ? WeaponCategory.KATANA : WeaponCategory.of(acp);
                     if (drawn) {
                         dummy.playAction(PlayerAnimatable.ANIM_DRAW,
                                 dummy.weaponCategory == WeaponCategory.DOUBLE ? 0.8F : 0.7333F);
@@ -453,7 +575,6 @@ public final class ClientCombat {
     public static void onHitConfirm(boolean hit) {
         if (!hit) return;
         lastHitNanos = System.nanoTime();
-        FovPunch.trigger();
         // left swings kick the camera right and vice versa
         float sign = localAttackSide == SwingSide.RIGHT ? -1.0F : 1.0F;
         HitFeedback.trigger(sign);
@@ -467,11 +588,185 @@ public final class ClientCombat {
     }
 
     /**
+     * Server-reported rapier hit streak. {@code silenceTicks} &gt; 0 means the 4th hit
+     * just deprived that enemy's AI; the HUD counts the remainder down locally.
+     */
+    public static void onRapierCombo(int targetId, int hits, int silenceTicks) {
+        rapierComboTargetId = targetId;
+        rapierComboHits = Math.max(0, hits);
+        rapierComboUpdatedNanos = System.nanoTime();
+        rapierSilenceUntilNanos = silenceTicks > 0
+                ? System.nanoTime() + silenceTicks * 50_000_000L
+                : 0L;
+    }
+
+    /** Enemy the rapier streak is counted on, or -1. */
+    public static int rapierComboTargetId() {
+        return rapierComboTargetId;
+    }
+
+    /** Streak length, or 0 once the server's idle window has passed. */
+    public static int rapierComboHits() {
+        if (rapierComboHits == 0) return 0;
+        long idle = System.nanoTime() - rapierComboUpdatedNanos;
+        if (idle > (long) (CombatConstants.COMBO_RESET_SECONDS * 1.0E9F)) {
+            rapierComboHits = 0;
+            rapierComboTargetId = -1;
+            return 0;
+        }
+        return rapierComboHits;
+    }
+
+    /** Seconds left of the AI-deprivation window, or 0 when none is active. */
+    public static float rapierSilenceSeconds() {
+        if (rapierSilenceUntilNanos == 0L) return 0.0F;
+        long left = rapierSilenceUntilNanos - System.nanoTime();
+        if (left <= 0L) {
+            rapierSilenceUntilNanos = 0L;
+            return 0.0F;
+        }
+        return left / 1.0E9F;
+    }
+
+    /** Carries the thrust forward as the blade extends. No pull-back. */
+    private static void tickThrustLunge(LocalPlayer player) {
+        if (lungeForwardAtNanos != 0L && System.nanoTime() >= lungeForwardAtNanos) {
+            lungeForwardAtNanos = 0L;
+            lungeForwardTicks = CombatConstants.RAPIER_LUNGE_TICKS;
+        }
+        if (lungeForwardTicks <= 0) return;
+        double step = CombatConstants.RAPIER_LUNGE_DISTANCE / CombatConstants.RAPIER_LUNGE_TICKS;
+        player.move(MoverType.SELF, lungeDir.scale(step));
+        lungeForwardTicks--;
+    }
+
+    /**
      * 0..1 progress through the local player's current swing, or -1 when not swinging.
      * Drives the blade-trail VFX on the viewmodel.
      */
     public static float localSwingProgress() {
         return isLocalAttackActive() ? localProgress() : -1.0F;
+    }
+
+    /**
+     * Katana per-tick lock upkeep: drop or replace a stale lock. Body facing is
+     * applied on the dummy in {@link #syncDummy}; the camera is never touched.
+     */
+    private static void tickKatanaLock(Minecraft mc) {
+        LocalPlayer player = mc.player;
+        if (player == null) return;
+        LivingEntity lock = lockTarget();
+        double retention = CombatConstants.LOCK_RANGE * CombatConstants.LOCK_RANGE;
+        if (lock != null && lock.distanceToSqr(player) > retention) lock = null;
+        if (katanaLockId >= 0 && lock == null) {
+            LivingEntity nearest = nearestLockCandidate();
+            setKatanaLock(nearest != null ? nearest.getId() : -1, true);
+        }
+    }
+
+    private static int clientKatanaIntervalTicks() {
+        if (mc().level == null) return CombatConstants.KATANA_ATTACK_INTERVAL_TICKS;
+        long now = mc().level.getGameTime();
+        if (katanaHasteUntilGameTime != Long.MIN_VALUE && now < katanaHasteUntilGameTime) {
+            return CombatConstants.KATANA_HASTE_INTERVAL_TICKS;
+        }
+        return katanaSpeedTicks;
+    }
+
+    private static float yawTo(Player player, LivingEntity target) {
+        return (float) Math.toDegrees(Math.atan2(
+                -(target.getX() - player.getX()), target.getZ() - player.getZ()));
+    }
+
+    private static float movementHeading(LocalPlayer player, float cameraYaw) {
+        if (player.input == null) return cameraYaw;
+        var move = player.input.getMoveVector();
+        if (move.lengthSquared() < 1.0E-4F) return cameraYaw;
+        return Mth.wrapDegrees(cameraYaw + (float) Math.toDegrees(Math.atan2(-move.x, move.y)));
+    }
+
+    /** Server-confirmed katana cadence update (hit streak / whiff / guard haste). */
+    public static void onKatanaSpeed(int intervalTicks, long hasteUntilGameTime) {
+        katanaSpeedTicks = intervalTicks;
+        katanaHasteUntilGameTime = hasteUntilGameTime;
+    }
+
+    // ===== katana lock-on =====
+
+    private static void setKatanaLock(int entityId, boolean syncToServer) {
+        if (katanaLockId == entityId) return;
+        katanaLockId = entityId;
+        if (syncToServer) {
+            ClientPacketDistributor.sendToServer(new ModPayloads.ServerboundKatanaLock(entityId));
+        }
+    }
+
+    private static LivingEntity nearestLockCandidate() {
+        LocalPlayer player = mc().player;
+        if (player == null || mc().level == null) return null;
+        double range = CombatConstants.LOCK_RANGE;
+        LivingEntity nearest = null;
+        double best = range * range;
+        for (LivingEntity e : mc().level.getEntitiesOfClass(LivingEntity.class,
+                player.getBoundingBox().inflate(range),
+                en -> en != player && en.isAlive() && !en.isSpectator())) {
+            double dist = e.distanceToSqr(player);
+            if (dist < best && player.hasLineOfSight(e)) {
+                best = dist;
+                nearest = e;
+            }
+        }
+        return nearest;
+    }
+
+    /**
+     * Q / E while katana-drawn: cycle the lock through nearby enemies by their
+     * left/right relation to the current target, seen from the camera.
+     */
+    public static void onLockSwitch(boolean toRight) {
+        if (!usesLockOn() || mc().player == null || mc().level == null || mc().screen != null) return;
+        LocalPlayer player = mc().player;
+        double range = CombatConstants.LOCK_RANGE;
+        java.util.List<LivingEntity> candidates = mc().level.getEntitiesOfClass(LivingEntity.class,
+                player.getBoundingBox().inflate(range),
+                e -> e != player && e.isAlive() && !e.isSpectator() && player.hasLineOfSight(e));
+        if (candidates.isEmpty()) {
+            setKatanaLock(-1, true);
+            return;
+        }
+        LivingEntity current = lockTarget();
+        if (current == null) { // no valid lock: take the nearest
+            candidates.sort(java.util.Comparator.comparingDouble(e -> e.distanceToSqr(player)));
+            setKatanaLock(candidates.get(0).getId(), true);
+            return;
+        }
+        // Bearings are relative to the camera: positive delta = target sits further
+        // right than the current one. Pick the closest candidate on the requested
+        // side; wrap around to the far side when there is none.
+        float camYaw = mc().options.getCameraType().isFirstPerson()
+                ? player.getYRot() : CombatCamera.yaw();
+        double curBearing = bearingTo(player, current, camYaw);
+        LivingEntity best = null;
+        double bestDelta = Double.MAX_VALUE;
+        LivingEntity wrap = null;
+        double wrapDelta = Double.MAX_VALUE;
+        for (LivingEntity e : candidates) {
+            if (e.getId() == current.getId()) continue;
+            double delta = Mth.wrapDegrees(bearingTo(player, e, camYaw) - curBearing);
+            boolean side = toRight ? delta < 0 : delta > 0; // right = smaller bearing (yaw decreases rightward)
+            double abs = Math.abs(delta);
+            if (side && abs < bestDelta) { bestDelta = abs; best = e; }
+            if (!side && (360.0 - abs) < wrapDelta) { wrapDelta = 360.0 - abs; wrap = e; }
+        }
+        LivingEntity next = best != null ? best : wrap;
+        if (next != null) setKatanaLock(next.getId(), true);
+    }
+
+    /** Camera-relative bearing of an entity: world yaw from the player to it, minus camera yaw. */
+    private static double bearingTo(LocalPlayer player, LivingEntity target, float camYaw) {
+        double dx = target.getX() - player.getX();
+        double dz = target.getZ() - player.getZ();
+        return Mth.wrapDegrees(Math.toDegrees(Math.atan2(-dx, dz)) - camYaw);
     }
 
     /** Another player (or this one) was hit: play the flinch on their dummy. */
@@ -488,26 +783,52 @@ public final class ClientCombat {
         String anim = dual ? dummy.weaponCategory.dualOverlay()
                 : dummy.weaponCategory.attackOverlay(side, depth);
         if (anim == null) return;
-        intervalTicks = Mth.clamp(intervalTicks, CombatConstants.ATTACK_INTERVAL_TICKS,
-                CombatConstants.ATTACK_INTERVAL_MAX_TICKS);
-        float seconds = intervalTicks / 20.0F + CombatConstants.ATTACK_CANCEL_TAIL_SECONDS;
+        // The payload carries the authoritative gate. A slow dual third swing (12) and
+        // the fourth rapier slash (10) are valid, so never clamp to the katana range:
+        // clamping shortened the local gate and made the client send attacks the
+        // server then rejected, which desynced the whole combo.
+        intervalTicks = Math.max(1, intervalTicks);
+        // The authored clip is 0.4s: a faster gate must not cut it short, and a slow
+        // gate (the dual third swing) keeps the pose up until the next swing is allowed.
+        float seconds = Math.max(CombatConstants.ATTACK_DURATION_SECONDS,
+                intervalTicks / 20.0F + CombatConstants.ATTACK_CANCEL_TAIL_SECONDS);
 
         LocalPlayer local = mc().player;
         boolean isLocal = local != null && local.getId() == playerId;
         if (isLocal) {
-            var prediction = ATTACK_ACKNOWLEDGEMENTS.confirmPrediction(side, depth, dual);
-            if (prediction != null) {
-                if (prediction.startedAtNanos() == localAttackStartNanos) {
-                    LOCAL_CADENCE.synchronize(prediction.startedAtTick(), intervalTicks);
-                    localAttackIntervalTicks = intervalTicks;
-                    if (prediction.intervalTicks() != intervalTicks && isLocalBusy()
-                            && dummy.hasUpperAction() && dummy.actionClip.startsWith("attack")) {
-                        localAttackSeconds = seconds;
-                        localBusyUntilNanos = localAttackStartNanos + (long) (seconds * 1.0E9F);
-                        fpAttackUntilNanos = localBusyUntilNanos;
-                        dummy.retimeAttack(intervalTicks);
-                    }
+            if (dummy.weaponCategory == WeaponCategory.DOUBLE) {
+                // Adopt the server's authoritative hand so one desync cannot cascade
+                // into a whole combo playing on the wrong arm.
+                if (dual) {
+                    localLeftHand = HandRest.LEFT;
+                    localRightHand = HandRest.RIGHT;
+                } else if (depth == 0) {
+                    localLeftHand = HandRest.of(side);
+                } else {
+                    localRightHand = HandRest.of(side);
                 }
+            }
+            var prediction = ATTACK_ACKNOWLEDGEMENTS.confirmPrediction(side, depth, dual);
+            if (prediction != null && prediction.startedAtNanos() == localAttackStartNanos) {
+                LOCAL_CADENCE.synchronize(prediction.startedAtTick(), intervalTicks);
+                localAttackIntervalTicks = intervalTicks;
+                if (prediction.intervalTicks() != intervalTicks && isLocalBusy()
+                        && dummy.hasUpperAction() && dummy.actionClip.startsWith("attack")) {
+                    localAttackSeconds = seconds;
+                    localBusyUntilNanos = localAttackStartNanos + (long) (seconds * 1.0E9F);
+                    fpAttackUntilNanos = localBusyUntilNanos;
+                    dummy.retimeAttack(intervalTicks);
+                }
+                return;
+            }
+            // 连续攻击/格挡后: never restart a clip that is already on screen. A stale
+            // confirmation belongs to an older swing, and a matching current swing is
+            // already playing; replaying either one is what made the pose jump.
+            if (prediction != null) return;
+            if (localAttackSide == side && localAttackDepth == depth && localDualAttack == dual
+                    && dummy.hasUpperAction()) {
+                localAttackIntervalTicks = intervalTicks;
+                dummy.retimeAttack(intervalTicks);
                 return;
             }
         }
@@ -530,6 +851,8 @@ public final class ClientCombat {
             localAttackIntervalTicks = intervalTicks;
             LOCAL_CADENCE.synchronize(mc().level.getGameTime(), intervalTicks);
             localAttackStartNanos = System.nanoTime();
+            localAttackEndNanos = localAttackStartNanos
+                    + (long) (CombatConstants.ATTACK_DURATION_SECONDS * 1.0E9F);
             localBusyUntilNanos = localAttackStartNanos
                     + (long) (localAttackSeconds * 1.0E9F);
             FpWeaponClips.Clips fp = FpWeaponClips.of(dummy.weaponCategory);
@@ -582,6 +905,10 @@ public final class ClientCombat {
     public static void onDodgeAnim(int playerId) {
         PlayerAnimatable dummy = DUMMIES.get(playerId);
         if (dummy == null) return;
+        if (dummy.weaponCategory == WeaponCategory.DOUBLE) {
+            // Dual dodge is a speed boost: keep walking, jumping and attacking.
+            return;
+        }
         dummy.dodging = true;
         dummy.aiming = false;
         dummy.beginGuardRecover();
@@ -599,25 +926,46 @@ public final class ClientCombat {
         Input keys = input.keyPresses;
         if (keys.shift() && !shiftWasDown) tryStartDodge(keys);
         shiftWasDown = keys.shift();
-        boolean crouch = ModKeybinds.CROUCH.isDown();
+        boolean crouch = localWeaponCategory() != WeaponCategory.SPEAR && ModKeybinds.CROUCH.isDown();
         input.keyPresses = new Input(keys.forward(), keys.backward(), keys.left(), keys.right(),
-                keys.jump(), crouch, keys.sprint());
+                keys.jump(), crouch, keys.sprint() && System.nanoTime() >= spearSprintStopNanos);
     }
 
     private static void tryStartDodge(Input keys) {
         LocalPlayer player = mc().player;
         if (player == null || mc().screen != null) return;
-        if (localDodgeTicks > 0 || !player.onGround()) return;
-        if (!canActNow()) return;
+        long now = System.nanoTime();
+        WeaponCategory dodgeCat = localWeaponCategory();
+        if (dodgeCat == WeaponCategory.DOUBLE) {
+            // Dual-wield Shift is a 0.3s maximum-move-speed boost, not a scripted step:
+            // no clip, no displacement and no cancelled action. Walking, jumping,
+            // swinging and guarding all stay available and turn it into a dash.
+            if (now < dodgeBoostUntilNanos) return;
+            dodgeBoostUntilNanos = now + (long) (CombatConstants.DUAL_DASH_SECONDS * 1.0E9F);
+            CombatAttributes.setDualDashBoost(player, true);
+            markAction();
+            ClientPacketDistributor.sendToServer(
+                    new ModPayloads.ServerboundDodge(facingYaw(player), CombatMoves.packDirs(keys)));
+            return;
+        }
+        if (localDodgeTicks > 0) return;
+        if (!player.onGround()) return;
+        // 闪避 has the top interrupt priority: it cancels whatever is playing now.
         INPUT_BUFFER.clear();
         int dirs = CombatMoves.packDirs(keys);
         float yaw = facingYaw(player);
-        Vec3 total = CombatMoves.dodgeOffset(yaw, dirs);
-        if (localWeaponCategory() == WeaponCategory.SINGLE)
+        if (dodgeCat == WeaponCategory.SPEAR && System.nanoTime() < spearDodgeReadyNanos) return;
+        Vec3 total = dodgeCat == WeaponCategory.SPEAR ? com.actioncombat.combat.SpearMoves.backstep(yaw)
+                : CombatMoves.dodgeOffset(yaw, dirs);
+        if (dodgeCat == WeaponCategory.SPEAR) spearDodgeReadyNanos = System.nanoTime() + 400_000_000L;
+        if (dodgeCat == WeaponCategory.SINGLE)
             total = total.scale(CombatConstants.RAPIER_DODGE_DISTANCE / CombatConstants.DODGE_DISTANCE);
+        else if (dodgeCat == WeaponCategory.KATANA)
+            total = total.scale(CombatConstants.KATANA_DODGE_DISTANCE / CombatConstants.DODGE_DISTANCE);
         int ticks = Math.max(1, CombatConstants.DODGE_TICKS);
         localDodgeStep = total.scale(1.0 / ticks);
         localDodgeTicks = ticks;
+        spearAdvanceTicks = 0;
         localBusyUntilNanos = 0L;
         fpAttackUntilNanos = 0L;
         localAttackSide = null;
@@ -644,6 +992,10 @@ public final class ClientCombat {
      *  @return true if the vanilla interaction should be swallowed. */
     public static boolean onAttackPress() {
         if (!localDrawn) return false;
+        if (localWeaponCategory() == WeaponCategory.SPEAR) {
+            if (!rapierLeftDown) { rapierLeftDown = true; requestSwing(SwingSide.LEFT, ModKeybinds.CROUCH.isDown(), false); }
+            return true;
+        }
         if (localWeaponCategory() == WeaponCategory.SINGLE) {
             if (!rapierLeftDown) { rapierLeftDown = true; requestRapier(false); }
             return true;
@@ -660,6 +1012,14 @@ public final class ClientCombat {
      *  @return true if the vanilla interaction should be swallowed. */
     public static boolean onUsePress() {
         if (!localDrawn) return false;
+        if (localWeaponCategory() == WeaponCategory.SPEAR) {
+            if (!rapierRightDown) {
+                rapierRightDown = true;
+                if (ModKeybinds.CROUCH.isDown()) requestSwing(SwingSide.RIGHT, true, false);
+                else onBlockKeyState(true);
+            }
+            return true;
+        }
         if (localWeaponCategory() == WeaponCategory.SINGLE) {
             if (!rapierRightDown) { rapierRightDown = true; requestRapier(true); }
             return true;
@@ -673,34 +1033,61 @@ public final class ClientCombat {
     }
 
     private static void requestRapier(boolean thrust) {
-        if (!canActNow() || mc().screen != null || (thrust && System.nanoTime() < thrustReadyNanos)) return;
+        if (mc().screen != null || (thrust && System.nanoTime() < thrustReadyNanos)) return;
+        // 强化刺击 has the top interrupt priority: it may cancel any running action, so it
+        // skips the chain and cancel gates. A plain poke still respects them.
+        boolean chargedThrust = thrust && localChargeReady;
+        if (!chargedThrust && !canActNow()) return;
         INPUT_BUFFER.clear();
         lmbCaptured = rmbCaptured = false;
         stopDefending(true);
-        var camera = mc().gameRenderer.getMainCamera();
-        var origin = camera.position();
-        ClientPacketDistributor.sendToServer(new ModPayloads.ServerboundAim(camera.yRot(), camera.xRot(), origin.x, origin.y, origin.z));
+        boolean spendCharge = false;
         if (thrust) {
-            thrustReadyNanos = System.nanoTime() + 2_000_000_000L;
-            // Prediction shows contact immediately; the server decides hit/miss recovery.
-            thrustRecoveryNanos = System.nanoTime() + 1_000_000_000L;
-            playThrustVisual(mc().player.getId(), false);
+            long now = System.nanoTime();
+            thrustReadyNanos = now + 2_000_000_000L;
+            if (chargedThrust) {
+                // The server stops the dodge when the thrust interrupts it; mirror that
+                // so the predicted displacement does not keep running ahead of the server.
+                localDodgeTicks = 0;
+                localDodgeStep = Vec3.ZERO;
+        spearAdvanceTicks = 0;
+            }
+            spendCharge = localChargeReady;
+            localChargeReady = false;
+            rapierChargeStartNanos = 0L;
+            // 强化刺击 is 0.20s, a normal poke 0.50s; contact and the lunge share half of it.
+            localThrustCharged = spendCharge;
+            float seconds = spendCharge
+                    ? CombatConstants.RAPIER_CHARGED_THRUST_SECONDS
+                    : CombatConstants.RAPIER_THRUST_SECONDS;
+            float contact = seconds * CombatConstants.RAPIER_THRUST_CONTACT_SHARE;
+            thrustRecoveryNanos = now + (long) (seconds * 1.0E9F);
+            localAttackEndNanos = now + (long) (seconds * 1.0E9F);
+            lungeDir = Vec3.directionFromRotation(0.0F, facingYaw(mc().player));
+            lungeForwardAtNanos = now + (long) (contact * 1.0E9F);
+            lungeForwardTicks = 0;
+            playThrustVisual(mc().player.getId(), false, seconds);
+        } else if (!playLocalAttack(SwingSide.LEFT, false, false)) {
+            return;
         }
-        ClientPacketDistributor.sendToServer(new ModPayloads.ServerboundAttack((thrust ? SwingSide.RIGHT : SwingSide.LEFT).id(), false, false));
+        ClientPacketDistributor.sendToServer(new ModPayloads.ServerboundAttack(
+                (thrust ? SwingSide.RIGHT : SwingSide.LEFT).id(), false, false, spendCharge));
         markAction();
     }
 
-    private static void playThrustVisual(int playerId, boolean hit) {
+    private static void playThrustVisual(int playerId, boolean hit, float seconds) {
         PlayerAnimatable dummy = DUMMIES.get(playerId);
         String clip = hit ? "rapier_thrust_hit" : "rapier_thrust_miss";
-        float seconds = hit ? 0.12F : 1.0F;
         if (dummy != null) {
             dummy.defending = false;
             dummy.aiming = false;
-            dummy.playUpper(clip + "_upper", seconds);
+            // Full-body: the gather-to-chest and lunge live on the legs/torso.
+            // Upper overlay alone looked like the old short poke.
+            dummy.playAction(clip, seconds);
         }
         if (mc().player != null && mc().player.getId() == playerId) {
             FpViewmodel.INSTANCE.playAction(clip, seconds);
+            localAttackSeconds = Math.max(localAttackSeconds, seconds);
             localAttackSide = null;
             fpAttackUntilNanos = System.nanoTime() + (long)(seconds * 1.0E9);
         }
@@ -710,12 +1097,26 @@ public final class ClientCombat {
         boolean self = mc().player != null && mc().player.getId() == playerId;
         if (self) {
             thrustReadyNanos = System.nanoTime() + Math.max(0, cooldownTicks) * 50_000_000L;
-            thrustRecoveryNanos = System.nanoTime() + Math.max(0, recoveryTicks) * 50_000_000L;
+            if (hit) thrustRecoveryNanos = 0L;
+            else if (recoveryTicks > 0) {
+                thrustRecoveryNanos = System.nanoTime() + recoveryTicks * 50_000_000L;
+            }
         }
-        if (accepted) {
-            playThrustVisual(playerId, hit);
-            if (self && hit) onHitConfirm(true);
+        if (!accepted) {
+            if (self) {
+                PlayerAnimatable dummy = DUMMIES.get(playerId);
+                if (dummy != null) dummy.clearAction();
+                FpViewmodel.INSTANCE.clearAction();
+                thrustRecoveryNanos = 0L;
+            }
+            return;
         }
+        if (self && hit && localThrustCharged) {
+            localRapierFastUntilNanos = System.nanoTime()
+                    + (long) (CombatConstants.RAPIER_FAST_WINDOW_SECONDS * 1.0E9F);
+        }
+        if (!self) playThrustVisual(playerId, hit, CombatConstants.RAPIER_THRUST_SECONDS);
+        if (self && hit) onHitConfirm(true);
     }
 
     public static void onGuardBash(int playerId) {
@@ -725,8 +1126,13 @@ public final class ClientCombat {
             FpViewmodel.INSTANCE.playAction("guard_bash", 0.25F);
     }
 
+    /**
+     * 格挡后攻击: with a guard reward armed, the next attack press is the dual cut.
+     * Both mouse buttons together are no longer required.
+     */
     private static boolean tryDualSlash() {
-        if (!parryReadyNow() || !lmbCaptured || !rmbCaptured) return false;
+        if (!parryReadyNow()) return false;
+        if (localWeaponCategory() != WeaponCategory.DOUBLE) return false;
         lmbCaptured = false;
         rmbCaptured = false;
         stopDefending(true);
@@ -763,8 +1169,10 @@ public final class ClientCombat {
                 localAttackSide = null;
                 localAttackDepth = 0;
                 localDualAttack = false;
-                localLeftHand = HandRest.CENTER;
-                localRightHand = HandRest.CENTER;
+                // The server resets both hands (and the rapier chain index) when a
+                // guard starts; without this mirror the next swing picks another hand
+                // than the server and its confirmation replayed a wrong clip.
+                resetLocalHands();
                 PlayerAnimatable dummy = DUMMIES.get(localId());
                 if (dummy != null) {
                     dummy.defending = true;
@@ -777,7 +1185,7 @@ public final class ClientCombat {
         } else if (localDefendHeld) {
             localDefendHeld = false;
             ClientPacketDistributor.sendToServer(new ModPayloads.ServerboundSetDefending(false));
-            if (localDefendHold) stopDefending(false);
+            if (localDefendHold || localWeaponCategory() == WeaponCategory.SPEAR) stopDefending(false);
         }
     }
 
@@ -820,7 +1228,8 @@ public final class ClientCombat {
         }
 
         // guard follows its own key, so it can be held while moving
-        onBlockKeyState(!blocked && ModKeybinds.BLOCK.isDown());
+        onBlockKeyState(!blocked && (localWeaponCategory() == WeaponCategory.SPEAR
+                ? mc.options.keyUse.isDown() && !ModKeybinds.CROUCH.isDown() : ModKeybinds.BLOCK.isDown()));
         tickDefend(now);
         if (!blocked) tickBufferedSwing();
 
@@ -855,7 +1264,7 @@ public final class ClientCombat {
         if (canActNow(charged)) {
             if (playLocalAttack(side, charged, dual)) {
                 ClientPacketDistributor.sendToServer(
-                        new ModPayloads.ServerboundAttack(side.id(), charged, dual));
+                        new ModPayloads.ServerboundAttack(side.id(), charged, dual, false));
             }
         } else {
             INPUT_BUFFER.push(side, charged, dual, nextAttackAtNanos(charged));
@@ -883,11 +1292,19 @@ public final class ClientCombat {
             localLeftHand = HandRest.LEFT;
             localRightHand = HandRest.RIGHT;
             localParryReady = false;
+        } else if (cat == WeaponCategory.SPEAR) {
+            hand = side == SwingSide.LEFT && charged ? 1 : 0;
+            anim = cat.attackOverlay(side, hand);
+        } else if (cat == WeaponCategory.SINGLE) {
+            int variant = Math.floorMod(localRapierSlashIndex++, 4);
+            SwingSide clipSide = (variant == 0 || variant == 2) ? SwingSide.LEFT : SwingSide.RIGHT;
+            hand = (variant == 0 || variant == 1) ? 0 : 1;
+            anim = cat.attackOverlay(clipSide, hand);
+            if (anim == null) return false;
+            side = clipSide;
         } else {
-            if (charged) {
-                localLeftHand = HandRest.CENTER;
-                localRightHand = HandRest.CENTER;
-            }
+            // The server resets both hands (and the chain index) on a charged swing.
+            if (charged) resetLocalHands();
             hand = HandRest.pickHand(side, localLeftHand, localRightHand);
             if (hand < 0) return false;
             if (hand == 0) localLeftHand = HandRest.of(side);
@@ -897,14 +1314,46 @@ public final class ClientCombat {
         }
 
         long startedAtTick = mc().level.getGameTime();
-        int intervalTicks = LOCAL_CADENCE.begin(startedAtTick);
-        float seconds = intervalTicks / 20.0F + CombatConstants.ATTACK_CANCEL_TAIL_SECONDS;
+        int intervalTicks;
+        if (cat == WeaponCategory.SPEAR) {
+            intervalTicks = LOCAL_CADENCE.begin(startedAtTick, 8);
+        } else if (cat == WeaponCategory.KATANA) {
+            intervalTicks = clientKatanaIntervalTicks();
+            katanaReadyAtTick = startedAtTick + intervalTicks;
+        } else if (cat == WeaponCategory.DOUBLE && !dual) {
+            // Mirror the server's per-hand streaks: two in a row on one hand go slow.
+            intervalTicks = LOCAL_CADENCE.begin(startedAtTick,
+                    AttackCadence.dualIntervalTicks(hand == 0, localLeftStreak, localRightStreak));
+            if (hand == 0) {
+                localLeftStreak++;
+                localRightStreak = Math.max(0, localRightStreak - 1);
+            } else {
+                localRightStreak++;
+                localLeftStreak = Math.max(0, localLeftStreak - 1);
+            }
+        } else {
+            int rapierStep = cat == WeaponCategory.SINGLE
+                    ? Math.floorMod(localRapierSlashIndex - 1, 4) : 0;
+            boolean fast = cat == WeaponCategory.SINGLE
+                    && System.nanoTime() < localRapierFastUntilNanos;
+            intervalTicks = LOCAL_CADENCE.begin(startedAtTick,
+                    AttackCadence.intervalTicksFor(cat, rapierStep, fast));
+        }
+        // The authored clip is 0.4s: a faster gate must not cut it short, and a slow
+        // gate (the dual third swing) keeps the pose up until the next swing is allowed.
+        float seconds = Math.max(CombatConstants.ATTACK_DURATION_SECONDS,
+                intervalTicks / 20.0F + CombatConstants.ATTACK_CANCEL_TAIL_SECONDS);
 
         dummy.aiming = false;
         dummy.inspecting = false;
         dummy.defending = false;
         dummy.lastAttackNanos = System.nanoTime();
         dummy.playUpper(anim, seconds, intervalTicks);
+        if (cat == WeaponCategory.SPEAR && side == SwingSide.RIGHT && !mc().player.isPassenger()) {
+            spearAdvanceAtNanos = System.nanoTime() + 180_000_000L;
+            spearAdvanceTicks = 4;
+            spearAdvanceStep = Vec3.directionFromRotation(0, facingYaw(mc().player)).scale(0.1);
+        }
 
         localAttackSide = side;
         localAttackDepth = hand;
@@ -915,6 +1364,8 @@ public final class ClientCombat {
         localAttackSeconds = seconds;
         localAttackIntervalTicks = intervalTicks;
         localAttackStartNanos = System.nanoTime();
+        localAttackEndNanos = localAttackStartNanos
+                + (long) (CombatConstants.ATTACK_DURATION_SECONDS * 1.0E9F);
         localBusyUntilNanos = localAttackStartNanos + (long) (seconds * 1.0E9F);
         FpWeaponClips.Clips fp = FpWeaponClips.of(cat);
         float fpSeconds = seconds;
@@ -926,13 +1377,27 @@ public final class ClientCombat {
         return true;
     }
 
+    /**
+     * Mirrors {@link CombatData#resetHandsApart()}: both hands back to the open ready
+     * stance and the rapier chain back to its first slash.
+     */
+    private static void resetLocalHands() {
+        localLeftHand = HandRest.CENTER;
+        localRightHand = HandRest.CENTER;
+        localRapierSlashIndex = 0;
+    }
+
+    /**
+     * The server resets the hands two seconds after the last clip ENDED, not after the
+     * gate closed. Measuring from the busy window instead left the client holding a
+     * hand the server had already forgotten, which mis-matched the next prediction.
+     */
     private static void expireLocalHands() {
-        if (isLocalBusy()) return;
-        if (localAttackStartNanos == 0L) return;
-        long idle = System.nanoTime() - localBusyUntilNanos;
-        if (idle > (long) (CombatConstants.COMBO_RESET_SECONDS * 1.0E9F)) {
-            localLeftHand = HandRest.CENTER;
-            localRightHand = HandRest.CENTER;
+        if (localAttackEndNanos == 0L) return;
+        long now = System.nanoTime();
+        if (now < localAttackEndNanos) return;
+        if (now - localAttackEndNanos > (long) (CombatConstants.COMBO_RESET_SECONDS * 1.0E9F)) {
+            resetLocalHands();
         }
     }
 
@@ -942,9 +1407,13 @@ public final class ClientCombat {
     }
 
     private static boolean canActNow(boolean charged) {
+        boolean cadenceOk = localWeaponCategory() == WeaponCategory.KATANA
+                ? mc().level != null && mc().level.getGameTime() >= katanaReadyAtTick
+                : mc().level != null && LOCAL_CADENCE.canStart(mc().level.getGameTime());
         return System.nanoTime() >= thrustRecoveryNanos
-                && localDodgeTicks <= 0 && mc().level != null
-                && LOCAL_CADENCE.canStart(mc().level.getGameTime())
+                && localDodgeTicks <= 0
+                && mc().level != null
+                && cadenceOk
                 && System.nanoTime() >= nextAttackAtNanos(charged);
     }
 
@@ -969,7 +1438,7 @@ public final class ClientCombat {
         boolean dual = INPUT_BUFFER.pendingDual();
         if (playLocalAttack(side, charged, dual)) {
             INPUT_BUFFER.clear();
-            ClientPacketDistributor.sendToServer(new ModPayloads.ServerboundAttack(side.id(), charged, dual));
+            ClientPacketDistributor.sendToServer(new ModPayloads.ServerboundAttack(side.id(), charged, dual, false));
             markAction();
         }
     }
@@ -990,6 +1459,7 @@ public final class ClientCombat {
 
     private static void tickDefend(long now) {
         if (!localDefending) return;
+        if (localWeaponCategory() == WeaponCategory.SPEAR && localDefendHeld) return;
         float elapsed = (now - localDefendStartNanos) / 1.0E9F;
         if (localDefendHeld && elapsed >= CombatConstants.DEFEND_HOLD_THRESHOLD_SECONDS) {
             localDefendHold = true;
@@ -1084,21 +1554,47 @@ public final class ClientCombat {
         Minecraft mc = mc();
         boolean isLocalPlayer = mc != null && mc.player == player;
         boolean firstPerson = isLocalPlayer && mc.options.getCameraType().isFirstPerson();
+        boolean lockBody = isLocalPlayer && !firstPerson && dummy.drawn && !isLocalDualWield();
+        // Rapier owns its body yaw (movement heading / lock target / attack snap);
+        // the orbit camera only drives the head look overlay.
         float cameraYaw = (isLocalPlayer && !firstPerson && dummy.drawn)
                 ? CombatCamera.yaw()
                 : player.getYRot();
-        // Swing / draw / dodge snap to aim. Other states ease toward aim, with
-        // directional gait clips moving the legs independently of the upper body.
-        boolean lockToCamera = firstPerson
-                || dummy.hasUpperAction()
+        float bodyTarget = cameraYaw;
+        boolean snapBody = firstPerson
                 || dummy.hasFullBodyAction()
                 || dummy.dodging;
+        if (lockBody && player instanceof LocalPlayer local) {
+            LivingEntity lock = lockTarget();
+            boolean moving = local.input != null
+                    && local.input.getMoveVector().lengthSquared() > 1.0E-4F;
+            if (lock != null) {
+                // Rapier lock-on: the body always faces the enemy, even while walking.
+                bodyTarget = yawTo(player, lock);
+                snapBody = true;
+            } else if (dummy.hasFullBodyAction() || dummy.dodging) {
+                bodyTarget = cameraYaw;
+                snapBody = true;
+            } else if (moving) {
+                bodyTarget = movementHeading(local, cameraYaw);
+                snapBody = false;
+            } else {
+                bodyTarget = orientationFor(player.getId()).bodyYaw(cameraYaw);
+                snapBody = false;
+            }
+        } else if (!lockBody) {
+            // Dual-wield: body follows the orbit camera so the slash matches the reticle.
+            snapBody = firstPerson
+                    || dummy.hasUpperAction()
+                    || dummy.hasFullBodyAction()
+                    || dummy.dodging;
+        }
         float bodyYaw = dummy.drawn
-                ? orientationFor(player.getId()).update(player, cameraYaw, lockToCamera, deltaSeconds)
-                : cameraYaw;
+                ? orientationFor(player.getId()).update(player, bodyTarget, snapBody, deltaSeconds)
+                : bodyTarget;
 
         dummy.bodyYaw = bodyYaw;
-        if (lockToCamera) {
+        if (snapBody) {
             dummy.yRotO = bodyYaw;
             dummy.yBodyRotO = bodyYaw;
         } else {
@@ -1116,14 +1612,23 @@ public final class ClientCombat {
         dummy.xRotO = dummy.getXRot();
         dummy.setXRot(0.0F);
 
-        if (YsmStyle.enabled()) {
-            dummy.lookYawOffset = Mth.clamp(Mth.wrapDegrees(cameraYaw - bodyYaw),
-                    -CombatConstants.LOOK_OVERLAY_MAX_YAW, CombatConstants.LOOK_OVERLAY_MAX_YAW);
-            dummy.lookPitchOffset = Mth.clamp(player.getXRot(),
-                    -CombatConstants.LOOK_OVERLAY_MAX_PITCH, CombatConstants.LOOK_OVERLAY_MAX_PITCH);
-        } else {
+        // Rapier: look at the locked enemy; otherwise keep the authored head, which
+        // already faces along the blade. Dual-wield always looks straight ahead.
+        boolean dualLook = dummy.weaponCategory == WeaponCategory.DOUBLE
+                || (isLocalPlayer && isLocalDualWield());
+        LivingEntity lookLock = (!dualLook && dummy.drawn && isLocalPlayer) ? lockTarget() : null;
+        if (dualLook || lookLock == null) {
             dummy.lookYawOffset = 0.0F;
             dummy.lookPitchOffset = 0.0F;
+        } else {
+            Vec3 eyes = player.getEyePosition();
+            Vec3 aim = lookLock.getEyePosition();
+            double dx = aim.x - eyes.x, dy = aim.y - eyes.y, dz = aim.z - eyes.z;
+            dummy.lookYawOffset = Mth.clamp(Mth.wrapDegrees(yawTo(player, lookLock) - bodyYaw),
+                    -CombatConstants.LOOK_OVERLAY_MAX_YAW, CombatConstants.LOOK_OVERLAY_MAX_YAW);
+            dummy.lookPitchOffset = Mth.clamp(
+                    (float) -Math.toDegrees(Math.atan2(dy, Math.hypot(dx, dz))),
+                    -CombatConstants.LOOK_OVERLAY_MAX_PITCH, CombatConstants.LOOK_OVERLAY_MAX_PITCH);
         }
 
         // mirror armour so the combat body is not naked (DummyArmorLayer draws it)
@@ -1134,6 +1639,10 @@ public final class ClientCombat {
         dummy.mainArm = player.getMainArm();
 
         dummy.moveSpeed = player.walkAnimation.speed();
+        if (player.isSprinting() && !player.isPassenger()) {
+            if (dummy.sprintStartNanos == 0) dummy.sprintStartNanos = System.nanoTime();
+        } else dummy.sprintStartNanos = 0;
+        dummy.spearSprintCarry = dummy.sprintStartNanos != 0 && System.nanoTime() - dummy.sprintStartNanos >= 1_000_000_000L;
         float yawRad = cameraYaw * Mth.DEG_TO_RAD;
         float fwdX = -Mth.sin(yawRad);
         float fwdZ = Mth.cos(yawRad);
@@ -1147,7 +1656,7 @@ public final class ClientCombat {
             dummy.moveForward = move.x * Mth.sin(deltaYaw) + move.y * Mth.cos(deltaYaw);
         }
         dummy.crouching = dummy.drawn && player == mc().player
-                ? ModKeybinds.CROUCH.isDown()
+                ? dummy.weaponCategory != WeaponCategory.SPEAR && ModKeybinds.CROUCH.isDown()
                 : player.isShiftKeyDown();
         if (!dummy.hasAction()) dummy.dodging = false;
         boolean airborne = !player.onGround() && !player.isInWater();
@@ -1159,9 +1668,7 @@ public final class ClientCombat {
         dummy.skinTexture = player instanceof AbstractClientPlayer acp
                 ? acp.getSkin().body().texturePath()
                 : dummy.skinTexture;
-        dummy.weaponCategory = WeaponCategory.of(
-                player.getMainHandItem().is(ItemTags.SWORDS)
-                        && player.getOffhandItem().is(ItemTags.SWORDS));
+        dummy.weaponCategory = WeaponCategory.of(player);
 
         updateLocomotionTransitions(dummy);
     }
@@ -1189,7 +1696,8 @@ public final class ClientCombat {
         }
 
         // dropping the sword leaves combat mode; picking one up does not enter it (R does)
-        if (localDrawn && !isHoldingSword(mc.player)) {
+        boolean hasSword = isHoldingSword(mc.player);
+        if (localDrawn && !hasSword) {
             startSheath(mc.player, true);
         }
 
@@ -1211,28 +1719,35 @@ public final class ClientCombat {
             if (dummy != null) dummy.drawn = true;
         }
 
+        if (System.nanoTime() < spearSprintStopNanos && !mc.player.isPassenger()) mc.player.setSprinting(false);
         tickInput(mc, mc.player, System.nanoTime());
-        boolean locked = isAimLocked();
         if (localDrawn && !mc.options.getCameraType().isFirstPerson()) {
+            // WASD stays camera-relative. Pitch is never copied back onto the
+            // orbit camera, so attacking cannot yank the view around.
             float yaw = CombatCamera.yaw();
             mc.player.setYRot(yaw);
             mc.player.yRotO = yaw;
             mc.player.yHeadRot = yaw;
             mc.player.yHeadRotO = yaw;
-            if (locked) {
-                mc.player.setXRot(CombatCamera.pitch());
-                mc.player.xRotO = CombatCamera.pitch();
-            }
         }
-        wasAimLocked = locked;
-        if (localDrawn) {
-            float aimYaw = facingYaw(mc.player);
-            float aimPitch = mc.options.getCameraType().isFirstPerson()
-                    ? mc.player.getXRot() : CombatCamera.pitch();
+        if (usesLockOn() && mc.player != null) {
+            tickKatanaLock(mc);
+        }
+        wasAimLocked = false;
+        if (localDrawn && (isLocalDualWield() || localWeaponCategory() == WeaponCategory.SPEAR)) {
             var camera = mc.gameRenderer.getMainCamera();
             var eye = camera.position();
             ClientPacketDistributor.sendToServer(new ModPayloads.ServerboundAim(
                     camera.yRot(), camera.xRot(), eye.x, eye.y, eye.z));
+        }
+        CombatAttributes.setDualSwingSlow(mc.player,
+                localDrawn && isLocalDualWield() && isLocalBusy());
+        tickDodgeBoost(mc.player);
+        tickThrustLunge(mc.player);
+        if (spearAdvanceTicks > 0 && System.nanoTime() >= spearAdvanceAtNanos) {
+            if (localDrawn && localWeaponCategory() == WeaponCategory.SPEAR && !mc.player.isPassenger())
+                mc.player.move(MoverType.SELF, spearAdvanceStep);
+            spearAdvanceTicks--;
         }
         if (localDodgeTicks > 0) {
             mc.player.move(MoverType.SELF, localDodgeStep);
@@ -1242,6 +1757,26 @@ public final class ClientCombat {
                 if (dummy != null) dummy.dodging = false;
             }
         }
+    }
+
+    /**
+     * Dual-wield dash upkeep. The boost is re-asserted every tick because an
+     * attribute sync from the server replaces the local modifier list, and dropped
+     * as soon as its 0.3s window ends or combat mode ends.
+     */
+    private static void tickDodgeBoost(LocalPlayer player) {
+        if (dodgeBoostUntilNanos == 0L) return;
+        if (localDrawn && System.nanoTime() < dodgeBoostUntilNanos) {
+            CombatAttributes.setDualDashBoost(player, true);
+            return;
+        }
+        cancelDodgeBoost(player);
+    }
+
+    /** Drop the dual-wield dash boost immediately (sheath, draw, disconnect). */
+    private static void cancelDodgeBoost(LocalPlayer player) {
+        dodgeBoostUntilNanos = 0L;
+        CombatAttributes.setDualDashBoost(player, false);
     }
 
     /**
@@ -1330,6 +1865,56 @@ public final class ClientCombat {
         }
     }
 
+    /**
+     * On draw, Q/E become lock-switch, R sheath, X block, C crouch. Vanilla drop /
+     * inventory are unbound only if they currently occupy Q or E. Restored on sheath.
+     */
+    private static InputConstants.Key savedDropKey;
+    private static InputConstants.Key savedInventoryKey;
+    private static boolean drawnKeysApplied;
+
+    private static void applyDrawnKeybinds(boolean drawn, boolean stealLockKeys) {
+        Minecraft mc = Minecraft.getInstance();
+        if (drawn) {
+            if (drawnKeysApplied) return;
+            savedDropKey = mc.options.keyDrop.getKey();
+            savedInventoryKey = mc.options.keyInventory.getKey();
+            InputConstants.Key q = InputConstants.Type.KEYSYM.getOrCreate(GLFW.GLFW_KEY_Q);
+            InputConstants.Key e = InputConstants.Type.KEYSYM.getOrCreate(GLFW.GLFW_KEY_E);
+            InputConstants.Key r = InputConstants.Type.KEYSYM.getOrCreate(GLFW.GLFW_KEY_R);
+            InputConstants.Key x = InputConstants.Type.KEYSYM.getOrCreate(GLFW.GLFW_KEY_X);
+            InputConstants.Key c = InputConstants.Type.KEYSYM.getOrCreate(GLFW.GLFW_KEY_C);
+            if (stealLockKeys) {
+                stealIf(mc.options.keyDrop, q, e);
+                stealIf(mc.options.keyInventory, q, e);
+                ModKeybinds.LOCK_PREV.setKey(q);
+                ModKeybinds.LOCK_NEXT.setKey(e);
+            }
+            ModKeybinds.DRAW.setKey(r);
+            ModKeybinds.BLOCK.setKey(x);
+            ModKeybinds.CROUCH.setKey(c);
+            KeyMapping.resetMapping();
+            drawnKeysApplied = true;
+            return;
+        }
+        if (!drawnKeysApplied) return;
+        if (savedDropKey != null) mc.options.keyDrop.setKey(savedDropKey);
+        if (savedInventoryKey != null) mc.options.keyInventory.setKey(savedInventoryKey);
+        KeyMapping.resetMapping();
+        drawnKeysApplied = false;
+        savedDropKey = savedInventoryKey = null;
+    }
+
+    private static void stealIf(KeyMapping mapping, InputConstants.Key... keys) {
+        InputConstants.Key current = mapping.getKey();
+        for (InputConstants.Key key : keys) {
+            if (current.equals(key)) {
+                mapping.setKey(InputConstants.UNKNOWN);
+                return;
+            }
+        }
+    }
+
     private static Minecraft mc() {
         return Minecraft.getInstance();
     }
@@ -1337,14 +1922,27 @@ public final class ClientCombat {
     private static void clearAll() {
         thrustReadyNanos = thrustRecoveryNanos = 0L;
         rapierLeftDown = rapierRightDown = false;
+        rapierChargeStartNanos = 0L;
+        localChargeReady = false;
+        localThrustCharged = false;
+        localRapierFastUntilNanos = 0L;
+        localLeftStreak = 0;
+        localRightStreak = 0;
         ATTACK_ACKNOWLEDGEMENTS.clear();
         LOCAL_CADENCE.reset();
         localAttackIntervalTicks = CombatConstants.ATTACK_INTERVAL_TICKS;
         DUMMIES.values().forEach(PlayerAnimatable::discard);
         DUMMIES.clear();
         DRAWN_BY_ID.clear();
+        KATANA_BY_ID.clear();
         ORIENTATIONS.clear();
         localDrawn = false;
+        localKatana = false;
+        katanaLockId = -1;
+        localRapierSlashIndex = 0;
+        katanaSpeedTicks = CombatConstants.KATANA_ATTACK_INTERVAL_TICKS;
+        katanaHasteUntilGameTime = Long.MIN_VALUE;
+        katanaReadyAtTick = Long.MIN_VALUE;
         currentShoulderOffset = 0.0F;
         currentHeightOffset = 0.0F;
         currentFovBias = 0.0F;
@@ -1371,6 +1969,17 @@ public final class ClientCombat {
         shiftWasDown = false;
         localDodgeTicks = 0;
         localDodgeStep = Vec3.ZERO;
+        spearAdvanceTicks = 0;
+        lungeForwardAtNanos = 0L;
+        lungeForwardTicks = 0;
+        lungeDir = Vec3.ZERO;
+        rapierComboTargetId = -1;
+        rapierComboHits = 0;
+        rapierComboUpdatedNanos = 0L;
+        rapierSilenceUntilNanos = 0L;
+        CombatAttributes.setDualSwingSlow(mc().player, false);
+        cancelDodgeBoost(mc().player);
+        applyDrawnKeybinds(false, false);
     }
 
     private ClientCombat() {}

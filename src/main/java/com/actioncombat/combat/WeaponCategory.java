@@ -6,12 +6,21 @@ package com.actioncombat.combat;
  * All names here must exist in the matching geckolib asset files (checked by
  * tools/check_assets.mjs and AssetBakeSmokeTest).
  * <p>
- * Each hand rests CENTER, LEFT or RIGHT. Left click slashes left, left hand
- * first ({@code attack1} then {@code attack3}). Right click slashes right,
- * right hand first ({@code attack4} then {@code attack2}). After a successful
- * parry, both buttons together play {@code attack_dual}.
+ * Dual-wield keeps the left/right hand-rest gates. The rapier (SINGLE) uses its
+ * own pattern: left click cycles {@code attack1}–{@code attack4}, right click
+ * is a dedicated thrust. After a successful parry, both buttons together play
+ * {@code attack_dual}.
  */
 public enum WeaponCategory {
+    SPEAR(
+            "player_longsword", "third_person_spear",
+            "static_idle", "inspect", "run_start", "run_hold", "run_end",
+            "draw", "put_away", "defend_upper", "aiming_upper",
+            "walk_start", "walk_hold", "walk_end", "crouch_idle", "jump", "fall", "hurt_upper",
+            new SwingChain(new String[]{"attack1", "attack3"},
+                    new float[]{0.4F, 0.4F}, new float[]{6.0F, 8.0F}),
+            new SwingChain(new String[]{"attack2", "attack4"},
+                    new float[]{0.4F, 0.4F}, new float[]{2.0F, 2.0F})),
     SINGLE(
             "player_longsword", "third_person_singlesword",
             "static_idle", "inspect", "run_start", "run_hold", "run_end",
@@ -40,7 +49,26 @@ public enum WeaponCategory {
             new SwingChain(
                     new String[]{"attack4", "attack3"},
                     new float[]{0.4F, 0.4F},
-                    new float[]{5.0F, 4.0F}));
+                    new float[]{5.0F, 4.0F})),
+    /**
+     * Two-handed katana stance (左手拔刀). Reuses the longsword model; the katana
+     * animation set is authored by {@code tools/generate_katana.mjs}. Attacks are
+     * command-type: they only strike the locked target.
+     */
+    KATANA(
+            "player_longsword", "third_person_katana",
+            "static_idle", "inspect", "run_start", "run_hold", "run_end",
+            "draw", "put_away", "defend_upper", "aiming_upper",
+            "walk_start", "walk_hold", "walk_end", "crouch_idle", "jump", "fall", "hurt_upper",
+            // 双手持剑: 左链 下劈→上挑, 右链 横斩→突刺
+            new SwingChain(
+                    new String[]{"attack1", "attack3"},
+                    new float[]{0.4F, 0.4F},
+                    new float[]{8.0F, 9.0F}),
+            new SwingChain(
+                    new String[]{"attack2", "attack4"},
+                    new float[]{0.4F, 0.4F},
+                    new float[]{8.0F, 10.0F}));
 
     /** One side of the alternating combo: clip names plus their tuning, by chain index. */
     public record SwingChain(String[] clips, float[] durations, float[] damages) {
@@ -132,7 +160,7 @@ public enum WeaponCategory {
      */
     public String attackOverlay(SwingSide side, int hand) {
         String clip = attackAnim(side, hand);
-        return clip == null ? null : clip + "_upper";
+        return clip == null ? null : this == SPEAR ? clip : clip + "_upper";
     }
 
     public String dualOverlay() {
@@ -188,6 +216,12 @@ public enum WeaponCategory {
             return base + "_back";
         }
         return base;
+    }
+
+    public static WeaponCategory of(net.minecraft.world.entity.LivingEntity player) {
+        if (player.getMainHandItem().is(net.minecraft.tags.ItemTags.SPEARS)) return SPEAR;
+        return of(player.getMainHandItem().is(net.minecraft.tags.ItemTags.SWORDS)
+                && player.getOffhandItem().is(net.minecraft.tags.ItemTags.SWORDS));
     }
 
     public static WeaponCategory of(boolean dualWield) {

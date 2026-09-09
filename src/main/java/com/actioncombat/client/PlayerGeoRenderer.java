@@ -12,8 +12,9 @@ import software.bernie.geckolib.renderer.base.RenderPassInfo;
 
 /**
  * Renders the combat dummy. The local player's dummy is skipped in first person
- * (the viewmodel shows instead). The head stays with the authored pose, facing
- * the body's heading. Held items are the player's real swords, not the geo cubes.
+ * (the viewmodel shows instead). Head look overlay faces a rapier lock target;
+ * otherwise the authored pose looks along the blade, and dual-wield looks straight.
+ * Held items are the player's real swords, not the geo cubes.
  */
 public class PlayerGeoRenderer extends GeoEntityRenderer<PlayerAnimatable, PlayerGeoRenderState> {
     public PlayerGeoRenderer(EntityRendererProvider.Context context) {
@@ -60,16 +61,23 @@ public class PlayerGeoRenderer extends GeoEntityRenderer<PlayerAnimatable, Playe
             snapshots.ifPresent("hand_item_l", snapshot -> snapshot.skipRender(true));
             snapshots.ifPresent(YsmStyle.RIGHT_HAND, snapshot -> snapshot.skipRender(true));
             snapshots.ifPresent(YsmStyle.LEFT_HAND, snapshot -> snapshot.skipRender(true));
+            // Preserve directional walking hips while keeping the authored rapier
+            // torso at 65 degrees; the head counter-rotation still faces the target.
+            boolean rapier = info.renderState().getOrDefaultGeckolibData(
+                    PlayerGeoModel.WEAPON_CATEGORY, com.actioncombat.combat.WeaponCategory.SINGLE)
+                    == com.actioncombat.combat.WeaponCategory.SINGLE;
             if (!info.renderState().getOrDefaultGeckolibData(PlayerGeoModel.FULL_BODY_ACTION, false)) {
                 String hip = YsmStyle.enabled() ? "Hip" : "lower_body";
                 String torso = YsmStyle.enabled() ? YsmStyle.BODY : "upper_body";
                 snapshots.ifPresent(hip, pelvis -> snapshots.ifPresent(torso, upper -> upper.setRotation(
-                        upper.getRotX(), upper.getRotY() - pelvis.getRotY(), upper.getRotZ())));
+                        upper.getRotX(), upper.getRotY() - pelvis.getRotY()
+                                + (rapier ? 65.0F * net.minecraft.util.Mth.DEG_TO_RAD : 0.0F), upper.getRotZ())));
             }
-            if (!YsmStyle.enabled()) return;
             float yaw = info.renderState().getOrDefaultGeckolibData(PlayerGeoModel.LOOK_YAW, 0.0F);
             float pitch = info.renderState().getOrDefaultGeckolibData(PlayerGeoModel.LOOK_PITCH, 0.0F);
-            snapshots.ifPresent(YsmStyle.HEAD, snapshot -> snapshot.setRotation(
+            if (yaw == 0.0F && pitch == 0.0F) return;
+            String head = YsmStyle.enabled() ? YsmStyle.HEAD : "head";
+            snapshots.ifPresent(head, snapshot -> snapshot.setRotation(
                     snapshot.getRotX() + pitch * net.minecraft.util.Mth.DEG_TO_RAD,
                     snapshot.getRotY() + yaw * net.minecraft.util.Mth.DEG_TO_RAD,
                     snapshot.getRotZ()));

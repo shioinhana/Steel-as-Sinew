@@ -97,7 +97,7 @@ function parseCategory(name) {
   };
 }
 
-const categories = ['SINGLE', 'DOUBLE'].map(parseCategory);
+const categories = ['SINGLE', 'DOUBLE', 'KATANA', 'SPEAR'].map(parseCategory);
 
 // clips that must NOT loop (the state machine needs them to end)
 const ONE_SHOT = new Set(['draw', 'put_away', 'run_start', 'run_end', 'walk_start', 'walk_end']);
@@ -323,7 +323,7 @@ const fpClips = [...fpSrc.matchAll(/new Clips\(/g)].map(m => {
   return fp;
 });
 
-if (fpClips.length !== 2) fail(`FpWeaponClips: expected 2 Clips instances, found ${fpClips.length}`);
+if (fpClips.length !== 4) fail(`FpWeaponClips: expected 4 Clips instances, found ${fpClips.length}`);
 
 // bones that must exist so the viewmodel actually carries the blade/arms
 const FP_BONES = {
