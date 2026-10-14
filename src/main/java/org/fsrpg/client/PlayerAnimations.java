@@ -501,10 +501,15 @@ public final class PlayerAnimations {
             // the solver's rear displacement across windup, contact and recovery.
             float gripFidelity = server.phase().equals("READY") ? SpearAimPose.authoredFidelity(aim,bodyYaw) : 1;
             var spearSeed = binding.spearMotion.prepare(sourceWorld,renderTick,chestReturn,gripFidelity);
+            // The hands slide along the pole instead of moving as one rigid block: working the
+            // weapon opens the grip, and a carried pole keeps the authored separation.
+            float gripSpacing = SpearGrip.solve(SpearGrip.authored(sourceWorld),
+                    (float)(aim.distance() * 100), spearSeed.authoredMotion());
             pose=SpearAimPose.apply(binding.asset.full(),pose,aim,bodyYaw,living.getEyeHeight(),spearSeed.rear(),spearSeed.chest(),
                     spearSeed.actual(),spearSeed.continuity(),spearSeed.authoredMotion(),new SpearConstraints.Limits(ClientOptions.SPEAR_ELBOW_LIMIT.get().floatValue(),
                             ClientOptions.SPEAR_WRIST_LIMIT.get().floatValue(),ClientOptions.SPEAR_CLEARANCE.get().floatValue(),
-                            ClientOptions.SPEAR_NECK_LIMIT.get().floatValue(),ClientOptions.SPEAR_VERTICAL_BANK.get().floatValue(),true).withCarry(carrying));
+                            ClientOptions.SPEAR_NECK_LIMIT.get().floatValue(),ClientOptions.SPEAR_VERTICAL_BANK.get().floatValue(),true)
+                            .withCarry(carrying).withGrip(gripSpacing));
         }
         var finalWorld = binding.asset.full().worldMatrices(pose);
         if (spearSourceRear != null) {

@@ -199,7 +199,7 @@ public final class SpearAimPose {
             for(int sideIndex=0;sideIndex<SIDES.size();sideIndex++) {
                 String side=SIDES.get(sideIndex);
                 var shoulder=world.get(side+"_arm").getTranslation(new Vector3f());
-                var palm=new Vector3f(rear).fma(side.equals("right")?0:GRIP_SPACING,shaft);
+                var palm=new Vector3f(rear).fma(side.equals("right")?0:limits.gripSpacingCm(),shaft);
                 var elbow=selectedArms[sideIndex].elbow();
                 deep+=space.deepArmContact(shoulder,elbow,palm);
             }
@@ -295,7 +295,7 @@ public final class SpearAimPose {
         float peak=0;
         for(String side:SIDES) {
             var shoulder=world.get(side+"_arm").getTranslation(new Vector3f());
-            var palm=new Vector3f(rear).fma(side.equals("right")?0:GRIP_SPACING,shaft);
+            var palm=new Vector3f(rear).fma(side.equals("right")?0:limits.gripSpacingCm(),shaft);
             peak=java.lang.Math.max(peak,arm(side,shoulder,palm,shaft,space,continuity,limits).peakStep());
         }
         return peak;
@@ -448,7 +448,7 @@ public final class SpearAimPose {
         var right=world.get("right_arm").getTranslation(new Vector3f());
         var left=world.get("left_arm").getTranslation(new Vector3f());
         var separation=new Vector3f(left).sub(right);
-        float shoulderAlong=separation.dot(shaft),difference=GRIP_SPACING-shoulderAlong;
+        float shoulderAlong=separation.dot(shaft),difference=limits.gripSpacingCm()-shoulderAlong;
         // Blend the longitudinal grip bound across the whole shoulder projection.
         // A binary 30 cm threshold jumped the rear palm by up to 27 cm when a
         // leaning/slim shoulder crossed it, despite almost unchanged aim.
@@ -475,7 +475,7 @@ public final class SpearAimPose {
     private static float[] longitudinalRange(Map<String,Matrix4f> world,Vector3f shaft,SpearConstraints.Limits limits) {
         var separation=world.get("left_arm").getTranslation(new Vector3f())
                 .sub(world.get("right_arm").getTranslation(new Vector3f()));
-        float along=separation.dot(shaft),difference=GRIP_SPACING-along;
+        float along=separation.dot(shaft),difference=limits.gripSpacingCm()-along;
         float forward=java.lang.Math.clamp(along/54,0,1);
         forward=forward*forward*(3-2*forward);
         // Negative reach is bounded by the absolute 150-degree wrist limit.
@@ -756,7 +756,7 @@ public final class SpearAimPose {
         for(int sideIndex=0;sideIndex<SIDES.size();sideIndex++) {
             String side=SIDES.get(sideIndex);
             var shoulder=world.get(side+"_arm").getTranslation(new Vector3f());
-            var palm=new Vector3f(best).fma(side.equals("right")?0:GRIP_SPACING,bestAxis);
+            var palm=new Vector3f(best).fma(side.equals("right")?0:limits.gripSpacingCm(),bestAxis);
             var candidate=initialArms[sideIndex];
             if(limits.carry()&&side.equals("right")) {
                 var upper=space.body.transformDirection(new Vector3f(candidate.elbow()).sub(shoulder));

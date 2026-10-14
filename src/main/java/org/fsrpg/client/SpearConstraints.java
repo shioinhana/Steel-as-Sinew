@@ -9,11 +9,15 @@ import org.joml.Vector3f;
 /** Small, bounded geometric search for a rigid two-hand grip; all distances are centimeters. */
 final class SpearConstraints {
     private SpearConstraints() {}
-    record Limits(float elbowDegrees, float wristDegrees, float clearanceCm, float neckYawDegrees,float verticalBankDegrees, boolean tucked,boolean carry) {
+    record Limits(float elbowDegrees, float wristDegrees, float clearanceCm, float neckYawDegrees,float verticalBankDegrees, boolean tucked,boolean carry,float gripSpacingCm) {
+        Limits(float elbowDegrees,float wristDegrees,float clearanceCm,float neckYawDegrees,float verticalBankDegrees,boolean tucked,boolean carry) {
+            this(elbowDegrees,wristDegrees,clearanceCm,neckYawDegrees,verticalBankDegrees,tucked,carry,SpearGrip.RESTING_CM);
+        }
         Limits(float elbowDegrees,float wristDegrees,float clearanceCm,float neckYawDegrees,float verticalBankDegrees,boolean tucked) {
             this(elbowDegrees,wristDegrees,clearanceCm,neckYawDegrees,verticalBankDegrees,tucked,tucked);
         }
-        Limits withCarry(boolean value) {return new Limits(elbowDegrees,wristDegrees,clearanceCm,neckYawDegrees,verticalBankDegrees,tucked,value);}
+        Limits withCarry(boolean value) {return new Limits(elbowDegrees,wristDegrees,clearanceCm,neckYawDegrees,verticalBankDegrees,tucked,value,gripSpacingCm);}
+        Limits withGrip(float spacingCm) {return new Limits(elbowDegrees,wristDegrees,clearanceCm,neckYawDegrees,verticalBankDegrees,tucked,carry,spacingCm);}
         Limits(float elbowDegrees,float wristDegrees,float clearanceCm,float neckYawDegrees,float verticalBankDegrees) {
             this(elbowDegrees,wristDegrees,clearanceCm,neckYawDegrees,verticalBankDegrees,false);
         }
@@ -26,7 +30,8 @@ final class SpearConstraints {
                     || !Float.isFinite(wristDegrees) || wristDegrees < 90 || wristDegrees > 150
                     || !Float.isFinite(clearanceCm) || clearanceCm < 0 || clearanceCm > 6
                     || !Float.isFinite(neckYawDegrees) || neckYawDegrees < 50 || neckYawDegrees > 100
-                    || !Float.isFinite(verticalBankDegrees) || verticalBankDegrees < 0 || verticalBankDegrees > 25)
+                    || !Float.isFinite(verticalBankDegrees) || verticalBankDegrees < 0 || verticalBankDegrees > 25
+                    || !Float.isFinite(gripSpacingCm) || gripSpacingCm < SpearGrip.MINIMUM_CM || gripSpacingCm > SpearGrip.MAXIMUM_CM)
                 throw new IllegalArgumentException("Invalid spear presentation limits");
         }
     }
