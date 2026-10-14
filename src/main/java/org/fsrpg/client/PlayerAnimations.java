@@ -509,8 +509,9 @@ public final class PlayerAnimations {
             var spearSeed = binding.spearMotion.prepare(sourceWorld,renderTick,chestReturn,gripFidelity);
             // The hands slide along the pole instead of moving as one rigid block: working the
             // weapon opens the grip, and a carried pole keeps the authored separation.
-            float gripSpacing = SpearGrip.solve(SpearGrip.authored(sourceWorld),
-                    (float)(aim.distance() * 100), spearSeed.authoredMotion());
+            float authoredSpacing = SpearGrip.authored(sourceWorld);
+            float gripSpacing = server.phase().equals("READY") ? SpearGrip.clamp(authoredSpacing)
+                    : SpearGrip.solve(authoredSpacing, (float)(aim.distance() * 100), spearSeed.authoredMotion());
             pose=SpearAimPose.apply(binding.asset.full(),pose,aim,bodyYaw,living.getEyeHeight(),spearSeed.rear(),spearSeed.chest(),
                     spearSeed.actual(),spearSeed.continuity(),spearSeed.authoredMotion(),new SpearConstraints.Limits(ClientOptions.SPEAR_ELBOW_LIMIT.get().floatValue(),
                             ClientOptions.SPEAR_WRIST_LIMIT.get().floatValue(),ClientOptions.SPEAR_CLEARANCE.get().floatValue(),

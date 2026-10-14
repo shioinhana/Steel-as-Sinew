@@ -15,7 +15,7 @@ import org.joml.Vector3f;
 
 /** Aim a pole crossing both fists, retaining the authored weight shift and straight wrists. */
 public final class SpearAimPose {
-    private static final float UPPER=37.5f, PALM_LINK=31.25f, GRIP_SPACING=58;
+    private static final float UPPER=37.5f, PALM_LINK=31.25f;
     private static final float CONTINUOUS_PEAK=89, PEAK_TIE=.5f;
     private static final List<String> SIDES=List.of("right","left");
     private SpearAimPose() {}
@@ -731,7 +731,7 @@ public final class SpearAimPose {
         }
         for(int sideIndex=0;sideIndex<SIDES.size();sideIndex++) {
             String side=SIDES.get(sideIndex);
-            var palm=new Vector3f(rear).fma(side.equals("right")?0:GRIP_SPACING,shaft);
+            var palm=new Vector3f(rear).fma(side.equals("right")?0:limits.gripSpacingCm(),shaft);
             var candidate=arm(side,world.get(side+"_arm").getTranslation(new Vector3f()),palm,shaft,space,continuity,limits);
             if(space.carry&&side.equals("right")) {
                 var shoulder=world.get(side+"_arm").getTranslation(new Vector3f());
