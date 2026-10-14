@@ -39,6 +39,15 @@ public final class Locomotion {
     public static LowerBody supported(Matrix4f right, Matrix4f left, float lowerWeight,
                                       float phase, float walkSpeed, float moving, float directionX, float directionForward,
                                       float strideScale, float kneeDegrees, PresentationMotion.Balance balance, float authoredBodyYcm, float lane) {
+        return supported(right,left,lowerWeight,phase,walkSpeed,moving,directionX,directionForward,strideScale,kneeDegrees,balance,authoredBodyYcm,lane,0);
+    }
+    /**
+     * @param crouchCm lowers (positive) or raises (negative) the pelvis; soles stay planted.
+     */
+    public static LowerBody supported(Matrix4f right, Matrix4f left, float lowerWeight,
+                                      float phase, float walkSpeed, float moving, float directionX, float directionForward,
+                                      float strideScale, float kneeDegrees, PresentationMotion.Balance balance, float authoredBodyYcm, float lane,
+                                      float crouchCm) {
         float magnitude = (float) Math.hypot(directionX, directionForward);
         float dx = magnitude > .001f ? directionX / magnitude : 0;
         float df = magnitude > .001f ? directionForward / magnitude : 1;
@@ -49,10 +58,16 @@ public final class Locomotion {
         var r = foot(authoredSole(right, false), false, lowerWeight, cycle, reach, lift, dx, df, lane);
         var l = foot(authoredSole(left, true), true, lowerWeight, cycle + (float) Math.PI, reach, lift, dx, df, lane);
         float hipX = balance.x() / 6.25f, hipZ = -balance.z() / 6.25f;
+        float crouch = Float.isFinite(crouchCm) ? crouchCm / 6.25f : 0;
         // The planted foot determines pelvis height. The swing foot can fold its knee independently.
-        float drop = Math.max(requiredDrop(r, -1.9f + hipX, hipZ), requiredDrop(l, 1.9f + hipX, hipZ))
-                + Math.max(.12f, authoredBodyYcm / 6.25f + .02f);
+        float lowest = Math.max(requiredDrop(r, -1.9f + hipX, hipZ), requiredDrop(l, 1.9f + hipX, hipZ));
+        float drop = lowest + Math.max(.12f, authoredBodyYcm / 6.25f + .02f);
         float hipY = 12 + drop - authoredBodyYcm / 6.25f;
+        if (crouch != 0) {
+            // hipY grows downward: a larger drop folds the knees, and never below the reach floor.
+            drop = Math.max(lowest + authoredBodyYcm / 6.25f + .02f, drop + crouch);
+            hipY = 12 + drop - authoredBodyYcm / 6.25f;
+        }
         float rightYaw = right == null ? 0 : -right.getUnnormalizedRotation(new Quaternionf()).getEulerAnglesXYZ(new Vector3f()).y * lowerWeight;
         float leftYaw = left == null ? 0 : -left.getUnnormalizedRotation(new Quaternionf()).getEulerAnglesXYZ(new Vector3f()).y * lowerWeight;
         return new LowerBody(solve(new Vector3f(-1.9f + hipX, hipY, hipZ), r, rightYaw, support(cycle,gait)),

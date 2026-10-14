@@ -422,13 +422,19 @@ public final class PlayerAnimations {
         hipBalance = PresentationMotion.withAuthoredHipShift(pose, restBody, balance);
         pose = PresentationMotion.shiftTorso(pose,balance);
         Locomotion.LowerBody supportedLower = null;
+        // The lower body carries the aim too: aiming down folds both knees while the soles stay
+        // planted, instead of leaving a straight-legged actor leaning over the pole.
+        float aimCrouchCm = 0;
+        double authoredPitch = binding.lastAim == null ? entity.getXRot() : binding.lastAim.pitch();
         if (entity.onGround() && !entity.isPassenger() && !state.isFallFlying && state.swimAmount <= .5f) {
             var lowerWorld = binding.asset.full().worldMatrices(pose);
+            if (server.style().equals("spear"))
+                aimCrouchCm = SpearMotion.aimCrouchCm(authoredPitch, ClientOptions.SPEAR_AIM_CROUCH.get().floatValue());
             supportedLower = Locomotion.supported(lowerWorld.get("right_leg"), lowerWorld.get("left_leg"), lowerWeight,
                     visualWalkPhase, state.walkAnimationSpeed, sample.movingWeight(),
                     binding.motion.lateralLean(), binding.motion.forwardLean(), ClientOptions.STRIDE_LENGTH.get().floatValue(),
                     ClientOptions.KNEE_BEND.get().floatValue(), hipBalance,
-                    pose.get("body").position().y()-restBody.y(), binding.motion.gaitLane());
+                    pose.get("body").position().y()-restBody.y(), binding.motion.gaitLane(), aimCrouchCm);
             if(server.style().equals("spear")) {
                 var heading=binding.lastSpearChest==null?pose.get("body").fsQuaternion():binding.lastSpearChest;
                 var forward=heading.transform(new Vector3f(0,0,1));

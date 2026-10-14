@@ -131,6 +131,14 @@ tasks.register('poseSheetDump', JavaExec) {
     args project.hasProperty('poseSheetOutput') ? project.property('poseSheetOutput').toString() : 'build/pose-sheet/poses.json'
 }
 
+tasks.register('spearStanceTest', JavaExec) {
+    dependsOn testClasses
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'org.fsrpg.client.SpearStanceTest'
+    jvmArgs '-Dfile.encoding=UTF-8'
+}
+tasks.named('check') { dependsOn 'spearStanceTest' }
+
 tasks.register('spearGripTest', JavaExec) {
     dependsOn testClasses
     classpath = sourceSets.test.runtimeClasspath

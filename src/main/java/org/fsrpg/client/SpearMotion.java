@@ -48,6 +48,23 @@ public final class SpearMotion {
         return Map.copyOf(result);
     }
 
+    /**
+     * How far the aim lowers the whole body, in centimeters.
+     *
+     * The solver only turns the chest: aiming at the ground in front of the actor used to leave
+     * the legs completely straight, which reads as leaning over a pole rather than taking a
+     * stance. Lowering the pelvis makes the support solver fold both knees while the soles stay
+     * on the floor, so the aim is carried by the legs as well as by the arms.
+     */
+    public static float aimCrouchCm(double pitchDegrees, float maximumCm) {
+        if (!Double.isFinite(pitchDegrees) || !Float.isFinite(maximumCm) || maximumCm <= 0) return 0;
+        // Downward aim sinks; upward aim rises slightly, because a raised pole is carried over a
+        // lengthened body rather than a compressed one.
+        double normalized = Math.clamp(pitchDegrees / 45.0, -1, 1);
+        double shaped = Math.signum(normalized) * Math.pow(Math.abs(normalized), 1.5);
+        return (float) (shaped * maximumCm);
+    }
+
     public record Seed(Vector3f rear, Quaternionf chest, Map<String, Matrix4f> continuity,
                        Map<String, Matrix4f> actual, float authoredMotion) {}
 
