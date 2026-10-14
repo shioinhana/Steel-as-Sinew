@@ -18,6 +18,10 @@ public final class SwordMotion {
     public static final float MAXIMUM_MOVEMENT_LEAN = 4;
     public static final float MAXIMUM_HIP_SHIFT_CM = 1.5f;
     public static final float STRIDE_BODY_SCALE = .2f;
+    /** Share of the torso's stance yaw the pelvis and legs carry. */
+    public static final float STANCE_FOLLOW = .5f;
+    /** Weight the lead shoulder takes into a stroke, in degrees of torso tilt. */
+    public static final float STRIKE_LEAN = 15f;
     private static final V WAIST_REST = new V(0, -75, 0);
     private SwordMotion() {}
 
@@ -57,6 +61,21 @@ public final class SwordMotion {
         return Map.copyOf(pose);
     }
 
+    /** Yaw the authored pose gives the hips, in radians; the sword stance used to discard it. */
+    public static float authoredHipYaw(Map<String, Pose> source) {
+        Pose hip = source.get("hip");
+        return hip == null ? 0 : hip.fsQuaternion().getEulerAnglesZYX(new Vector3f()).y;
+    }
+
+    /** Rotation the final torso carries around the actor's own forward, in radians. */
+    public static float bodyYaw(ModelDocument model, Map<String, Pose> pose) {
+        var world = model.worldMatrices(pose);
+        Matrix4f body = world.get("body");
+        if (body == null) return 0;
+        Vector3f forward = body.transformDirection(new Vector3f(0, 0, 1));
+        return (float) Math.atan2(forward.x, forward.z);
+    }
+
     /** Move the old torso-center pivot to the waist without changing a single upper
      * world transform. Child offsets compensate the pivot change. Ancestor motion is
      * baked once, so adding a world-space lean does not rotate around the old yawed hip. */
@@ -81,20 +100,59 @@ public final class SwordMotion {
         return Map.copyOf(pose);
     }
 
-    /** Spear stance feet are the authored base; movement replaces them through the
-     * same support solver, cadence, lanes and upper/full action weights as the spear. */
-    public static Map<String, Pose> lower(ModelDocument sword, Map<String, Pose> upper,
-                                         Map<String, Matrix4f> spearWorld) {
+    /** Rotation a yaw about the world up axis puts on a pose, preserving its world height. */
+    private static Pose yawed(Pose pose, float yaw, Vector3f pivot) {
+        Quaternionf rotation = new Quaternionf().rotationY(yaw);
+        Vector3f position = rotation.transform(pose.position().vector().sub(pivot, new Vector3f())).add(pivot);
+        return new Pose(FsvoxAnimation.fromQuaternion(rotation.mul(pose.fsQuaternion())),
+                new V(position.x, position.y, position.z), pose.scale());
+    }
+
+    /** Carry the pelvis and both legs toward the torso's stance by part of its yaw, so the lower
+     * body follows the fighting posture instead of staying square to the actor's forward. */
+    public static Map<String, Pose> stance(ModelDocument sword, Map<String, Pose> upper,
+                                           Map<String, Matrix4f> spearWorld, float yaw) {
         Map<String, Pose> pose = new HashMap<>(upper);
+        float offset = yaw * STANCE_FOLLOW;
+        var pivot = new Vector3f();
+        int feet = 0;
         for (String side : List.of("right", "left")) {
-            String leg = side + "_leg";
-            if (spearWorld.containsKey(leg)) pose.put(leg, matrixPose(spearWorld.get(leg)));
+            Matrix4f leg = spearWorld.get(side + "_leg");
+            if (leg == null) continue;
+            pivot.add(leg.getTranslation(new Vector3f())); feet++;
+        }
+        if (feet == 0) return Map.copyOf(pose);
+        pivot.div(feet);
+        for (String side : List.of("right", "left")) {
+            Matrix4f leg = spearWorld.get(side + "_leg");
+            if (leg != null) pose.put(side + "_leg", yawed(matrixPose(leg), offset, pivot));
             for (String suffix : List.of("_foreleg", "_foot")) {
                 var part = sword.rig().parts().get(side + suffix);
                 if (part != null) pose.put(part.id(), part.rest());
             }
         }
         return Map.copyOf(pose);
+    }
+
+    /** Stance feet are the authored base; movement replaces them through the same support
+     * solver, cadence, lanes and upper/full action weights as the spear. */
+    public static Map<String, Pose> lower(ModelDocument sword, Map<String, Pose> upper,
+                                         Map<String, Matrix4f> spearWorld) {
+        return stance(sword, upper, spearWorld, 0);
+    }
+
+    /** Tilt the torso into the strike along the weapon's own vertical plane, so a cut carries
+     * the shoulders and hips instead of leaving the trunk bolt upright behind a moving arm. */
+    public static Map<String, Pose> strikeLean(ModelDocument sword, Map<String, Pose> pose, float tiltDegrees) {
+        if (Math.abs(tiltDegrees) < .01f) return pose;
+        var world = sword.worldMatrices(pose);
+        Matrix4f body = world.get("body");
+        if (body == null) return pose;
+        // The blade side of the fence is the right hand; leaning that way loads the stroke.
+        Vector3f blade = world.containsKey("right_item")
+                ? world.get("right_item").transformDirection(new Vector3f(0, 1, 0)) : new Vector3f(0, -1, 0);
+        float side = blade.y <= 0 ? 1 : -1;
+        return PresentationMotion.lean(pose, side * tiltDegrees, 0, 1);
     }
 
     private static Pose matrixPose(Matrix4f matrix) {

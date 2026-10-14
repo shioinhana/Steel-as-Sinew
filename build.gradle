@@ -123,6 +123,22 @@ tasks.register('swordMotionTest', JavaExec) {
     jvmArgs '-Dfile.encoding=UTF-8'
 }
 
+tasks.register('poseSheetDump', JavaExec) {
+    dependsOn testClasses
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'org.fsrpg.client.PoseSheetDump'
+    jvmArgs '-Dfile.encoding=UTF-8'
+    args project.hasProperty('poseSheetOutput') ? project.property('poseSheetOutput').toString() : 'build/pose-sheet/poses.json'
+}
+
+tasks.register('swordTimingTest', JavaExec) {
+    dependsOn testClasses
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'org.fsrpg.client.SwordTimingTest'
+    jvmArgs '-Dfile.encoding=UTF-8'
+}
+tasks.named('check') { dependsOn 'swordTimingTest' }
+
 tasks.register('spearForwardFieldPoseTest', JavaExec) {
     dependsOn testClasses
     classpath = sourceSets.test.runtimeClasspath

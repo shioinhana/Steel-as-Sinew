@@ -203,6 +203,118 @@ public final class PoseLayers {
         return (float) (weight * weight * (3 - 2 * weight));
     }
 
+    /** Quintic weight: zero slope and zero acceleration at both ends, unlike a smoothstep. */
+    public static float smootherWeight(float weight) {
+        float t = Math.clamp(weight, 0, 1);
+        return t * t * t * (t * (t * 6 - 15) + 10);
+    }
+
+    /**
+     * Offset decay (inertialization) between two clips that do not agree on a handoff pose.
+     *
+     * Both imported clips define their own first pose, so a weighted mix of two absolute poses
+     * still contains the step between them: measured 17-19 degree single-frame jumps on the
+     * blade arms at every dual-blade handoff. Instead the step itself becomes a correction that
+     * starts at that value and decays to zero over the bridge, so the new action is followed
+     * smoothly rather than crossfaded into:
+     *   p(t) = offset(t) * start * authored(t),  offset(t) = exp((1 - t) * log(start / last))
+     * The outgoing velocity is carried in the same term, which is what makes a fast stroke blend
+     * into the next action instead of stopping at the switch frame.
+     */
+    public static final class OffsetDecay {
+        /** How much of the outgoing one-frame velocity the correction may also carry. */
+        private static final float VELOCITY_LIMIT = 1f;
+        /** Multiple of the measured pose step the correction may reach, so it always converges. */
+        private static final float MAXIMUM_CORRECTION = 1.6f;
+        private final Map<String, Quaternionf> rotationOffset;
+        private final Map<String, Vector3f> translationOffset;
+
+        private OffsetDecay(Map<String, Quaternionf> rotationOffset, Map<String, Vector3f> translationOffset) {
+            this.rotationOffset = rotationOffset;
+            this.translationOffset = translationOffset;
+        }
+
+        /**
+         * Correction that removes the pose step between the last presented pose and the first
+         * frame of the new action, plus the outgoing velocity that must carry into it.
+         */
+        public static OffsetDecay of(Map<String, Pose> last, Map<String, Pose> first, Map<String, Pose> previous) {
+            var rotations = new HashMap<String, Quaternionf>();
+            var translations = new HashMap<String, Vector3f>();
+            if (last != null) for (var entry : last.entrySet()) {
+                Pose start = first == null ? null : first.get(entry.getKey());
+                if (start == null) continue;
+                Quaternionf step = new Quaternionf(entry.getValue().fsQuaternion()).normalize()
+                        .mul(new Quaternionf(start.fsQuaternion()).normalize().invert()).normalize();
+                Quaternionf decay = log(step);
+                // The correction only has to bridge the step the two clips actually disagree on;
+                // anything larger would need to be unwound inside the same window.
+                float cap = magnitude(decay) * MAXIMUM_CORRECTION;
+                if (magnitude(decay) > cap) decay.mul(cap / magnitude(decay));
+                Pose older = previous == null ? null : previous.get(entry.getKey());
+                if (older != null && decay != null) {
+                    Quaternionf velocity = log(new Quaternionf(entry.getValue().fsQuaternion()).normalize()
+                            .mul(new Quaternionf(older.fsQuaternion()).normalize().invert()).normalize());
+                    // Carry the outgoing speed, but never let one fast frame dominate the correction.
+                    if (velocity != null) {
+                        float limit = magnitude(decay) * VELOCITY_LIMIT, speed = magnitude(velocity);
+                        decay.add(speed > limit && speed > 1e-6f ? velocity.mul(limit / speed) : velocity);
+                    }
+                }
+                rotations.put(entry.getKey(), decay);
+                Vector3f travel = new Vector3f(entry.getValue().position().vector()).sub(start.position().vector());
+                if (older != null) {
+                    Vector3f travelStep = new Vector3f(entry.getValue().position().vector()).sub(older.position().vector());
+                    float limit = travel.length() * VELOCITY_LIMIT, speed = travelStep.length();
+                    travel.add(speed > limit && speed > 1e-6f ? travelStep.mul(limit / speed) : travelStep);
+                }
+                translations.put(entry.getKey(), travel);
+            }
+            return new OffsetDecay(Map.copyOf(rotations), Map.copyOf(translations));
+        }
+
+        public Map<String, Pose> blend(Map<String, Pose> authored, float weight) {
+            float t = Math.clamp(weight, 0, 1);
+            if (t >= 1) return authored;
+            float decay = 1 - smootherWeight(t);
+            var result = new HashMap<String, Pose>();
+            for (var entry : authored.entrySet()) {
+                Pose pose = entry.getValue();
+                Quaternionf rotation = new Quaternionf(pose.fsQuaternion()).normalize();
+                Quaternionf step = rotationOffset.get(entry.getKey());
+                if (step != null) rotation = exp(new Quaternionf(step).mul(decay)).mul(rotation).normalize();
+                Vector3f position = pose.position().vector();
+                Vector3f offset = translationOffset.get(entry.getKey());
+                if (offset != null) position = new Vector3f(position).add(new Vector3f(offset).mul(decay));
+                result.put(entry.getKey(), new Pose(FsvoxAnimation.fromQuaternion(rotation),
+                        new V(position.x, position.y, position.z), pose.scale()));
+            }
+            return Map.copyOf(result);
+        }
+    }
+
+    /** Length of the rotation vector a logarithm quaternion carries. */
+    private static float magnitude(Quaternionf logarithm) {
+        return (float) Math.sqrt(logarithm.x * logarithm.x + logarithm.y * logarithm.y + logarithm.z * logarithm.z);
+    }
+
+    private static Quaternionf log(Quaternionf rotation) {
+        float w = Math.clamp(rotation.w, -1, 1);
+        float length = (float) Math.sqrt(rotation.x * rotation.x + rotation.y * rotation.y + rotation.z * rotation.z);
+        if (length < 1e-7f) return new Quaternionf();
+        float angle = (float) Math.atan2(length, w);
+        float scale = angle / length;
+        return new Quaternionf(rotation.x * scale, rotation.y * scale, rotation.z * scale, 0);
+    }
+
+    private static Quaternionf exp(Quaternionf logarithm) {
+        float length = (float) Math.sqrt(logarithm.x * logarithm.x + logarithm.y * logarithm.y + logarithm.z * logarithm.z);
+        if (length < 1e-7f) return new Quaternionf();
+        float sine = (float) Math.sin(length);
+        return new Quaternionf(logarithm.x / length * sine, logarithm.y / length * sine, logarithm.z / length * sine,
+                (float) Math.cos(length)).normalize();
+    }
+
     /** Contact preparation uses a nearly uniform turn, with short continuous acceleration ramps. */
     public static float windupAimWeight(double renderTick, double started, double duration) {
         double t = duration <= 0 ? 1 : Math.clamp((renderTick - started) / duration, 0, 1);

@@ -47,12 +47,19 @@ public final class PlayerAnimations {
         PoseLayers.AttackClock attackClock;
         PoseLayers.PendingAction<RpgAnimationPayload> pendingAction;
         double sampledElapsedTicks = -1, sampledClipSeconds;
-        Map<String, Pose> lastPose, transitionFrom;
+        Map<String, Pose> lastPose, transitionFrom, lastBase, swordPending;
+        PoseLayers.OffsetDecay swordDecay;
+        Map<String, Pose> legacyBase, legacyPending;
+        PoseLayers.OffsetDecay legacyDecay;
+        String legacyAction = "";
+        double legacyTransitionStarted, legacyTransitionTicks;
         double transitionStarted, transitionTicks;
         AttackAim.Point lastAim, aimTransitionFrom;
         Vector3f lastSpearRear, lastSpearSourceRear;
         Quaternionf lastSpearChest, lastSpearSourceChest;
         Map<String, Matrix4f> lastSpearWorld;
+        PoseRemap.Knots swordKnots;
+        Map<String, Pose> swordHold;
         SpearMotion.State spearMotion = new SpearMotion.State();
         SpearTurn.State spearTurn = new SpearTurn.State();
         double lastSpearChestTick = Double.NaN;
@@ -76,6 +83,12 @@ public final class PlayerAnimations {
                 try {
                     lowerAsset = AnimationAssets.load("spear.fsvoxel");
                     lowerPlayback = new PoseLayers.Playback(lowerAsset.full().rig(), PoseLayers.DEFAULT_STANCE);
+                    // The authored motion window and the carry pose are clip properties.
+                    var clip = asset.full().rig().clips().get(state.action());
+                    if (clip != null) {
+                        swordKnots = PoseRemap.knots(asset.full().rig(), clip);
+                        swordHold = PoseRemap.holdPose(asset.full().rig(), clip);
+                    }
                 } catch (Exception failure) { throw new IllegalArgumentException("Unable to load current spear lower-body stance", failure); }
             }
         }
@@ -150,6 +163,8 @@ public final class PlayerAnimations {
         if (previous != null && previous.lastPose != null) {
             var clip = asset.full().rig().clips().get(state.action());
             next.transitionFrom = previous.lastPose;
+            next.swordPending = previous.lastPose;
+            next.swordDecay = null;
             next.transitionLowerWeight = previous.lastLowerWeight;
             next.transitionStarted = renderTick;
             next.transitionTicks = PoseLayers.transitionTicks(clip, ClientOptions.ACTION_BLEND.get(), state.windupTicks(),
@@ -256,6 +271,20 @@ public final class PlayerAnimations {
             seconds=LegacyMotion.actionSeconds(clip,server,elapsed,Math.max(0,renderTick-binding.started)/20);
             binding.sampledClipSeconds=seconds;
             var pose=LegacyMotion.sample(binding.asset.full(),server,seconds,renderTick/20,state,living);
+            // The imported dual strokes hand a held end pose straight to the next action. Without
+            // a bridge the twin blades snap between clips; the sword path bridges below instead.
+            if (!server.action().equals(binding.legacyAction)) {
+                binding.legacyAction = server.action();
+                if (binding.legacyBase != null) {
+                    binding.legacyPending = binding.legacyBase;
+                    binding.legacyDecay = null;
+                    binding.legacyTransitionStarted = renderTick;
+                    binding.legacyTransitionTicks = PoseLayers.transitionTicks(clip, ClientOptions.ACTION_BLEND.get(),
+                            server.windupTicks(), elapsed >= 0);
+                }
+            }
+            pose=legacyTransition(binding,pose,renderTick);
+            binding.legacyBase = pose;
             pose=retargetSkin(state,pose);
             renderSamples++; lastSampleTick=renderTick;
             binding.sampled=new Frame(binding.asset.full(),null,pose,binding.asset.full().worldMatrices(pose),
@@ -272,12 +301,27 @@ public final class PlayerAnimations {
         var sample = binding.playback.sample(seconds, renderTick / 20, renderTick, state.walkAnimationSpeed, -state.yRot,
                 ClientOptions.MOVING_FULL_BODY_LOWER_WEIGHT.get().floatValue(), ClientOptions.STANCE_FOOT_YAW_LIMIT.get().floatValue());
         if (sword) {
-            var upper = SwordMotion.waist(binding.asset.full(), SwordMotion.sampleUpper(binding.asset.full(), clip,
-                    seconds, breathSeconds, entity.getXRot(), state.yRot));
+            var upper = SwordMotion.sampleUpper(binding.asset.full(), clip, seconds, breathSeconds, entity.getXRot(), state.yRot);
+            // The imported stroke finishes inside the first fifth of its clip, so it is retimed
+            // onto the authoritative windows: the blade now moves through the contact window
+            // instead of freezing before it, and the windup shows a counter-move.
+            float anticipation = 0;
+            if (elapsed >= 0 && binding.swordKnots != null) {
+                var attack = PoseRemap.plan(binding.swordKnots, clip, elapsed, server.windupTicks(), server.activeTicks(), server.recoveryTicks());
+                var retimed = SwordMotion.sampleUpper(binding.asset.full(), clip, attack.clipTime(), breathSeconds, entity.getXRot(), state.yRot);
+                anticipation = attack.anticipation();
+                if (anticipation > 0 && binding.swordHold != null) retimed = PoseRemap.anticipate(retimed, binding.swordHold, anticipation);
+                upper = retimed;
+                binding.sampledClipSeconds = attack.clipTime();
+            }
+            upper = SwordMotion.waist(binding.asset.full(), upper);
             var lower = binding.lowerPlayback.sample(renderTick / 20, renderTick / 20, renderTick, state.walkAnimationSpeed,
                     -state.yRot, ClientOptions.MOVING_FULL_BODY_LOWER_WEIGHT.get().floatValue(), ClientOptions.STANCE_FOOT_YAW_LIMIT.get().floatValue());
             boolean full = SwordMotion.fullAction(clip);
-            sample = new PoseLayers.Sample(SwordMotion.lower(binding.asset.full(), upper, binding.lowerAsset.full().worldMatrices(lower.pose())),
+            // The pelvis and feet carry half the stance yaw, so the lower body stops staying
+            // square while the trunk stands side-on to the target.
+            sample = new PoseLayers.Sample(SwordMotion.stance(binding.asset.full(), upper, binding.lowerAsset.full().worldMatrices(lower.pose()),
+                            SwordMotion.bodyYaw(binding.asset.full(), upper)),
                     sample.movingWeight(), Locomotion.lowerWeight(sample.movingWeight(), full,
                             PoseLayers.movingLowerWeight(clip, ClientOptions.MOVING_FULL_BODY_LOWER_WEIGHT.get().floatValue())), full ? "full" : "upper");
         }
@@ -339,14 +383,23 @@ public final class PlayerAnimations {
             // Phase corrections cannot pull an entry bridge to its endpoint in a single frame.
             float weight = PoseLayers.transitionWeight(renderTick, binding.transitionStarted, binding.transitionTicks);
             if (weight < 1) {
-                Map<String, Pose> blended = new HashMap<>();
-                for (var entry : pose.entrySet()) blended.put(entry.getKey(),
-                        binding.transitionFrom.getOrDefault(entry.getKey(), entry.getValue()).mix(entry.getValue(), weight, true));
-                pose = blended; transitionFrames++;
+                // The correction exists to remove the step between the two clips, measured on the
+                // new action's own first frame. That frame is already the handoff pose, so it is
+                // presented as-is; applying the correction there would count the step twice.
+                if (weight <= 0) pose = binding.lastPose == null ? pose : binding.lastPose;
+                else {
+                    if (binding.swordPending != null) {
+                        binding.swordDecay = PoseLayers.OffsetDecay.of(binding.swordPending, pose, binding.lastBase);
+                        binding.swordPending = null;
+                    }
+                    if (binding.swordDecay != null) pose = binding.swordDecay.blend(pose, weight);
+                }
+                transitionFrames++;
                 lowerWeight = binding.transitionLowerWeight + (lowerWeight - binding.transitionLowerWeight) * weight;
-            } else binding.transitionFrom = null;
+            } else { binding.transitionFrom = null; binding.swordDecay = null; }
         }
         binding.lastPose = pose;
+        binding.lastBase = pose;
         binding.lastLowerWeight = lowerWeight;
         float visualWalkPhase = binding.motion.gaitPhase(renderTick, sample.movingWeight(), lowerWeight, ClientOptions.STRIDE_LENGTH.get().floatValue());
         float leanStrength = elapsed >= 0 ? ClientOptions.ATTACK_LEAN_WEIGHT.get().floatValue() : server.phase().equals("GUARDING") ? .6f : 1;
@@ -360,6 +413,9 @@ public final class PlayerAnimations {
             hipShift = Math.min(hipShift, SwordMotion.MAXIMUM_HIP_SHIFT_CM);
         }
         pose = binding.motion.applyLean(pose, leanDegrees, leanStrength, ClientOptions.HEAD_LEAN_FOLLOW.get().floatValue());
+        if (sword && elapsed >= 0)
+            pose = SwordMotion.strikeLean(binding.asset.full(), pose,
+                    SwordMotion.STRIKE_LEAN * Math.min(1, (float) elapsed / 3f));
         var balance = binding.motion.balance(hipShift, leanStrength);
         var hipBalance = balance;
         var restBody = sword ? SwordMotion.waistRest() : binding.asset.full().rig().parts().get("body").rest().position();
@@ -506,6 +562,18 @@ public final class PlayerAnimations {
         var clip=b.asset.full().rig().clips().get(b.state.action());
         return LegacyMotion.actionSeconds(clip,b.state,elapsed,Math.max(0,renderTick-b.started)/20,firstPerson);
     }
+    /** Velocity-preserving bridge for the imported clips, which hand held poses to each other. */
+    private static Map<String, Pose> legacyTransition(Binding binding, Map<String, Pose> pose, double renderTick) {
+        if (binding.legacyPending != null) {
+            // The correction needs the new action's own first frame, so it is measured here.
+            binding.legacyDecay = PoseLayers.OffsetDecay.of(binding.legacyPending, pose, binding.legacyBase);
+            binding.legacyPending = null;
+        }
+        float weight = PoseLayers.transitionWeight(renderTick, binding.legacyTransitionStarted, binding.legacyTransitionTicks);
+        if (weight >= 1) { binding.legacyDecay = null; return pose; }
+        return binding.legacyDecay.blend(pose, weight);
+    }
+
     private static Map<String, Pose> retargetSkin(AvatarRenderState state, Map<String, Pose> pose) {
         if (state.skin.model() == PlayerModelType.SLIM) {
             pose = new HashMap<>(pose);
