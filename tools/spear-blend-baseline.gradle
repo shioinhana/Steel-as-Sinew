@@ -1,0 +1,21 @@
+// Compile only the preserved 0.5.1 IK ahead of the current movement regression class.
+allprojects {
+    afterEvaluate { project ->
+        def oldOutput=project.layout.buildDirectory.dir('spear-blend-baseline')
+        def oldCompiler=project.tasks.register('compileSpearBlendBaseline', JavaCompile) {
+            dependsOn project.tasks.named('testClasses')
+            source project.file('verification/spear-blend-20261012/before/SpearAimPose.java'),project.file('verification/spear-blend-20261012/before/SpearConstraints.java')
+            destinationDirectory=oldOutput
+            classpath=project.sourceSets.test.runtimeClasspath
+            javaCompiler=project.javaToolchains.compilerFor { languageVersion=JavaLanguageVersion.of(21) }
+            options.encoding='UTF-8'
+        }
+        project.tasks.register('spearMovementBefore', JavaExec) {
+            dependsOn oldCompiler
+            classpath=project.files(oldOutput)+project.sourceSets.test.runtimeClasspath
+            mainClass='org.fsrpg.client.SpearMovementContinuityTest'
+            jvmArgs '-Dfile.encoding=UTF-8','-Dfsrpg.movementDiagnostic=true'
+            args 'verification/spear-blend-20261012/movement-before.json'
+        }
+    }
+}

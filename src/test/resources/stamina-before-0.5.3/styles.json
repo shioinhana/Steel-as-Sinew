@@ -1,0 +1,205 @@
+[
+  {
+    "id": "rapier",
+    "label": "西洋剑",
+    "weaponGroup": "sword",
+    "enabled": true,
+    "leftCombo": [
+      {
+        "skillId": "sword_left"
+      },
+      {
+        "skillId": "rapier_downcut"
+      },
+      {
+        "skillId": "rapier_crosscut"
+      },
+      {
+        "skillId": "rapier_light_thrust"
+      }
+    ],
+    "rightSkill": "sword_thrust",
+    "guard": {
+      "arcDegrees": 90,
+      "damageMultiplier": 0.45,
+      "staminaCost": 55,
+      "perfectGuardTicks": 3,
+      "perfectGuardStaminaCost": 55,
+      "parryStunTicks": 8,
+      "guardBreakStunTicks": 14,
+      "repeatHitWindowTicks": 12,
+      "maxBlockedHits": 1,
+      "heavyBreaksGuard": true,
+      "perfectGuardRequiresBlockable": true
+    },
+    "heavyGuard": {
+      "arcDegrees": 120,
+      "damageMultiplier": 0.2,
+      "staminaCost": 70,
+      "perfectGuardTicks": 0,
+      "perfectGuardStaminaCost": 70,
+      "parryStunTicks": 8,
+      "guardBreakStunTicks": 18,
+      "repeatHitWindowTicks": 12,
+      "maxBlockedHits": 1,
+      "heavyBreaksGuard": true,
+      "perfectGuardRequiresBlockable": true
+    },
+    "techniques": {
+      "riposteSkill": "",
+      "riposteWindowTicks": 0,
+      "repriseSkill": "",
+      "repriseWindowTicks": 0
+    },
+    "cancels": {
+      "windupAttack": true,
+      "windupGuard": true,
+      "windupDodge": true,
+      "recoveryAttack": true,
+      "recoveryGuard": true,
+      "recoveryDodge": true
+    }
+  },
+  {
+    "id": "dual_blade",
+    "label": "双刀",
+    "weaponGroup": "dual_blade",
+    "enabled": true,
+    "leftCombo": [
+      {
+        "skillId": "dual_ll"
+      },
+      {
+        "skillId": "dual_rl"
+      }
+    ],
+    "rightSkill": "dual_rr",
+    "guard": {
+      "arcDegrees": 90,
+      "damageMultiplier": 0.45,
+      "staminaCost": 55,
+      "perfectGuardTicks": 3,
+      "perfectGuardStaminaCost": 55,
+      "parryStunTicks": 8,
+      "guardBreakStunTicks": 14,
+      "repeatHitWindowTicks": 12,
+      "maxBlockedHits": 1,
+      "heavyBreaksGuard": true,
+      "perfectGuardRequiresBlockable": true
+    },
+    "controls": {
+      "mode": "legacy_dual",
+      "leftHandLeft": "dual_ll",
+      "rightHandLeft": "dual_rl",
+      "rightHandRight": "dual_rr",
+      "leftHandRight": "dual_lr",
+      "sweepSkill": "",
+      "spearRadius": 0.18
+    }
+  },
+  {
+    "id": "spear",
+    "label": "长枪",
+    "weaponGroup": "spear",
+    "enabled": true,
+    "leftCombo": [
+      {
+        "skillId": "spear_thrust"
+      }
+    ],
+    "rightSkill": "spear_sweep",
+    "guard": {
+      "arcDegrees": 90,
+      "damageMultiplier": 0.45,
+      "staminaCost": 55,
+      "perfectGuardTicks": 3,
+      "perfectGuardStaminaCost": 55,
+      "parryStunTicks": 8,
+      "guardBreakStunTicks": 14,
+      "repeatHitWindowTicks": 12,
+      "maxBlockedHits": 1,
+      "heavyBreaksGuard": true,
+      "perfectGuardRequiresBlockable": true
+    },
+    "controls": {
+      "mode": "spear",
+      "leftHandLeft": "",
+      "rightHandLeft": "",
+      "rightHandRight": "",
+      "leftHandRight": "",
+      "sweepSkill": "spear_sweep",
+      "spearRadius": 0.18
+    }
+  },
+  {
+    "id": "unarmed",
+    "label": "空手（预留）",
+    "weaponGroup": "unarmed",
+    "enabled": false,
+    "leftCombo": [],
+    "rightSkill": "",
+    "guard": {
+      "arcDegrees": 90,
+      "damageMultiplier": 0.45,
+      "staminaCost": 55,
+      "perfectGuardTicks": 3,
+      "perfectGuardStaminaCost": 55,
+      "parryStunTicks": 8,
+      "guardBreakStunTicks": 14,
+      "repeatHitWindowTicks": 12,
+      "maxBlockedHits": 1,
+      "heavyBreaksGuard": true,
+      "perfectGuardRequiresBlockable": true
+    }
+  },
+  {
+    "id": "bow_rapid",
+    "label": "弓 · 速射",
+    "weaponGroup": "bow",
+    "enabled": true,
+    "leftCombo": [
+      {
+        "skillId": "bow_bash"
+      }
+    ],
+    "rightSkill": "bow_rapid_charge",
+    "guard": {
+      "arcDegrees": 0,
+      "damageMultiplier": 0.45,
+      "staminaCost": 0,
+      "perfectGuardTicks": 0,
+      "perfectGuardStaminaCost": 0,
+      "parryStunTicks": 8,
+      "guardBreakStunTicks": 14,
+      "repeatHitWindowTicks": 12,
+      "maxBlockedHits": 1,
+      "heavyBreaksGuard": true,
+      "perfectGuardRequiresBlockable": true
+    }
+  },
+  {
+    "id": "bow_snipe",
+    "label": "弓 · 狙击",
+    "weaponGroup": "bow",
+    "enabled": true,
+    "leftCombo": [
+      {
+        "skillId": "bow_bash"
+      }
+    ],
+    "rightSkill": "bow_snipe_charge",
+    "guard": {
+      "arcDegrees": 0,
+      "damageMultiplier": 0.45,
+      "staminaCost": 0,
+      "perfectGuardTicks": 0,
+      "perfectGuardStaminaCost": 0,
+      "parryStunTicks": 8,
+      "guardBreakStunTicks": 14,
+      "repeatHitWindowTicks": 12,
+      "maxBlockedHits": 1,
+      "heavyBreaksGuard": true,
+      "perfectGuardRequiresBlockable": true
+    }
+  }
+]

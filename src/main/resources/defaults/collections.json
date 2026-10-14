@@ -1,0 +1,1177 @@
+{
+  "schemaVersion": 1,
+  "firstHuntRequired": true,
+  "mobRewardMultiplier": 2,
+  "cropSeedRequired": 1,
+  "cropMatureRequired": 10,
+  "seedChoiceCount": 5,
+  "seedChoiceBones": 3,
+  "mobs": [
+    {
+      "id": "minecraft:blaze",
+      "entity": "minecraft:blaze",
+      "label": "烈焰人",
+      "drops": [
+        {
+          "id": "minecraft:blaze_rod",
+          "count": 1
+        }
+      ]
+    },
+    {
+      "id": "minecraft:bogged",
+      "entity": "minecraft:bogged",
+      "label": "沼骸",
+      "drops": [
+        {
+          "id": "minecraft:arrow",
+          "count": 1
+        },
+        {
+          "id": "minecraft:bone",
+          "count": 1
+        },
+        {
+          "id": "minecraft:tipped_arrow",
+          "count": 1,
+          "potion": "minecraft:poison"
+        }
+      ]
+    },
+    {
+      "id": "minecraft:breeze",
+      "entity": "minecraft:breeze",
+      "label": "旋风人",
+      "drops": [
+        {
+          "id": "minecraft:breeze_rod",
+          "count": 1
+        }
+      ]
+    },
+    {
+      "id": "minecraft:camel_husk",
+      "entity": "minecraft:camel_husk",
+      "label": "骆驼尸壳",
+      "drops": [
+        {
+          "id": "minecraft:rotten_flesh",
+          "count": 1
+        }
+      ]
+    },
+    {
+      "id": "minecraft:cat",
+      "entity": "minecraft:cat",
+      "label": "猫",
+      "drops": [
+        {
+          "id": "minecraft:string",
+          "count": 1
+        }
+      ]
+    },
+    {
+      "id": "minecraft:cave_spider",
+      "entity": "minecraft:cave_spider",
+      "label": "洞穴蜘蛛",
+      "drops": [
+        {
+          "id": "minecraft:string",
+          "count": 1
+        },
+        {
+          "id": "minecraft:spider_eye",
+          "count": 1
+        }
+      ]
+    },
+    {
+      "id": "minecraft:chicken",
+      "entity": "minecraft:chicken",
+      "label": "鸡",
+      "drops": [
+        {
+          "id": "minecraft:feather",
+          "count": 1
+        },
+        {
+          "id": "minecraft:chicken",
+          "count": 1
+        }
+      ]
+    },
+    {
+      "id": "minecraft:cod",
+      "entity": "minecraft:cod",
+      "label": "鳕鱼",
+      "drops": [
+        {
+          "id": "minecraft:cod",
+          "count": 1
+        },
+        {
+          "id": "minecraft:bone_meal",
+          "count": 1
+        }
+      ]
+    },
+    {
+      "id": "minecraft:copper_golem",
+      "entity": "minecraft:copper_golem",
+      "label": "铜傀儡",
+      "drops": [
+        {
+          "id": "minecraft:copper_ingot",
+          "count": 1
+        }
+      ]
+    },
+    {
+      "id": "minecraft:cow",
+      "entity": "minecraft:cow",
+      "label": "牛",
+      "drops": [
+        {
+          "id": "minecraft:leather",
+          "count": 1
+        },
+        {
+          "id": "minecraft:beef",
+          "count": 1
+        }
+      ]
+    },
+    {
+      "id": "minecraft:creeper",
+      "entity": "minecraft:creeper",
+      "label": "苦力怕",
+      "drops": [
+        {
+          "id": "minecraft:gunpowder",
+          "count": 1
+        }
+      ]
+    },
+    {
+      "id": "minecraft:dolphin",
+      "entity": "minecraft:dolphin",
+      "label": "海豚",
+      "drops": [
+        {
+          "id": "minecraft:cod",
+          "count": 1
+        }
+      ]
+    },
+    {
+      "id": "minecraft:donkey",
+      "entity": "minecraft:donkey",
+      "label": "驴",
+      "drops": [
+        {
+          "id": "minecraft:leather",
+          "count": 1
+        }
+      ]
+    },
+    {
+      "id": "minecraft:drowned",
+      "entity": "minecraft:drowned",
+      "label": "溺尸",
+      "drops": [
+        {
+          "id": "minecraft:rotten_flesh",
+          "count": 1
+        },
+        {
+          "id": "minecraft:copper_ingot",
+          "count": 1
+        }
+      ]
+    },
+    {
+      "id": "minecraft:elder_guardian",
+      "entity": "minecraft:elder_guardian",
+      "label": "远古守卫者",
+      "drops": [
+        {
+          "id": "minecraft:prismarine_shard",
+          "count": 1
+        },
+        {
+          "id": "minecraft:cod",
+          "count": 1
+        },
+        {
+          "id": "minecraft:prismarine_crystals",
+          "count": 1
+        },
+        {
+          "id": "minecraft:wet_sponge",
+          "count": 1
+        },
+        {
+          "id": "minecraft:salmon",
+          "count": 1
+        },
+        {
+          "id": "minecraft:tropical_fish",
+          "count": 1
+        },
+        {
+          "id": "minecraft:pufferfish",
+          "count": 1
+        },
+        {
+          "id": "minecraft:tide_armor_trim_smithing_template",
+          "count": 1
+        }
+      ]
+    },
+    {
+      "id": "minecraft:enderman",
+      "entity": "minecraft:enderman",
+      "label": "末影人",
+      "drops": [
+        {
+          "id": "minecraft:ender_pearl",
+          "count": 1
+        }
+      ]
+    },
+    {
+      "id": "minecraft:evoker",
+      "entity": "minecraft:evoker",
+      "label": "唤魔者",
+      "drops": [
+        {
+          "id": "minecraft:totem_of_undying",
+          "count": 1
+        },
+        {
+          "id": "minecraft:emerald",
+          "count": 1
+        }
+      ]
+    },
+    {
+      "id": "minecraft:ghast",
+      "entity": "minecraft:ghast",
+      "label": "恶魂",
+      "drops": [
+        {
+          "id": "minecraft:ghast_tear",
+          "count": 1
+        },
+        {
+          "id": "minecraft:gunpowder",
+          "count": 1
+        }
+      ]
+    },
+    {
+      "id": "minecraft:glow_squid",
+      "entity": "minecraft:glow_squid",
+      "label": "发光鱿鱼",
+      "drops": [
+        {
+          "id": "minecraft:glow_ink_sac",
+          "count": 1
+        }
+      ]
+    },
+    {
+      "id": "minecraft:guardian",
+      "entity": "minecraft:guardian",
+      "label": "守卫者",
+      "drops": [
+        {
+          "id": "minecraft:prismarine_shard",
+          "count": 1
+        },
+        {
+          "id": "minecraft:cod",
+          "count": 1
+        },
+        {
+          "id": "minecraft:prismarine_crystals",
+          "count": 1
+        },
+        {
+          "id": "minecraft:salmon",
+          "count": 1
+        },
+        {
+          "id": "minecraft:tropical_fish",
+          "count": 1
+        },
+        {
+          "id": "minecraft:pufferfish",
+          "count": 1
+        }
+      ]
+    },
+    {
+      "id": "minecraft:hoglin",
+      "entity": "minecraft:hoglin",
+      "label": "疣猪兽",
+      "drops": [
+        {
+          "id": "minecraft:porkchop",
+          "count": 1
+        },
+        {
+          "id": "minecraft:leather",
+          "count": 1
+        }
+      ]
+    },
+    {
+      "id": "minecraft:horse",
+      "entity": "minecraft:horse",
+      "label": "马",
+      "drops": [
+        {
+          "id": "minecraft:leather",
+          "count": 1
+        }
+      ]
+    },
+    {
+      "id": "minecraft:husk",
+      "entity": "minecraft:husk",
+      "label": "尸壳",
+      "drops": [
+        {
+          "id": "minecraft:rotten_flesh",
+          "count": 1
+        },
+        {
+          "id": "minecraft:iron_ingot",
+          "count": 1
+        },
+        {
+          "id": "minecraft:carrot",
+          "count": 1
+        },
+        {
+          "id": "minecraft:potato",
+          "count": 1
+        }
+      ]
+    },
+    {
+      "id": "minecraft:iron_golem",
+      "entity": "minecraft:iron_golem",
+      "label": "铁傀儡",
+      "drops": [
+        {
+          "id": "minecraft:poppy",
+          "count": 1
+        },
+        {
+          "id": "minecraft:iron_ingot",
+          "count": 1
+        }
+      ]
+    },
+    {
+      "id": "minecraft:llama",
+      "entity": "minecraft:llama",
+      "label": "羊驼",
+      "drops": [
+        {
+          "id": "minecraft:leather",
+          "count": 1
+        }
+      ]
+    },
+    {
+      "id": "minecraft:magma_cube",
+      "entity": "minecraft:magma_cube",
+      "label": "岩浆怪",
+      "drops": [
+        {
+          "id": "minecraft:magma_cream",
+          "count": 1
+        }
+      ]
+    },
+    {
+      "id": "minecraft:mooshroom",
+      "entity": "minecraft:mooshroom",
+      "label": "哞菇",
+      "drops": [
+        {
+          "id": "minecraft:leather",
+          "count": 1
+        },
+        {
+          "id": "minecraft:beef",
+          "count": 1
+        }
+      ]
+    },
+    {
+      "id": "minecraft:mule",
+      "entity": "minecraft:mule",
+      "label": "骡",
+      "drops": [
+        {
+          "id": "minecraft:leather",
+          "count": 1
+        }
+      ]
+    },
+    {
+      "id": "minecraft:nautilus",
+      "entity": "minecraft:nautilus",
+      "label": "鹦鹉螺",
+      "drops": [
+        {
+          "id": "minecraft:nautilus_shell",
+          "count": 1
+        }
+      ]
+    },
+    {
+      "id": "minecraft:panda",
+      "entity": "minecraft:panda",
+      "label": "熊猫",
+      "drops": [
+        {
+          "id": "minecraft:bamboo",
+          "count": 1
+        }
+      ]
+    },
+    {
+      "id": "minecraft:parched",
+      "entity": "minecraft:parched",
+      "label": "焦骸",
+      "drops": [
+        {
+          "id": "minecraft:arrow",
+          "count": 1
+        },
+        {
+          "id": "minecraft:bone",
+          "count": 1
+        },
+        {
+          "id": "minecraft:tipped_arrow",
+          "count": 1,
+          "potion": "minecraft:weakness"
+        }
+      ]
+    },
+    {
+      "id": "minecraft:parrot",
+      "entity": "minecraft:parrot",
+      "label": "鹦鹉",
+      "drops": [
+        {
+          "id": "minecraft:feather",
+          "count": 1
+        }
+      ]
+    },
+    {
+      "id": "minecraft:phantom",
+      "entity": "minecraft:phantom",
+      "label": "幻翼",
+      "drops": [
+        {
+          "id": "minecraft:phantom_membrane",
+          "count": 1
+        }
+      ]
+    },
+    {
+      "id": "minecraft:pig",
+      "entity": "minecraft:pig",
+      "label": "猪",
+      "drops": [
+        {
+          "id": "minecraft:porkchop",
+          "count": 1
+        }
+      ]
+    },
+    {
+      "id": "minecraft:pillager",
+      "entity": "minecraft:pillager",
+      "label": "掠夺者",
+      "drops": [
+        {
+          "id": "minecraft:ominous_bottle",
+          "count": 1
+        }
+      ]
+    },
+    {
+      "id": "minecraft:polar_bear",
+      "entity": "minecraft:polar_bear",
+      "label": "北极熊",
+      "drops": [
+        {
+          "id": "minecraft:cod",
+          "count": 1
+        },
+        {
+          "id": "minecraft:salmon",
+          "count": 1
+        }
+      ]
+    },
+    {
+      "id": "minecraft:pufferfish",
+      "entity": "minecraft:pufferfish",
+      "label": "河豚",
+      "drops": [
+        {
+          "id": "minecraft:pufferfish",
+          "count": 1
+        },
+        {
+          "id": "minecraft:bone_meal",
+          "count": 1
+        }
+      ]
+    },
+    {
+      "id": "minecraft:rabbit",
+      "entity": "minecraft:rabbit",
+      "label": "兔子",
+      "drops": [
+        {
+          "id": "minecraft:rabbit_hide",
+          "count": 1
+        },
+        {
+          "id": "minecraft:rabbit",
+          "count": 1
+        },
+        {
+          "id": "minecraft:rabbit_foot",
+          "count": 1
+        }
+      ]
+    },
+    {
+      "id": "minecraft:salmon",
+      "entity": "minecraft:salmon",
+      "label": "鲑鱼",
+      "drops": [
+        {
+          "id": "minecraft:salmon",
+          "count": 1
+        },
+        {
+          "id": "minecraft:bone_meal",
+          "count": 1
+        }
+      ]
+    },
+    {
+      "id": "minecraft:sheep",
+      "entity": "minecraft:sheep",
+      "label": "绵羊",
+      "drops": [
+        {
+          "id": "minecraft:mutton",
+          "count": 1
+        },
+        {
+          "id": "minecraft:white_wool",
+          "count": 1
+        },
+        {
+          "id": "minecraft:orange_wool",
+          "count": 1
+        },
+        {
+          "id": "minecraft:magenta_wool",
+          "count": 1
+        },
+        {
+          "id": "minecraft:light_blue_wool",
+          "count": 1
+        },
+        {
+          "id": "minecraft:yellow_wool",
+          "count": 1
+        },
+        {
+          "id": "minecraft:lime_wool",
+          "count": 1
+        },
+        {
+          "id": "minecraft:pink_wool",
+          "count": 1
+        },
+        {
+          "id": "minecraft:gray_wool",
+          "count": 1
+        },
+        {
+          "id": "minecraft:light_gray_wool",
+          "count": 1
+        },
+        {
+          "id": "minecraft:cyan_wool",
+          "count": 1
+        },
+        {
+          "id": "minecraft:purple_wool",
+          "count": 1
+        },
+        {
+          "id": "minecraft:blue_wool",
+          "count": 1
+        },
+        {
+          "id": "minecraft:brown_wool",
+          "count": 1
+        },
+        {
+          "id": "minecraft:green_wool",
+          "count": 1
+        },
+        {
+          "id": "minecraft:red_wool",
+          "count": 1
+        },
+        {
+          "id": "minecraft:black_wool",
+          "count": 1
+        }
+      ]
+    },
+    {
+      "id": "minecraft:shulker",
+      "entity": "minecraft:shulker",
+      "label": "潜影贝",
+      "drops": [
+        {
+          "id": "minecraft:shulker_shell",
+          "count": 1
+        }
+      ]
+    },
+    {
+      "id": "minecraft:skeleton",
+      "entity": "minecraft:skeleton",
+      "label": "骷髅",
+      "drops": [
+        {
+          "id": "minecraft:arrow",
+          "count": 1
+        },
+        {
+          "id": "minecraft:bone",
+          "count": 1
+        }
+      ]
+    },
+    {
+      "id": "minecraft:skeleton_horse",
+      "entity": "minecraft:skeleton_horse",
+      "label": "骷髅马",
+      "drops": [
+        {
+          "id": "minecraft:bone",
+          "count": 1
+        }
+      ]
+    },
+    {
+      "id": "minecraft:slime",
+      "entity": "minecraft:slime",
+      "label": "史莱姆",
+      "drops": [
+        {
+          "id": "minecraft:slime_ball",
+          "count": 1
+        }
+      ]
+    },
+    {
+      "id": "minecraft:snow_golem",
+      "entity": "minecraft:snow_golem",
+      "label": "雪傀儡",
+      "drops": [
+        {
+          "id": "minecraft:snowball",
+          "count": 1
+        }
+      ]
+    },
+    {
+      "id": "minecraft:spider",
+      "entity": "minecraft:spider",
+      "label": "蜘蛛",
+      "drops": [
+        {
+          "id": "minecraft:string",
+          "count": 1
+        },
+        {
+          "id": "minecraft:spider_eye",
+          "count": 1
+        }
+      ]
+    },
+    {
+      "id": "minecraft:squid",
+      "entity": "minecraft:squid",
+      "label": "鱿鱼",
+      "drops": [
+        {
+          "id": "minecraft:ink_sac",
+          "count": 1
+        }
+      ]
+    },
+    {
+      "id": "minecraft:stray",
+      "entity": "minecraft:stray",
+      "label": "流浪者",
+      "drops": [
+        {
+          "id": "minecraft:arrow",
+          "count": 1
+        },
+        {
+          "id": "minecraft:bone",
+          "count": 1
+        },
+        {
+          "id": "minecraft:tipped_arrow",
+          "count": 1,
+          "potion": "minecraft:slowness"
+        }
+      ]
+    },
+    {
+      "id": "minecraft:strider",
+      "entity": "minecraft:strider",
+      "label": "炽足兽",
+      "drops": [
+        {
+          "id": "minecraft:string",
+          "count": 1
+        }
+      ]
+    },
+    {
+      "id": "minecraft:trader_llama",
+      "entity": "minecraft:trader_llama",
+      "label": "行商羊驼",
+      "drops": [
+        {
+          "id": "minecraft:leather",
+          "count": 1
+        }
+      ]
+    },
+    {
+      "id": "minecraft:tropical_fish",
+      "entity": "minecraft:tropical_fish",
+      "label": "热带鱼",
+      "drops": [
+        {
+          "id": "minecraft:tropical_fish",
+          "count": 1
+        },
+        {
+          "id": "minecraft:bone_meal",
+          "count": 1
+        }
+      ]
+    },
+    {
+      "id": "minecraft:turtle",
+      "entity": "minecraft:turtle",
+      "label": "海龟",
+      "drops": [
+        {
+          "id": "minecraft:seagrass",
+          "count": 1
+        }
+      ]
+    },
+    {
+      "id": "minecraft:vindicator",
+      "entity": "minecraft:vindicator",
+      "label": "卫道士",
+      "drops": [
+        {
+          "id": "minecraft:emerald",
+          "count": 1
+        }
+      ]
+    },
+    {
+      "id": "minecraft:warden",
+      "entity": "minecraft:warden",
+      "label": "监守者",
+      "drops": [
+        {
+          "id": "minecraft:sculk_catalyst",
+          "count": 1
+        }
+      ]
+    },
+    {
+      "id": "minecraft:witch",
+      "entity": "minecraft:witch",
+      "label": "女巫",
+      "drops": [
+        {
+          "id": "minecraft:glowstone_dust",
+          "count": 1
+        },
+        {
+          "id": "minecraft:sugar",
+          "count": 1
+        },
+        {
+          "id": "minecraft:spider_eye",
+          "count": 1
+        },
+        {
+          "id": "minecraft:glass_bottle",
+          "count": 1
+        },
+        {
+          "id": "minecraft:gunpowder",
+          "count": 1
+        },
+        {
+          "id": "minecraft:stick",
+          "count": 1
+        },
+        {
+          "id": "minecraft:redstone",
+          "count": 1
+        }
+      ]
+    },
+    {
+      "id": "minecraft:wither",
+      "entity": "minecraft:wither",
+      "label": "凋灵",
+      "drops": [
+        {
+          "id": "minecraft:nether_star",
+          "count": 1
+        }
+      ]
+    },
+    {
+      "id": "minecraft:wither_skeleton",
+      "entity": "minecraft:wither_skeleton",
+      "label": "凋灵骷髅",
+      "drops": [
+        {
+          "id": "minecraft:coal",
+          "count": 1
+        },
+        {
+          "id": "minecraft:bone",
+          "count": 1
+        },
+        {
+          "id": "minecraft:wither_skeleton_skull",
+          "count": 1
+        }
+      ]
+    },
+    {
+      "id": "minecraft:zoglin",
+      "entity": "minecraft:zoglin",
+      "label": "僵尸疣猪兽",
+      "drops": [
+        {
+          "id": "minecraft:rotten_flesh",
+          "count": 1
+        }
+      ]
+    },
+    {
+      "id": "minecraft:zombie",
+      "entity": "minecraft:zombie",
+      "label": "僵尸",
+      "drops": [
+        {
+          "id": "minecraft:rotten_flesh",
+          "count": 1
+        },
+        {
+          "id": "minecraft:iron_ingot",
+          "count": 1
+        },
+        {
+          "id": "minecraft:carrot",
+          "count": 1
+        },
+        {
+          "id": "minecraft:potato",
+          "count": 1
+        }
+      ]
+    },
+    {
+      "id": "minecraft:zombie_horse",
+      "entity": "minecraft:zombie_horse",
+      "label": "僵尸马",
+      "drops": [
+        {
+          "id": "minecraft:rotten_flesh",
+          "count": 1
+        }
+      ]
+    },
+    {
+      "id": "minecraft:zombie_nautilus",
+      "entity": "minecraft:zombie_nautilus",
+      "label": "僵尸鹦鹉螺",
+      "drops": [
+        {
+          "id": "minecraft:rotten_flesh",
+          "count": 1
+        }
+      ]
+    },
+    {
+      "id": "minecraft:zombie_villager",
+      "entity": "minecraft:zombie_villager",
+      "label": "僵尸村民",
+      "drops": [
+        {
+          "id": "minecraft:rotten_flesh",
+          "count": 1
+        },
+        {
+          "id": "minecraft:iron_ingot",
+          "count": 1
+        },
+        {
+          "id": "minecraft:carrot",
+          "count": 1
+        },
+        {
+          "id": "minecraft:potato",
+          "count": 1
+        }
+      ]
+    },
+    {
+      "id": "minecraft:zombified_piglin",
+      "entity": "minecraft:zombified_piglin",
+      "label": "僵尸猪灵",
+      "drops": [
+        {
+          "id": "minecraft:rotten_flesh",
+          "count": 1
+        },
+        {
+          "id": "minecraft:gold_nugget",
+          "count": 1
+        },
+        {
+          "id": "minecraft:gold_ingot",
+          "count": 1
+        }
+      ]
+    }
+  ],
+  "crops": [
+    {
+      "id": "minecraft:wheat",
+      "label": "小麦",
+      "seed": "minecraft:wheat_seeds",
+      "mature": "minecraft:wheat"
+    },
+    {
+      "id": "minecraft:carrot",
+      "label": "胡萝卜",
+      "seed": "minecraft:carrot",
+      "mature": "minecraft:carrot"
+    },
+    {
+      "id": "minecraft:potato",
+      "label": "马铃薯",
+      "seed": "minecraft:potato",
+      "mature": "minecraft:potato"
+    },
+    {
+      "id": "minecraft:beetroot",
+      "label": "甜菜根",
+      "seed": "minecraft:beetroot_seeds",
+      "mature": "minecraft:beetroot"
+    },
+    {
+      "id": "minecraft:pumpkin",
+      "label": "南瓜",
+      "seed": "minecraft:pumpkin_seeds",
+      "mature": "minecraft:pumpkin"
+    },
+    {
+      "id": "minecraft:melon",
+      "label": "西瓜",
+      "seed": "minecraft:melon_seeds",
+      "mature": "minecraft:melon_slice"
+    },
+    {
+      "id": "minecraft:cocoa",
+      "label": "可可",
+      "seed": "minecraft:cocoa_beans",
+      "mature": "minecraft:cocoa_beans"
+    },
+    {
+      "id": "minecraft:sweet_berries",
+      "label": "甜浆果",
+      "seed": "minecraft:sweet_berries",
+      "mature": "minecraft:sweet_berries"
+    },
+    {
+      "id": "minecraft:glow_berries",
+      "label": "发光浆果",
+      "seed": "minecraft:glow_berries",
+      "mature": "minecraft:glow_berries"
+    },
+    {
+      "id": "minecraft:nether_wart",
+      "label": "下界疣",
+      "seed": "minecraft:nether_wart",
+      "mature": "minecraft:nether_wart"
+    },
+    {
+      "id": "minecraft:torchflower",
+      "label": "火把花",
+      "seed": "minecraft:torchflower_seeds",
+      "mature": "minecraft:torchflower"
+    },
+    {
+      "id": "minecraft:pitcher_plant",
+      "label": "瓶子草",
+      "seed": "minecraft:pitcher_pod",
+      "mature": "minecraft:pitcher_plant"
+    },
+    {
+      "id": "minecraft:sugar_cane",
+      "label": "甘蔗",
+      "seed": "minecraft:sugar_cane",
+      "mature": "minecraft:sugar_cane"
+    },
+    {
+      "id": "minecraft:bamboo",
+      "label": "竹子",
+      "seed": "minecraft:bamboo",
+      "mature": "minecraft:bamboo"
+    },
+    {
+      "id": "minecraft:cactus",
+      "label": "仙人掌",
+      "seed": "minecraft:cactus",
+      "mature": "minecraft:cactus"
+    },
+    {
+      "id": "minecraft:kelp",
+      "label": "海带",
+      "seed": "minecraft:kelp",
+      "mature": "minecraft:kelp"
+    },
+    {
+      "id": "minecraft:brown_mushroom",
+      "label": "棕色蘑菇",
+      "seed": "minecraft:brown_mushroom",
+      "mature": "minecraft:brown_mushroom"
+    },
+    {
+      "id": "minecraft:red_mushroom",
+      "label": "红色蘑菇",
+      "seed": "minecraft:red_mushroom",
+      "mature": "minecraft:red_mushroom"
+    },
+    {
+      "id": "minecraft:crimson_fungus",
+      "label": "绯红菌",
+      "seed": "minecraft:crimson_fungus",
+      "mature": "minecraft:crimson_fungus"
+    },
+    {
+      "id": "minecraft:warped_fungus",
+      "label": "诡异菌",
+      "seed": "minecraft:warped_fungus",
+      "mature": "minecraft:warped_fungus"
+    },
+    {
+      "id": "minecraft:chorus",
+      "label": "紫颂果",
+      "seed": "minecraft:chorus_flower",
+      "mature": "minecraft:chorus_fruit"
+    },
+    {
+      "id": "minecraft:sea_pickle",
+      "label": "海泡菜",
+      "seed": "minecraft:sea_pickle",
+      "mature": "minecraft:sea_pickle"
+    }
+  ],
+  "mobMilestones": [
+    {
+      "target": 5,
+      "rewards": [
+        {
+          "id": "minecraft:iron_sword",
+          "count": 1
+        },
+        {
+          "id": "minecraft:iron_pickaxe",
+          "count": 1
+        },
+        {
+          "id": "minecraft:iron_axe",
+          "count": 1
+        },
+        {
+          "id": "minecraft:iron_shovel",
+          "count": 1
+        },
+        {
+          "id": "minecraft:iron_hoe",
+          "count": 1
+        }
+      ]
+    },
+    {
+      "target": 10,
+      "rewards": [
+        {
+          "id": "minecraft:iron_helmet",
+          "count": 1
+        },
+        {
+          "id": "minecraft:iron_chestplate",
+          "count": 1
+        },
+        {
+          "id": "minecraft:iron_leggings",
+          "count": 1
+        },
+        {
+          "id": "minecraft:iron_boots",
+          "count": 1
+        }
+      ]
+    }
+  ],
+  "cropMilestone": {
+    "target": 10,
+    "seedCount": 1
+  }
+}

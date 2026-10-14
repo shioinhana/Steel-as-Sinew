@@ -1,0 +1,558 @@
+{
+  "schemaVersion": 1,
+  "rules": {
+    "training": {
+      "mindActiveTicksPerPoint": 3456000,
+      "mindHungerPerPoint": 10,
+      "bodyUnlockHp": 10,
+      "bodyMetersPerPoint": 100,
+      "bodyMinedPerPoint": 50,
+      "footworkUnlockBodyTotal": 5,
+      "footworkMetersPerPoint": 50,
+      "footworkCap": 600,
+      "mindHealthThresholds": [
+        4,
+        8,
+        16,
+        32,
+        64
+      ],
+      "mindHealthPerLevel": 2,
+      "regenDoubleMind": 10,
+      "regenLowFoodMind": 50,
+      "regenLowFoodLevel": 16,
+      "bodyDamageThresholds": [
+        10,
+        20,
+        40
+      ],
+      "bodyDamagePerLevel": 1,
+      "bodyAttackSpeedThresholds": [
+        15,
+        30
+      ],
+      "bodyAttackSpeedPerLevelSeconds": 0.04,
+      "minAttackIntervalSeconds": 0.12,
+      "bodyBowFactorPerLevel": 0.9,
+      "bodyMiningThresholds": [
+        5,
+        15,
+        25,
+        35
+      ],
+      "bodyMiningFactorPerLevel": 0.95,
+      "footworkMaxSpeedBonus": 0.2
+    },
+    "rapier": {
+      "windupTicks": 7,
+      "activeTicks": 2,
+      "recoveryTicks": 2,
+      "cooldownTicks": 20,
+      "fullChargeTicks": 16,
+      "guardBreakCooldownTicks": 200,
+      "lungeSpeedMps": 6,
+      "baseSlashDamage": 6,
+      "thrustMultiplier": 1.5,
+      "parriedMultiplier": 3,
+      "executionMissingHealthShare": 0.1,
+      "range": 4
+    },
+    "dual": {
+      "holdMoveBonus": 0.15,
+      "swingMovePenalty": 0.35,
+      "layerSwingBonus": 0.15,
+      "decayTicks": 100,
+      "linkedSlashCooldownTicks": 100
+    },
+    "longTerm": {
+      "enabled": true,
+      "baseDailyDecay": 0.95,
+      "masteryDecay": 0.9,
+      "masteryDecayDays": 3,
+      "initialAptitudeMin": -30,
+      "initialAptitudeMax": 30,
+      "bossInsightBonus": 10,
+      "bossInsightBonusCap": 130,
+      "efficiencyPercentCap": 100
+    }
+  },
+  "nodes": [
+    {
+      "id": "rapier",
+      "tree": "rapier",
+      "label": "西洋剑入门",
+      "description": "学会旧版单剑四连斩。左键依次四刀，右键突刺随修行解锁。已有冒险存档保留基础招式。",
+      "automatic": false,
+      "cost": {
+        "mind": 2,
+        "body": 3,
+        "footwork": 4
+      },
+      "requirements": {
+        "mind": 0,
+        "body": 0,
+        "footwork": 0,
+        "score": 0,
+        "trial": false,
+        "dragon": false
+      },
+      "prerequisites": [],
+      "exclusiveGroup": "",
+      "effect": "ROOT_RAPIER",
+      "value": 0,
+      "skills": [
+        "sword_left",
+        "rapier_downcut",
+        "rapier_crosscut",
+        "rapier_light_thrust",
+        "rapier_wrist_rise",
+        "sword_right",
+        "rapier_reprise"
+      ]
+    },
+    {
+      "id": "rapier_thrust",
+      "tree": "rapier",
+      "label": "刺击",
+      "description": "持西洋剑直接猎杀怪物累计80分，心法30、煅体25、步法40。右键刺击：7tick前摇、2tick有效、2tick收招；提交刺击时开始20tick冷却，伤害9，推进6米/秒。",
+      "automatic": true,
+      "cost": {
+        "mind": 0,
+        "body": 0,
+        "footwork": 0
+      },
+      "requirements": {
+        "mind": 30,
+        "body": 25,
+        "footwork": 40,
+        "score": 80,
+        "trial": false,
+        "dragon": false
+      },
+      "prerequisites": [
+        "rapier"
+      ],
+      "exclusiveGroup": "",
+      "effect": "RAPIER_THRUST",
+      "value": 0,
+      "skills": [
+        "sword_thrust"
+      ]
+    },
+    {
+      "id": "rapier_parry_thrust",
+      "tree": "rapier",
+      "label": "蓄力拨挡刺",
+      "description": "西洋剑180分，心法50、煅体40、步法90。按住右键16tick蓄满；未满受击抵消本次伤害并蓄满，满蓄受击破防并冷却200tick；拨挡刺伤害18、不触发普通刺击冷却。",
+      "automatic": true,
+      "cost": {
+        "mind": 0,
+        "body": 0,
+        "footwork": 0
+      },
+      "requirements": {
+        "mind": 50,
+        "body": 40,
+        "footwork": 90,
+        "score": 180,
+        "trial": false,
+        "dragon": false
+      },
+      "prerequisites": [
+        "rapier_thrust"
+      ],
+      "exclusiveGroup": "",
+      "effect": "RAPIER_PARRY",
+      "value": 0,
+      "skills": [
+        "rapier_riposte"
+      ]
+    },
+    {
+      "id": "rapier_execution",
+      "tree": "rapier",
+      "label": "缺血处决",
+      "description": "西洋剑301分，心法80、煅体60、步法160，并真实击杀末影龙。刺击命中结算后，追加目标缺失生命10%的正常伤害。",
+      "automatic": true,
+      "cost": {
+        "mind": 0,
+        "body": 0,
+        "footwork": 0
+      },
+      "requirements": {
+        "mind": 80,
+        "body": 60,
+        "footwork": 160,
+        "score": 301,
+        "trial": false,
+        "dragon": true
+      },
+      "prerequisites": [
+        "rapier_parry_thrust"
+      ],
+      "exclusiveGroup": "",
+      "effect": "RAPIER_EXECUTION",
+      "value": 0,
+      "skills": []
+    },
+    {
+      "id": "dual_sword",
+      "tree": "dual_blade",
+      "label": "双刀入门",
+      "description": "主副手各持一剑，左右键分别驱动左右刀。持刀移速+15%，挥砍额外-35%，均与后续连击加法叠加；双键联动斩冷却100tick。",
+      "automatic": false,
+      "cost": {
+        "mind": 1,
+        "body": 5,
+        "footwork": 3
+      },
+      "requirements": {
+        "mind": 0,
+        "body": 0,
+        "footwork": 0,
+        "score": 0,
+        "trial": false,
+        "dragon": false
+      },
+      "prerequisites": [],
+      "exclusiveGroup": "",
+      "effect": "ROOT_DUAL",
+      "value": 0,
+      "skills": [
+        "dual_ll",
+        "dual_rl",
+        "dual_rr",
+        "dual_lr",
+        "dual_combined"
+      ]
+    },
+    {
+      "id": "dual_combo",
+      "tree": "dual_blade",
+      "label": "三层连击",
+      "description": "真实双刀命中50分，心法20、煅体25、步法30。命中增一层，上限3；每层挥砍移动+15%，5秒无命中掉一层。空挥不计。",
+      "automatic": true,
+      "cost": {
+        "mind": 0,
+        "body": 0,
+        "footwork": 0
+      },
+      "requirements": {
+        "mind": 20,
+        "body": 25,
+        "footwork": 30,
+        "score": 50,
+        "trial": false,
+        "dragon": false
+      },
+      "prerequisites": [
+        "dual_sword"
+      ],
+      "exclusiveGroup": "",
+      "effect": "DUAL_COMBO_CAP",
+      "value": 3,
+      "skills": []
+    },
+    {
+      "id": "dual_tier250",
+      "tree": "dual_blade",
+      "label": "四层连击",
+      "description": "双刀命中250分，心法40、煅体45、步法80，连击上限提高到4。",
+      "automatic": true,
+      "cost": {
+        "mind": 0,
+        "body": 0,
+        "footwork": 0
+      },
+      "requirements": {
+        "mind": 40,
+        "body": 45,
+        "footwork": 80,
+        "score": 250,
+        "trial": false,
+        "dragon": false
+      },
+      "prerequisites": [
+        "dual_combo"
+      ],
+      "exclusiveGroup": "",
+      "effect": "DUAL_COMBO_CAP",
+      "value": 4,
+      "skills": []
+    },
+    {
+      "id": "dual_tier400",
+      "tree": "dual_blade",
+      "label": "五层连击",
+      "description": "双刀命中400分，心法60、煅体65、步法140，连击上限提高到5。",
+      "automatic": true,
+      "cost": {
+        "mind": 0,
+        "body": 0,
+        "footwork": 0
+      },
+      "requirements": {
+        "mind": 60,
+        "body": 65,
+        "footwork": 140,
+        "score": 400,
+        "trial": false,
+        "dragon": false
+      },
+      "prerequisites": [
+        "dual_combo"
+      ],
+      "exclusiveGroup": "",
+      "effect": "DUAL_COMBO_CAP",
+      "value": 5,
+      "skills": []
+    },
+    {
+      "id": "dual_trial",
+      "tree": "dual_blade",
+      "label": "试炼六层",
+      "description": "完整通过试炼刷怪笼，心法85、煅体90、步法220，连击上限提高到6。靠近试炼不会计为完成。",
+      "automatic": true,
+      "cost": {
+        "mind": 0,
+        "body": 0,
+        "footwork": 0
+      },
+      "requirements": {
+        "mind": 85,
+        "body": 90,
+        "footwork": 220,
+        "score": 0,
+        "trial": true,
+        "dragon": false
+      },
+      "prerequisites": [
+        "dual_combo"
+      ],
+      "exclusiveGroup": "",
+      "effect": "DUAL_COMBO_CAP",
+      "value": 6,
+      "skills": []
+    },
+    {
+      "id": "archery",
+      "tree": "bow",
+      "label": "弓术入门",
+      "description": "使用弓的速射与狙击两种状态，R切换。实际箭矢猎杀怪物每次增长弓术1分，受悟性影响；速射分数缩短引弓，狙击分数提升箭速。",
+      "automatic": false,
+      "cost": {
+        "mind": 3,
+        "body": 4,
+        "footwork": 1
+      },
+      "requirements": {
+        "mind": 0,
+        "body": 0,
+        "footwork": 0,
+        "score": 0,
+        "trial": false,
+        "dragon": false
+      },
+      "prerequisites": [],
+      "exclusiveGroup": "",
+      "effect": "ROOT_BOW",
+      "value": 0,
+      "skills": [
+        "bow_bash",
+        "bow_rapid_charge",
+        "bow_snipe_charge",
+        "bow_rapid_release",
+        "bow_snipe_release"
+      ]
+    },
+    {
+      "id": "archery_auto_charge",
+      "tree": "bow",
+      "label": "连续引弓",
+      "description": "弓术50分后，速射可按住左键自动连续引弓射击，仍消耗箭矢和耐久。",
+      "automatic": true,
+      "cost": {
+        "mind": 0,
+        "body": 0,
+        "footwork": 0
+      },
+      "requirements": {
+        "mind": 0,
+        "body": 0,
+        "footwork": 0,
+        "score": 50,
+        "trial": false,
+        "dragon": false
+      },
+      "prerequisites": [
+        "archery"
+      ],
+      "exclusiveGroup": "",
+      "effect": "BOW_AUTO_CHARGE",
+      "value": 0,
+      "skills": []
+    },
+    {
+      "id": "archery_trajectory",
+      "tree": "bow",
+      "label": "狙击落点",
+      "description": "弓术100分后显示实际狙击箭矢的落点预测。",
+      "automatic": true,
+      "cost": {
+        "mind": 0,
+        "body": 0,
+        "footwork": 0
+      },
+      "requirements": {
+        "mind": 0,
+        "body": 0,
+        "footwork": 0,
+        "score": 100,
+        "trial": false,
+        "dragon": false
+      },
+      "prerequisites": [
+        "archery"
+      ],
+      "exclusiveGroup": "",
+      "effect": "BOW_TRAJECTORY",
+      "value": 0,
+      "skills": []
+    },
+    {
+      "id": "archery_ru_suo",
+      "tree": "bow",
+      "label": "如梭",
+      "description": "弓术150分，心法30、煅体25、步法50。与啮矢互斥。5发储备每发引弓用时-20%，每60tick恢复一发，与速射分数减时加法叠加，总减时上限50%。",
+      "automatic": false,
+      "cost": {
+        "mind": 0,
+        "body": 0,
+        "footwork": 0
+      },
+      "requirements": {
+        "mind": 30,
+        "body": 25,
+        "footwork": 50,
+        "score": 150,
+        "trial": false,
+        "dragon": false
+      },
+      "prerequisites": [
+        "archery"
+      ],
+      "exclusiveGroup": "archery_150",
+      "effect": "RU_SUO",
+      "value": 0,
+      "skills": []
+    },
+    {
+      "id": "archery_nie_shi",
+      "tree": "bow",
+      "label": "啮矢",
+      "description": "弓术150分，心法30、煅体25、步法50。与如梭互斥。免疫一次投射物伤害并获得对应箭矢，冷却40tick。",
+      "automatic": false,
+      "cost": {
+        "mind": 0,
+        "body": 0,
+        "footwork": 0
+      },
+      "requirements": {
+        "mind": 30,
+        "body": 25,
+        "footwork": 50,
+        "score": 150,
+        "trial": false,
+        "dragon": false
+      },
+      "prerequisites": [
+        "archery"
+      ],
+      "exclusiveGroup": "archery_150",
+      "effect": "NIE_SHI",
+      "value": 0,
+      "skills": []
+    },
+    {
+      "id": "archery_yan_xia_dian",
+      "tree": "bow",
+      "label": "岩下电",
+      "description": "弓术250分，心法50、煅体40、步法100。与穿堂风互斥。箭矢飞行速度增加30%。",
+      "automatic": false,
+      "cost": {
+        "mind": 0,
+        "body": 0,
+        "footwork": 0
+      },
+      "requirements": {
+        "mind": 50,
+        "body": 40,
+        "footwork": 100,
+        "score": 250,
+        "trial": false,
+        "dragon": false
+      },
+      "prerequisites": [
+        "archery"
+      ],
+      "exclusiveGroup": "archery_250",
+      "effect": "YAN_XIA_DIAN",
+      "value": 0,
+      "skills": []
+    },
+    {
+      "id": "archery_chuan_tang_feng",
+      "tree": "bow",
+      "label": "穿堂风",
+      "description": "弓术250分，心法50、煅体40、步法100。与岩下电互斥。无视盾牌，追加30%穿甲伤害；最多穿3格方块，每格减速20%，可穿透127个实体。",
+      "automatic": false,
+      "cost": {
+        "mind": 0,
+        "body": 0,
+        "footwork": 0
+      },
+      "requirements": {
+        "mind": 50,
+        "body": 40,
+        "footwork": 100,
+        "score": 250,
+        "trial": false,
+        "dragon": false
+      },
+      "prerequisites": [
+        "archery"
+      ],
+      "exclusiveGroup": "archery_250",
+      "effect": "CHUAN_TANG_FENG",
+      "value": 0,
+      "skills": []
+    },
+    {
+      "id": "archery_scope",
+      "tree": "bow",
+      "label": "狙击瞄准镜",
+      "description": "弓术300分后解锁狙击镜，镜倍率随真实蓄力和箭速增长，最高8倍。",
+      "automatic": true,
+      "cost": {
+        "mind": 0,
+        "body": 0,
+        "footwork": 0
+      },
+      "requirements": {
+        "mind": 0,
+        "body": 0,
+        "footwork": 0,
+        "score": 300,
+        "trial": false,
+        "dragon": false
+      },
+      "prerequisites": [
+        "archery"
+      ],
+      "exclusiveGroup": "",
+      "effect": "BOW_SCOPE",
+      "value": 0,
+      "skills": []
+    }
+  ]
+}

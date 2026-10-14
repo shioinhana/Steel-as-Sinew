@@ -1,0 +1,39 @@
+[
+  {
+    "id": "fsrpg:first_hunt",
+    "label": "初次狩猎",
+    "description": "击败一只僵尸，了解战斗任务。服务器根据实际击杀记录进度。",
+    "prerequisites": [],
+    "objectives": [
+      { "id": "zombie", "type": "KILL", "target": "minecraft:zombie", "count": 1 }
+    ],
+    "rewards": { "items": [{ "id": "minecraft:bread", "count": 3 }], "xp": 20 },
+    "repeatable": false,
+    "autoAccept": true
+  },
+  {
+    "id": "fsrpg:skill_training",
+    "label": "技能训练",
+    "description": "领取初次狩猎奖励后，成功施放三次剑术技能。技能名与 skills.json 中的 ID 对应。",
+    "prerequisites": ["fsrpg:first_hunt"],
+    "objectives": [
+      { "id": "use_sword_left", "type": "USE_SKILL", "target": "sword_left", "count": 3 }
+    ],
+    "rewards": { "items": [{ "id": "minecraft:iron_ingot", "count": 2 }], "xp": 30 },
+    "repeatable": false,
+    "autoAccept": true
+  },
+  {
+    "id": "fsrpg:field_research",
+    "label": "野外调查",
+    "description": "领取技能训练奖励后，收集两块腐肉并到达主世界 (0, 64, 0) 附近。请按自己的世界修改调查地点。收集只累计接取任务之后新增的物品。",
+    "prerequisites": ["fsrpg:skill_training"],
+    "objectives": [
+      { "id": "collect_flesh", "type": "COLLECT", "target": "minecraft:rotten_flesh", "count": 2 },
+      { "id": "visit_origin", "type": "VISIT", "count": 1, "location": { "dimension": "minecraft:overworld", "x": 0, "y": 64, "z": 0, "radius": 16 } }
+    ],
+    "rewards": { "items": [{ "id": "minecraft:emerald", "count": 1 }], "xp": 40 },
+    "repeatable": true,
+    "autoAccept": true
+  }
+]

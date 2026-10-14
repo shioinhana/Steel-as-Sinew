@@ -1,0 +1,80 @@
+{
+  "minecraft": "1.21.11",
+  "nativeEulerXYZ": true,
+  "items": [
+    {
+      "id": "fsrpg:money_pouch",
+      "source": "qiandai.bbmodel",
+      "sourceSha256": "ee304a0f6abd9f5d312ddf7e5d963a3425b34f170eddac7cf9c74b05115600c6",
+      "elements": 53,
+      "textureOverride": null,
+      "label": "钱袋"
+    },
+    {
+      "id": "fsrpg:gold_coin",
+      "source": "硬币.bbmodel",
+      "sourceSha256": "3cd64df9162c351dbbe844261ab947cea754c7815bf6fabec202336ff29783f6",
+      "elements": 113,
+      "textureOverride": null,
+      "label": "金币"
+    },
+    {
+      "id": "fsrpg:silver_coin",
+      "source": "硬币.bbmodel",
+      "sourceSha256": "3cd64df9162c351dbbe844261ab947cea754c7815bf6fabec202336ff29783f6",
+      "elements": 113,
+      "textureOverride": 0,
+      "label": "银币"
+    },
+    {
+      "id": "fsrpg:crystal_coin",
+      "source": "金币.bbmodel",
+      "sourceSha256": "032f2c4b113c10fbcc70a54cde055ee4828db195de72d0c3cfec5c553a75608e",
+      "elements": 62,
+      "textureOverride": null,
+      "label": "晶币"
+    },
+    {
+      "id": "fsrpg:nether_coin",
+      "source": "下届币.bbmodel",
+      "sourceSha256": "53b6a1bf96edc1dc9923f07a46b0337c9d3c4c68b17ee91486f8943b4a3fbd15",
+      "elements": 216,
+      "textureOverride": null,
+      "label": "下界币"
+    },
+    {
+      "id": "fsrpg:gold_adventurer_badge",
+      "source": "金色冒险者牌.bbmodel",
+      "sourceSha256": "febba1af0fc06bbe860e46d18149545f9508afa1e3fa067b85475c223b3515f6",
+      "elements": 113,
+      "textureOverride": null,
+      "label": "金色冒险者牌"
+    },
+    {
+      "id": "fsrpg:cobalt_adventurer_badge",
+      "source": "钴色冒险者牌.bbmodel",
+      "sourceSha256": "156e2d285a734393ce5e9311e2d2a568bf0c0b77160bfe9ee125375132bcb46c",
+      "elements": 101,
+      "textureOverride": null,
+      "label": "钴色冒险者牌"
+    },
+    {
+      "id": "fsrpg:copper_adventurer_badge",
+      "source": "铜色冒险者牌.bbmodel",
+      "sourceSha256": "7c8afa0d4056ad930e03c7410a072880d6226c1f66af33b4a199451ba36e0ca1",
+      "elements": 101,
+      "textureOverride": null,
+      "label": "铜色冒险者牌"
+    },
+    {
+      "id": "fsrpg:silver_adventurer_badge",
+      "source": "银色冒险者牌.bbmodel",
+      "sourceSha256": "b1775eb1443cdaa438fd7adc34f6901946b033a8617cd917e279184482d2d294",
+      "elements": 95,
+      "textureOverride": null,
+      "label": "银色冒险者牌"
+    }
+  ],
+  "layoutSource": "综合.bbmodel",
+  "notes": "Individual source files are retained. Gold-coin geometry also uses the supplied silver texture as silver_coin. The jingbi-textured source named 金币 is crystal_coin."
+}

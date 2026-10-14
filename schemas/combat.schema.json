@@ -1,0 +1,40 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://fsrpg.local/schemas/combat.schema.json",
+  "title": "FSRPG 战斗基础参数",
+  "description": "config/fsrpg/combat.json。时间均为每秒 20 tick。闪避无敌开始时间 + 无敌持续时间不得超过闪避总时长，此跨字段关系由服务端重载校验。",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["maxStamina", "maxSpirit", "staminaRegenPerSecond", "spiritRegenPerSecond", "resourceRegenDelayTicks", "drawTicks", "sheathTicks", "guardArcDegrees", "guardDamageMultiplier", "guardStaminaCost", "perfectGuardTicks", "perfectGuardStaminaCost", "parryStunTicks", "guardBreakStunTicks", "hitStunTicks", "clashFacingArcDegrees", "dodgeDurationTicks", "dodgeInvulnerabilityStartTicks", "dodgeInvulnerabilityTicks", "dodgeCooldownTicks", "dodgeStaminaCost", "dodgeDistance", "dodgeCancelsRecovery", "allowAirDodge"],
+  "properties": {
+    "maxStamina": { "type": "number", "minimum": 1, "maximum": 1000000 },
+    "maxSpirit": { "type": "number", "minimum": 1, "maximum": 1000000 },
+    "staminaRegenPerSecond": { "$ref": "#/$defs/resource" },
+    "spiritRegenPerSecond": { "$ref": "#/$defs/resource" },
+    "resourceRegenDelayTicks": { "$ref": "#/$defs/ticks" },
+    "drawTicks": { "$ref": "#/$defs/ticks" },
+    "sheathTicks": { "$ref": "#/$defs/ticks" },
+    "guardArcDegrees": { "$ref": "#/$defs/angle" },
+    "guardDamageMultiplier": { "type": "number", "minimum": 0, "maximum": 1 },
+    "guardStaminaCost": { "$ref": "#/$defs/resource", "description": "服务端每次成功格挡的实际体力扣除。0.5.3 升级按原配置乘 0.2，仅迁移一次。" },
+    "perfectGuardTicks": { "$ref": "#/$defs/ticks" },
+    "perfectGuardStaminaCost": { "$ref": "#/$defs/resource", "description": "服务端每次成功完美格挡的实际体力扣除。" },
+    "parryStunTicks": { "$ref": "#/$defs/ticks" },
+    "guardBreakStunTicks": { "$ref": "#/$defs/ticks" },
+    "hitStunTicks": { "$ref": "#/$defs/ticks" },
+    "clashFacingArcDegrees": { "$ref": "#/$defs/angle" },
+    "dodgeDurationTicks": { "type": "integer", "minimum": 1, "maximum": 72000 },
+    "dodgeInvulnerabilityStartTicks": { "$ref": "#/$defs/ticks" },
+    "dodgeInvulnerabilityTicks": { "$ref": "#/$defs/ticks" },
+    "dodgeCooldownTicks": { "$ref": "#/$defs/ticks" },
+    "dodgeStaminaCost": { "$ref": "#/$defs/resource", "description": "服务端接受闪避时的实际体力扣除，默认 6。" },
+    "dodgeDistance": { "type": "number", "minimum": 0, "maximum": 32 },
+    "dodgeCancelsRecovery": { "type": "boolean" },
+    "allowAirDodge": { "type": "boolean" }
+  },
+  "$defs": {
+    "ticks": { "type": "integer", "minimum": 0, "maximum": 72000 },
+    "resource": { "type": "number", "minimum": 0, "maximum": 1000000 },
+    "angle": { "type": "number", "minimum": 0, "maximum": 360 }
+  }
+}

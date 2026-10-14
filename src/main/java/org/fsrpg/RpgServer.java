@@ -1,0 +1,970 @@
+package org.fsrpg;
+
+import com.google.gson.*;
+import com.mojang.brigadier.arguments.BoolArgumentType;
+import com.mojang.brigadier.arguments.StringArgumentType;
+import java.io.IOException;
+import java.nio.file.*;
+import java.util.*;
+import net.minecraft.commands.Commands;
+import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.core.particles.ParticleTypes;
+import net.minecraft.tags.DamageTypeTags;
+import net.minecraft.network.chat.Component;
+import net.minecraft.resources.Identifier;
+import net.minecraft.server.MinecraftServer;
+import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.server.permissions.Permissions;
+import net.minecraft.sounds.SoundEvents;
+import net.minecraft.sounds.SoundSource;
+import net.minecraft.world.entity.*;
+import net.minecraft.world.entity.projectile.arrow.AbstractArrow;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.level.storage.LevelResource;
+import net.minecraft.world.phys.*;
+import net.neoforged.bus.api.IEventBus;
+import net.neoforged.fml.loading.FMLPaths;
+import net.neoforged.neoforge.event.RegisterCommandsEvent;
+import net.neoforged.neoforge.event.entity.ProjectileImpactEvent;
+import net.neoforged.neoforge.event.entity.living.*;
+import net.neoforged.neoforge.event.entity.player.*;
+import net.neoforged.neoforge.event.server.*;
+import net.neoforged.neoforge.event.tick.ServerTickEvent;
+import net.neoforged.neoforge.network.PacketDistributor;
+import org.fsrpg.combat.*;
+import org.fsrpg.config.*;
+import org.fsrpg.network.*;
+import org.fsrpg.quest.*;
+import org.fsrpg.progression.*;
+import org.fsrpg.archery.*;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+/** Minecraft adapters only. Definitions and deterministic state machines live in separate packages. */
+public final class RpgServer {
+    private static final Logger LOG = LoggerFactory.getLogger("FSRPG");
+    private static RpgServer instance;
+    private final MinecraftServer server;
+    private final RpgConfig config;
+    private QuestService quests;
+    private CollectionService collections;
+    private final CollectionStore collectionStore;
+    private long collectionSavedRevision = -1;
+    private final QuestStore store;
+    private final Path resourceFile;
+    private final ProgressionService progression;
+    private final ProgressionStore progressionStore;
+    private final MinecraftProgression training;
+    private final ArcheryServer archery;
+    private final Path archeryFile;
+    private long progressionSavedRevision=-1;
+    private final Map<UUID,Long> rapierHasteUntil=new HashMap<>();
+    private final Map<UUID,String> bowEquipment=new HashMap<>();
+    private final Map<UUID, CombatActor> actors = new HashMap<>();
+    private final Map<UUID, WeaponDrawController> drawControllers = new HashMap<>();
+    private final Map<UUID, Resources> resources = new HashMap<>();
+    private final Map<UUID, Vec3> dodgeDirections = new HashMap<>();
+    private final Map<UUID, String> swingItems = new HashMap<>();
+    private final Map<UUID, Long> requestTicks = new HashMap<>();
+    private final Map<UUID, Integer> requestCounts = new HashMap<>();
+    private final Map<UUID,String> swingOffhands=new HashMap<>(), damageItems=new HashMap<>();
+    private final Map<UUID, String> animationStates = new HashMap<>();
+    private final Map<UUID, Long> animationSequences = new HashMap<>();
+    private final Map<UUID, WeaponStyleDefinition> pendingStyles = new HashMap<>();
+    private boolean resolvingDamage;
+    private long ticks;
+    private long savedRevision = -1;
+    private record Resources(double stamina, double spirit, String weaponStyle) {}
+    private record PendingHit(ServerPlayer attacker, LivingEntity victim, org.fsrpg.combat.HitResult result) {}
+
+    public static RpgServer instance() { return instance; }
+    public ProgressionService progression(){return progression;}
+    public RpgConfig config(){return config;}
+    public ArcheryServer archery(){return archery;}
+    private RpgServer(MinecraftServer server) throws IOException {
+        this.server = server;
+        config = new RpgConfig(FMLPaths.CONFIGDIR.get().resolve("fsrpg"));
+        config.setValidator(this::validateRegistryIds);
+        var definitions = config.reload();
+        quests = new QuestService(definitions.quests());
+        Path data = server.getWorldPath(LevelResource.ROOT).resolve("data/fsrpg");
+        store = new QuestStore(data.resolve("quests.json"), RpgConfig.JSON);
+        quests.restore(store.load());
+        collections = new CollectionService(definitions.collections());
+        collectionStore = new CollectionStore(data.resolve("collections.json"), RpgConfig.JSON);
+        collections.restore(collectionStore.load());
+        resourceFile = data.resolve("resources.json");
+        if (Files.exists(resourceFile)) {
+            JsonObject dataJson = JsonParser.parseString(Files.readString(resourceFile)).getAsJsonObject();
+            for (var entry : dataJson.entrySet()) {
+                Resources value = RpgConfig.JSON.fromJson(entry.getValue(), Resources.class);
+                if (value == null || !Double.isFinite(value.stamina()) || !Double.isFinite(value.spirit()) || value.stamina() < 0 || value.spirit() < 0)
+                    throw new IOException("Invalid resources for " + entry.getKey());
+                resources.put(UUID.fromString(entry.getKey()), value);
+            }
+        }
+        progression=new ProgressionService(definitions.skillTrees());
+        progressionStore=new ProgressionStore(data.resolve("skill_trees.json"),RpgConfig.JSON);
+        progression.restore(progressionStore.load());
+        training=new MinecraftProgression(progression,()->config.current().skillTrees(),resources.keySet());
+        archeryFile=data.resolve("archery.json");
+        archery=new ArcheryServer(definitions.archery(),new ArcheryServer.Sink(){
+            @Override public void changed(ServerPlayer player){send(player,"",null);broadcastAnimation(player,true);}
+            @Override public void skillUsed(UUID player,String skill){quests.useSkill(player,skill);}
+            @Override public void kill(UUID player){progression.recordArcheryKill(player,MinecraftProgression.epochDay());}
+            @Override public double damageBonus(UUID player){return progression.effects(player).damageBonus();}
+        });
+        archery.restore(archeryFile);
+        LOG.info("FSRPG loaded {} skills, {} tree nodes and {} quests from {}", definitions.skills().size(), definitions.skillTrees().nodes().size(), definitions.quests().definitions().size(), config.directory());
+    }
+    public static void register(IEventBus bus) {
+        bus.addListener((ServerStartingEvent event) -> {
+            try { instance = new RpgServer(event.getServer()); }
+            catch (Exception failure) { throw new IllegalStateException("FSRPG configuration/progress could not load. Existing files were preserved.", failure); }
+        });
+        bus.addListener((ServerStoppingEvent event) -> { if (instance != null) instance.save(); });
+        bus.addListener((ServerStoppedEvent event) -> instance = null);
+        bus.addListener((ServerTickEvent.Post event) -> { if (instance != null) instance.tick(); });
+        bus.addListener((PlayerEvent.PlayerLoggedInEvent event) -> { if (instance != null && event.getEntity() instanceof ServerPlayer p) { instance.actor(p); instance.quests.ensurePlayer(p.getUUID()); instance.recoverCollection(p); instance.reconcileWeapon(p); instance.send(p, "", null); instance.broadcastAnimation(p, true); } });
+        bus.addListener((PlayerEvent.StartTracking event) -> {
+            if (instance != null && event.getEntity() instanceof ServerPlayer viewer && event.getTarget() instanceof ServerPlayer target)
+                PacketDistributor.sendToPlayer(viewer, instance.animationPayload(target));
+        });
+        bus.addListener((PlayerEvent.PlayerLoggedOutEvent event) -> { if (instance != null && event.getEntity() instanceof ServerPlayer p) instance.logout(p); });
+        bus.addListener((PlayerEvent.PlayerRespawnEvent event) -> { if (instance != null && event.getEntity() instanceof ServerPlayer p) instance.resetActor(p); });
+        bus.addListener((LivingDeathEvent event) -> {
+            if(instance!=null)instance.archery.onDeath(event);
+            if (instance != null && event.getSource().getEntity() instanceof ServerPlayer p) {
+                String entity = BuiltInRegistries.ENTITY_TYPE.getKey(event.getEntity().getType()).toString();
+                instance.quests.kill(p.getUUID(), entity, 1);
+                if(MinecraftProgression.hostile(event.getEntity())&&event.getSource().is(DamageTypeTags.IS_PLAYER_ATTACK)
+                        &&instance.actor(p).drawn()&&instance.actor(p).style().presentationStyleId().equals("rapier"))
+                    instance.progression.recordRapierKill(p.getUUID(),MinecraftProgression.epochDay());
+                if(entity.equals("minecraft:ender_dragon")){instance.progression.dragonKilled(p.getUUID());instance.progression.bossDefeated(p.getUUID());}
+                else if(entity.equals("minecraft:wither"))instance.progression.bossDefeated(p.getUUID());
+                if (event.getEntity() instanceof net.minecraft.world.entity.monster.Enemy) {
+                    instance.recoverCollection(p);
+                    if (instance.collections.pending(p.getUUID()).isEmpty() && instance.collections.firstKill(p.getUUID(), entity)) {
+                        instance.save(); instance.send(p, "首次猎杀完成，可以提交生物掉落物了", null);
+                    }
+                }
+            }
+        });
+        bus.addListener((ItemEntityPickupEvent.Post event) -> {
+            if (instance != null && event.getPlayer() instanceof ServerPlayer p) {
+                ItemStack original = event.getOriginalStack();
+                int acquired = original.getCount() - event.getCurrentStack().getCount();
+                if (acquired > 0) instance.quests.collect(p.getUUID(), BuiltInRegistries.ITEM.getKey(original.getItem()).toString(), acquired);
+            }
+        });
+        bus.addListener((AttackEntityEvent event) -> {
+            if (instance != null && event.getEntity() instanceof ServerPlayer p) {
+                instance.reconcileAndSync(p);
+                CombatActor a = instance.actor(p);
+                if (a.drawn() || a.phase() == CombatPhase.DRAWING || a.phase() == CombatPhase.SHEATHING) event.setCanceled(true);
+            }
+        });
+        bus.addListener((PlayerInteractEvent.RightClickItem event) -> {
+            if (instance != null && event.getEntity() instanceof ServerPlayer p) {
+                instance.reconcileAndSync(p);
+                if (instance.actor(p).drawn()) event.setCanceled(true);
+            }
+        });
+        bus.addListener((LivingIncomingDamageEvent event) -> { if (instance != null) instance.incoming(event); });
+        bus.addListener((LivingDamageEvent.Pre event)->{if(instance!=null)instance.archery.onDamagePre(event);});
+        bus.addListener((LivingShieldBlockEvent event)->{if(instance!=null)instance.archery.onShieldBlock(event);});
+        bus.addListener((LivingDamageEvent.Post event)->{if(instance!=null&&event.getEntity() instanceof ServerPlayer player)
+            instance.training.damage(player,event.getSource().getEntity(),event.getNewDamage());});
+        bus.addListener((net.neoforged.neoforge.event.level.SleepFinishedTimeEvent event)->{
+            if(instance!=null)for(var player:event.getLevel().players())if(player instanceof ServerPlayer p&&p.isSleeping())instance.training.sleep(p);
+        });
+        bus.addListener((LivingEntityUseItemEvent.Start event)->{if(instance!=null&&event.getEntity() instanceof ServerPlayer p)instance.training.foodStart(p,event.getItem());});
+        bus.addListener((LivingEntityUseItemEvent.Stop event)->{if(instance!=null&&event.getEntity() instanceof ServerPlayer p)instance.training.foodStop(p);});
+        bus.addListener((LivingEntityUseItemEvent.Finish event)->{if(instance!=null&&event.getEntity() instanceof ServerPlayer p)instance.training.foodEnd(p,event.getItem());});
+        bus.addListener((net.neoforged.neoforge.event.level.BlockEvent.BreakEvent event)->{if(instance!=null&&!event.isCanceled()&&event.getPlayer() instanceof ServerPlayer p)instance.progression.onMined(p.getUUID(),1);});
+        bus.addListener((PlayerEvent.BreakSpeed event)->{if(instance!=null&&event.getEntity() instanceof ServerPlayer p){
+            instance.training.ensure(p);double factor=instance.progression.effects(p.getUUID()).miningTimeFactor();
+            event.setNewSpeed((float)(event.getNewSpeed()/factor));
+        }});
+        bus.addListener((LivingKnockBackEvent event)->{if(instance!=null&&event.getEntity() instanceof ServerPlayer p&&event.getStrength()>0)instance.training.forced(p,10);});
+        bus.addListener((net.neoforged.neoforge.event.entity.EntityTeleportEvent event)->{if(instance!=null&&event.getEntity() instanceof ServerPlayer p)instance.training.forced(p,10);});
+        bus.addListener((ProjectileImpactEvent event) -> { if (instance != null) instance.projectile(event); });
+        bus.addListener(RpgServer::commands);
+    }
+    private CombatActor actor(ServerPlayer p) {
+        training.ensure(p);
+        return actors.computeIfAbsent(p.getUUID(), id -> {
+            CombatActor actor = new CombatActor(id, config.current().combat());
+            Resources value = resources.get(id);
+            if (value != null) actor.setResources(value.stamina(), value.spirit());
+            WeaponStyleDefinition selected = value == null ? null : config.current().styles().get(value.weaponStyle());
+            if (selected == null || !selected.enabled()) selected = defaultStyle(config.current());
+            accepted(actor.setStyle(selected));
+            return actor;
+        });
+    }
+    private void resetActor(ServerPlayer p) {
+        CombatActor previous = actors.remove(p.getUUID());
+        if (previous != null) resources.put(p.getUUID(), persisted(previous));
+        dodgeDirections.remove(p.getUUID()); swingItems.remove(p.getUUID());
+        pendingStyles.remove(p.getUUID());
+        drawControllers.remove(p.getUUID());
+        archery.remove(p.getUUID());training.remove(p.getUUID());
+        actor(p); reconcileWeapon(p); send(p, "", null); broadcastAnimation(p, true);
+    }
+    private void logout(ServerPlayer p) {
+        CombatActor a = actors.remove(p.getUUID());
+        if (a != null) resources.put(p.getUUID(), persisted(a));
+        dodgeDirections.remove(p.getUUID()); swingItems.remove(p.getUUID());
+        pendingStyles.remove(p.getUUID());
+        drawControllers.remove(p.getUUID());
+        requestCounts.remove(p.getUUID()); requestTicks.remove(p.getUUID()); save();
+        swingOffhands.remove(p.getUUID());damageItems.remove(p.getUUID());
+        animationStates.remove(p.getUUID()); animationSequences.remove(p.getUUID());
+        archery.remove(p.getUUID());training.remove(p.getUUID());rapierHasteUntil.remove(p.getUUID());
+    }
+    public boolean canEdit(ServerPlayer p) { return p.permissions().hasPermission(Permissions.COMMANDS_GAMEMASTER); }
+    public void action(ServerPlayer p, String action, String argument) {
+        if (!p.isAlive()) return;
+        if (requestTicks.getOrDefault(p.getUUID(), -1L) != ticks) { requestTicks.put(p.getUUID(), ticks); requestCounts.put(p.getUUID(), 0); }
+        int count = requestCounts.merge(p.getUUID(), 1, Integer::sum);
+        if (count > 20) return;
+        String message = "";
+        JsonObject editResult = null;
+        try {
+            CombatActor a = actor(p);
+            applyPendingStyle(p);
+            reconcileWeapon(p);
+            switch (action) {
+                case "status" -> { }
+                case "draw" -> {
+                    var result = drawController(p).cycle(a, usableStyles(p), config.current().weapons(), mainItem(p), offhandItem(p), p.isAlive());
+                    if (result == ActionResult.NOT_DRAWN) throw new IllegalStateException("请先手持配置中的战斗武器");
+                    if (result == ActionResult.BUSY) throw new IllegalStateException("请等当前动作结束再切换拔刀状态");
+                    accepted(result);
+                    pendingStyles.remove(p.getUUID());
+                    archery.cancelCharge(p);archery.reconcile(p,a,archeryProgress(p));
+                }
+                case "learnSkill" -> {
+                    var result=progression.learn(p.getUUID(),argument);
+                    if(!result.success())throw new IllegalStateException(result.reason());
+                    save();reconcileWeapon(p);message="技能已学会";
+                }
+                case "archeryCharge" -> accepted(archery.charge(p,a,archeryProgress(p),booleanArgument(argument)));
+                case "archeryCancel" -> archery.cancelCharge(p);
+                case "archeryAuto" -> accepted(archery.auto(p,a,archeryProgress(p),booleanArgument(argument)));
+                case "archeryBash" -> accepted(archery.bash(p,a,archeryProgress(p)));
+                case "rapierCharge" -> {
+                    if(booleanArgument(argument))beginRapierCharge(p);else accepted(a.releaseChargedAttack());
+                    moveCharge(p);startedSkills(p);
+                }
+                case "rapierCancel" -> a.cancelChargedPreparation();
+                case "aimAttack" -> {
+                    if(!hasWeapon(p)) throw new IllegalStateException("当前物品不匹配所选武器档位");
+                    JsonObject request=JsonParser.parseString(argument).getAsJsonObject();
+                    var aim=RpgConfig.JSON.fromJson(request.get("aim"),org.fsrpg.combat.AttackAim.class);
+                    if(aim==null) throw new IllegalArgumentException("missing aim");
+                    String button=request.get("button").getAsString();
+                    var controls=a.style().controls();
+                    if(!controls.dual()&&!controls.spear()) throw new IllegalArgumentException("style does not accept cursor attacks");
+                    for(var point:aim.points()) if(controls.spear() && !org.fsrpg.combat.SpearAimField.contains(point,p.getYRot()))
+                        throw new IllegalArgumentException("aim outside forward field");
+                    if(controls.dual()) {
+                        if(!java.util.Set.of("left","right").contains(button)||aim.points().size()!=1) throw new IllegalArgumentException("invalid dual input");
+                        // Player yaw comes through the normal movement channel; orbit never changes it.
+                        var result=a.aimedInput(button.equals("left")?SkillInput.LEFT:SkillInput.RIGHT,skillsFor(p),org.fsrpg.combat.AttackAim.at(aim.sample(0).yaw(),0));
+                        if(!result.accepted()) throw new IllegalStateException(comboRejection(result));
+                    } else {
+                        if(!java.util.Set.of("left","sweep").contains(button)) throw new IllegalArgumentException("invalid spear gesture");
+                        if(button.equals("left")&&aim.points().size()!=1) throw new IllegalArgumentException("thrust requires one point");
+                        var skill=config.current().skills().get(button.equals("sweep")?controls.sweepSkill():a.style().leftCombo().getFirst().skillId());
+                        accepted(a.aimedSkill(skill,aim));
+                    }
+                    startedSkills(p);
+                }
+                case "attack" -> {
+                    if(ArcheryServer.bowStyle(a)) {
+                        if(argument.equals("left")||argument.equals("bow_bash"))accepted(archery.bash(p,a,archeryProgress(p)));
+                        else if(argument.equals("right")||argument.equals("skill")||argument.endsWith("_charge"))accepted(archery.charge(p,a,archeryProgress(p),true));
+                        else throw new IllegalStateException("弓箭需要实际拉弓、弹药和服务端放箭判定");
+                        break;
+                    }
+                    if(a.style()!=null&&a.style().presentationStyleId().equals("rapier")&&(argument.equals("right")||argument.equals("skill")||argument.equals("sword_thrust"))) {
+                        beginRapierCharge(p);startedSkills(p);break;
+                    }
+                    if (argument.equals("left") || argument.equals("right")) {
+                        if (!hasWeapon(p)) throw new IllegalStateException("当前物品不匹配所选武器档位");
+                        var result = a.aimedInput(argument.equals("left") ? SkillInput.LEFT : SkillInput.RIGHT, skillsFor(p),org.fsrpg.combat.AttackAim.at(p.getYRot(),p.getXRot()));
+                        if (!result.accepted()) throw new IllegalStateException(comboRejection(result));
+                        if (!result.started()) message = result.status() == ComboInputStatus.BUFFERED ? "输入已缓冲" : "下一段已排队";
+                    } else {
+                        SkillDefinition skill = selectSkill(p, argument);
+                        accepted(a.aimedSkill(skill,org.fsrpg.combat.AttackAim.at(p.getYRot(),p.getXRot())));
+                    }
+                    startedSkills(p);
+                }
+                case "weaponStyle" -> {
+                    WeaponStyleDefinition style = config.current().styles().get(argument);
+                    if (style == null) throw new IllegalArgumentException("未知武器档位：" + argument);
+                    if(!progression.weaponUnlocked(p.getUUID(),style.presentationStyleId()))throw new IllegalStateException("请先在 P 技能树学习该武器");
+                    if (!style.enabled()) throw new IllegalStateException(style.label() + "尚未配置动作与技能");
+                    if (!matchingStyles(p).contains(style)) throw new IllegalStateException("这个拔刀状态不适用于当前手持武器");
+                    if (a.phase() != CombatPhase.READY && a.phase() != CombatPhase.SHEATHED) throw new IllegalStateException("请等当前动作结束再切换拔刀状态");
+                    accepted(a.setStyle(style));
+                    accepted(a.requestDrawn());
+                    pendingStyles.remove(p.getUUID());
+                    resources.put(p.getUUID(), persisted(a)); message = "武器档位：" + style.label();
+                }
+                case "guard" -> {
+                    if (!List.of("true", "false", "light", "heavy").contains(argument)) throw new IllegalArgumentException("guard requires true/false/light/heavy");
+                    if (!argument.equals("false") && !hasWeapon(p)) throw new IllegalStateException("请先手持战斗武器");
+                    accepted(a.setGuarding(!argument.equals("false"), argument.equals("heavy")));
+                }
+                case "dodge" -> {
+                    archery.cancelCharge(p);training.forced(p,20);
+                    accepted(a.requestDodge(p.onGround()));
+                    Vec3 direction = p.getLastClientMoveIntent().multiply(1, 0, 1);
+                    if (direction.lengthSqr() < 0.001) direction = p.getLookAngle().multiply(1, 0, 1);
+                    dodgeDirections.put(p.getUUID(), direction.normalize());
+                }
+                case "acceptQuest" -> { quests.accept(p.getUUID(), argument); saveQuests(); message = "已接受任务"; }
+                case "claimQuest" -> { claim(p, argument); message = "已领取奖励"; }
+                case "collectionSubmitMob", "collectionSubmitCrop", "collectionClaimSeeds" -> {
+                    recoverCollection(p);
+                    CollectionService.Plan plan;
+                    if (action.equals("collectionSubmitMob")) plan = collections.planMob(p.getUUID(), argument, CollectionInventory.owned(p));
+                    else if (action.equals("collectionSubmitCrop")) plan = collections.planCrop(p.getUUID(), argument, CollectionInventory.owned(p));
+                    else {
+                        String[] choice = argument.split("\\|", -1);
+                        if (choice.length != 2) throw new IllegalArgumentException("请选择要领取的其他作物种子");
+                        plan = collections.planSeedChoice(p.getUUID(), choice[0], choice[1]);
+                    }
+                    exchangeCollection(p, plan);
+                    message = action.equals("collectionSubmitMob") ? "生物提交完成，已获得掉落物与达成的里程碑奖励"
+                            : action.equals("collectionSubmitCrop") ? "作物提交完成，请选择其他作物的种子奖励" : "已领取 5 个种子与 3 个骨头";
+                }
+                case "reload" -> {
+                    requireEditor(p);
+                    applyConfig(config.reload()); message = "FSRPG 配置重载完成";
+                }
+                case "editSkill" -> {
+                    requireEditor(p);
+                    JsonObject edit = JsonParser.parseString(argument).getAsJsonObject();
+                    String id = edit.get("id").getAsString();
+                    applyConfig(config.editSkill(id, edit.getAsJsonObject("changes")));
+                    editResult = editResult(id, true, "已保存并应用到服务端");
+                }
+                default -> throw new IllegalArgumentException("Unknown action " + action);
+            }
+        } catch (Exception error) {
+            Throwable detail = error;
+            while (detail.getCause() != null && detail.getCause() != detail) detail = detail.getCause();
+            message = collectionMessage(detail.getMessage() == null ? "请求未通过校验" : detail.getMessage());
+            if (action.equals("editSkill")) {
+                String id = "";
+                try { id = JsonParser.parseString(argument).getAsJsonObject().get("id").getAsString(); } catch (Exception ignored) {}
+                editResult = editResult(id, false, message);
+            }
+            p.sendSystemMessage(Component.literal("[FSRPG] " + message));
+        }
+        broadcastAnimation(p, false);
+        send(p, message, editResult);
+    }
+    private static void accepted(ActionResult result) { if (result != ActionResult.ACCEPTED) throw new IllegalStateException(result.toString()); }
+    private void requireEditor(ServerPlayer p) { if (!canEdit(p)) throw new IllegalStateException("修改服务端配置需要管理员权限"); }
+    private static JsonObject editResult(String id, boolean ok, String message) { var result = new JsonObject(); result.addProperty("id", id); result.addProperty("ok", ok); result.addProperty("message", message); return result; }
+    private SkillDefinition selectSkill(ServerPlayer p, String arg) {
+        if (arg.equals("skill")) {
+            WeaponStyleDefinition style = actor(p).style();
+            if (style != null && !style.rightSkill().isEmpty()) arg = style.rightSkill();
+        }
+        if (!arg.equals("left") && !arg.equals("right") && !arg.equals("skill")) {
+            SkillDefinition skill = config.current().skills().get(arg);
+            if (skill == null) throw new IllegalArgumentException("Unknown skill " + arg);
+            if(!progression.skillUnlocked(p.getUUID(),arg))throw new IllegalStateException("该技能尚未达到旧版修行条件，请查看 P 技能树");
+            if (!weaponMatches(p, skill)) throw new IllegalStateException("当前武器不满足技能要求");
+            if(actor(p).style()==null || !skill.weapon().equals("any")&&!skill.weapon().equals(actor(p).style().weaponGroup()))
+                throw new IllegalStateException("技能不属于当前武器档位");
+            boolean conditional = config.current().styles().values().stream().anyMatch(s -> s.techniques().conditional(skill.id()));
+            if (conditional && !actor(p).techniqueSnapshot().skillId().equals(skill.id()))
+                throw new IllegalStateException("此招式需要拨挡或闪避后的出手机会");
+            return skillsFor(p).getOrDefault(skill.id(),skill);
+        }
+        SkillInput input = arg.equals("left") ? SkillInput.LEFT : arg.equals("right") ? SkillInput.RIGHT : SkillInput.SPECIAL;
+        return config.current().skills().values().stream().filter(s -> s.input() == input && weaponMatches(p, s)).findFirst()
+            .orElseThrow(() -> new IllegalStateException("当前武器没有配置对应技能"));
+    }
+    private boolean weaponMatches(ServerPlayer p, SkillDefinition skill) { return config.current().weapons().matches(skill.weapon(), mainItem(p), BuiltInRegistries.ITEM.getKey(p.getOffhandItem().getItem()).toString()); }
+    private boolean hasWeapon(ServerPlayer p) {
+        return WeaponDrawController.matchesSelection(actor(p), usableStyles(p), config.current().weapons(), mainItem(p), offhandItem(p));
+    }
+    private static String mainItem(ServerPlayer p) { return BuiltInRegistries.ITEM.getKey(p.getMainHandItem().getItem()).toString(); }
+    private static String offhandItem(ServerPlayer p) { return BuiltInRegistries.ITEM.getKey(p.getOffhandItem().getItem()).toString(); }
+    private WeaponDrawController drawController(ServerPlayer p) { return drawControllers.computeIfAbsent(p.getUUID(), ignored -> new WeaponDrawController()); }
+    private Collection<WeaponStyleDefinition> usableStyles(ServerPlayer p) {
+        return config.current().styles().values().stream().filter(s->progression.weaponUnlocked(p.getUUID(),s.presentationStyleId())).toList();
+    }
+    private List<WeaponStyleDefinition> matchingStyles(ServerPlayer p) { return WeaponDrawController.matchingStyles(usableStyles(p), config.current().weapons(), mainItem(p), offhandItem(p)); }
+    private boolean reconcileWeapon(ServerPlayer p) {
+        CombatActor a=actor(p);boolean changed=drawController(p).equip(a,usableStyles(p),config.current().weapons(),mainItem(p),offhandItem(p),p.isAlive());
+        if(p.isAlive()&&ArcheryServer.bowStyle(a)&&hasWeapon(p)) {
+            String key=p.getInventory().getSelectedSlot()+":"+System.identityHashCode(p.getMainHandItem());
+            if(!key.equals(bowEquipment.put(p.getUUID(),key))) {
+                var rapid=config.current().styles().get("bow_rapid");
+                if(rapid!=null&&rapid.enabled()){a.forceSheathed();a.setStyle(rapid);changed=true;}
+            }
+        } else bowEquipment.remove(p.getUUID());
+        // The bow's two shooting stances start in rapid fire; R changes its current mode.
+        if(p.isAlive()&&ArcheryServer.bowStyle(a)&&hasWeapon(p)&&a.phase()==CombatPhase.SHEATHED){a.requestDrawn();changed=true;}
+        changed|=archery.reconcile(p,a,archeryProgress(p));return changed;
+    }
+    private static boolean booleanArgument(String text) {
+        if(!text.equals("true")&&!text.equals("false"))throw new IllegalArgumentException("Expected true or false");return Boolean.parseBoolean(text);
+    }
+    private ArcheryProgress archeryProgress(ServerPlayer p) {
+        var progress=progression.archeryView(p.getUUID());var effects=progression.effects(p.getUUID());
+        var branch150=ArcheryProgress.Branch150.valueOf(progress.branch150());
+        var branch250=ArcheryProgress.Branch250.valueOf(progress.branch250());
+        return new ArcheryProgress(progress.unlocked(),progress.score(),branch150,branch250,effects.damageBonus(),effects.bowDrawFactor());
+    }
+    private Map<String,SkillDefinition> skillsFor(ServerPlayer player) {
+        CombatActor actor=actor(player);if(actor.style()==null||actor.style().controls().spear())return config.current().skills();
+        var effects=progression.effects(player.getUUID());Map<String,SkillDefinition> result=new LinkedHashMap<>();
+        actor.setLegacyDualIntervalAdjustment(effects::attackIntervalTicks);
+        for(var skill:config.current().skills().values()) {
+            if(actor.style().controls().legacyDual()&&skill.weapon().equals("dual_blade")){result.put(skill.id(),skill);continue;}
+            int gate=skill.windupTicks()+skill.activeTicks();
+            if(skill.weapon().equals("sword")&&actor.style().leftCombo().stream().anyMatch(stage->stage.skillId().equals(skill.id()))
+                    &&ticks<rapierHasteUntil.getOrDefault(player.getUUID(),0L))gate=6;
+            if(skill.weapon().equals("sword")||skill.weapon().equals("dual_blade"))gate=effects.attackIntervalTicks(gate);
+            int active=Math.max(1,gate-skill.windupTicks());
+            if(active==skill.activeTicks()||skill.id().equals("sword_thrust"))result.put(skill.id(),skill);
+            else result.put(skill.id(),new SkillDefinition(skill.id(),skill.label(),skill.weapon(),skill.input(),skill.windupTicks(),active,skill.recoveryTicks(),skill.cooldownTicks(),skill.staminaCost(),skill.spiritCost(),skill.damage(),skill.reach(),skill.arcDegrees(),skill.knockback(),skill.blockable(),skill.parryable(),skill.clashable(),skill.model(),skill.action()));
+        }
+        return result;
+    }
+    private void beginRapierCharge(ServerPlayer player) {
+        var actor=actor(player);var effects=progression.effects(player.getUUID());var rules=config.current().skillTrees().rules().rapier();
+        if(actor.style()==null||!actor.style().presentationStyleId().equals("rapier")||!hasWeapon(player))throw new IllegalStateException("此技能需要西洋剑");
+        if(!effects.rapierThrust())throw new IllegalStateException("突刺需要80次西洋剑击杀及对应修行条件，请查看 P 技能树");
+        SkillDefinition skill=config.current().skills().get("sword_thrust");
+        skill=new SkillDefinition(skill.id(),skill.label(),skill.weapon(),skill.input(),rules.windupTicks(),rules.activeTicks(),rules.recoveryTicks(),rules.cooldownTicks(),skill.staminaCost(),skill.spiritCost(),rules.thrustDamage(),rules.range(),skill.arcDegrees(),skill.knockback(),skill.blockable(),skill.parryable(),skill.clashable(),skill.model(),skill.action());
+        accepted(actor.beginChargedAttack(skill,AttackAim.at(player.getYRot(),player.getXRot()),effects.rapierParry(),effects.rapierParry(),rules.fullChargeTicks(),rules.guardBreakCooldownTicks()));
+    }
+    private void moveCharge(ServerPlayer player) {
+        if(!actor(player).consumeChargeLunge())return;
+        double speed=config.current().skillTrees().rules().rapier().lungeSpeedMps()/20;
+        Vec3 direction=player.getLookAngle().normalize();player.setDeltaMovement(player.getDeltaMovement().add(direction.scale(speed)));
+        player.hurtMarked=true;training.forced(player,10);
+    }
+    private void reconcileAndSync(ServerPlayer p) { if (reconcileWeapon(p)) { send(p, "", null); broadcastAnimation(p, true); } }
+    private void applyPendingStyle(ServerPlayer p) {
+        var a = actor(p);
+        if (pendingStyles.containsKey(p.getUUID()) && (a.phase() == CombatPhase.READY || a.phase() == CombatPhase.SHEATHED)) {
+            var pending = pendingStyles.remove(p.getUUID());
+            if (matchingStyles(p).contains(pending)) accepted(a.setStyle(pending));
+            reconcileWeapon(p);
+        }
+    }
+    private void applyConfig(RpgConfig.Definitions definitions) {
+        QuestService replacement = new QuestService(definitions.quests());
+        replacement.restore(quests.snapshot());
+        quests = replacement;
+        CollectionService replacementCollections = new CollectionService(definitions.collections());
+        replacementCollections.restore(collections.snapshot()); collections = replacementCollections; collectionSavedRevision = -1;
+        progression.reconfigure(definitions.skillTrees());archery.setRules(definitions.archery());
+        savedRevision = -1;
+        for (CombatActor a : actors.values()) {
+            String selectedId = a.style() == null ? "rapier" : a.style().id();
+            a.setRules(definitions.combat());
+            WeaponStyleDefinition updated = definitions.styles().get(selectedId);
+            if (updated == null || !updated.enabled()) updated = defaultStyle(definitions);
+            // Config changes safely interrupt a pending action rather than letting an old combo use a new catalog.
+            if (a.currentSkill() != null || (a.phase() != CombatPhase.READY && a.phase() != CombatPhase.SHEATHED)) a.stun(1);
+            pendingStyles.put(a.id(), updated);
+        }
+        for (ServerPlayer p : server.getPlayerList().getPlayers()) { send(p, "配置已更新", null); broadcastAnimation(p, true); }
+    }
+    private void tick() {
+        ticks++;
+        var players = List.copyOf(server.getPlayerList().getPlayers());
+        // Validate every actor before taking a shared collision-phase snapshot.
+        for (ServerPlayer p : players) {
+            CombatActor a = actor(p);
+            if (reconcileWeapon(p)) { send(p, "", null); broadcastAnimation(p, true); }
+            if (!p.isAlive()) { broadcastAnimation(p, false); continue; }
+            training.tick(p,a);archery.tick(p,a,archeryProgress(p));
+            if (a.currentSkill() != null && !validSwing(p)) a.stun(1);
+            if (a.phase() == CombatPhase.GUARDING && !hasWeapon(p)) a.setGuarding(false);
+        }
+        // Resolve clashes first, so iteration order cannot let a third target receive an already-clashed swing.
+        for (int i = 0; i < players.size(); i++) for (int j = i + 1; j < players.size(); j++) {
+            ServerPlayer p = players.get(i), q = players.get(j);
+            CombatActor a = actor(p), b = actor(q);
+            if (p.level() != q.level() || !p.isAlive() || !q.isAlive() || !p.canHarmPlayer(q) || !validSwing(p) || !validSwing(q)) continue;
+            double distance = Math.max(attackDistance(p, q), attackDistance(q, p));
+            if(a.style()!=null&&a.style().controls().spear()&&!spearContact(p,q,a) || b.style()!=null&&b.style().controls().spear()&&!spearContact(q,p,b))continue;
+            if (p.hasLineOfSight(q) && CombatResolver.canClash(a, b, distance, attackFacing(p, q), attackFacing(q, p))) {
+                var result = CombatResolver.resolveHit(a, b, distance, attackFacing(p, q), attackFacing(q, p));
+                effects(p, q, result);
+            }
+        }
+        List<PendingHit> pendingHits = new ArrayList<>();
+        for (ServerPlayer p : players) {
+            CombatActor a = actor(p);
+            if (!p.isAlive()) continue;
+            SkillDefinition skill = a.activeSkill();
+            if (skill != null) {
+                var targets=p.level().getEntitiesOfClass(LivingEntity.class,p.getBoundingBox().inflate(skill.reach()),t->t!=p&&t.isAlive());
+                if(a.style()!=null&&a.style().presentationStyleId().equals("rapier"))targets.sort(Comparator.comparingDouble(t->attackDistance(p,t)));
+                for (LivingEntity target : targets) {
+                    if (target instanceof ServerPlayer q && !p.canHarmPlayer(q)) continue;
+                    if (!p.hasLineOfSight(target)) continue;
+                    if(a.style()!=null && a.style().controls().spear() && !spearContact(p,target,a)) continue;
+                    CombatActor defender = target instanceof ServerPlayer q ? actor(q) : new CombatActor(target.getUUID(), config.current().combat());
+                    var result = CombatResolver.resolveHit(a, defender, attackDistance(p, target), attackFacing(p, target), facing(target, p));
+                    if (result.contacted()) {pendingHits.add(new PendingHit(p, target, result));if(a.style()!=null&&a.style().presentationStyleId().equals("rapier"))break;}
+                }
+            }
+        }
+        // Collect both outgoing intents before applying health changes, including lethal trades.
+        for (PendingHit hit : pendingHits) applyHit(hit.attacker(), hit.victim(), hit.result());
+        // Advance everyone together after all hits: the last dodge/attack frame has the same
+        // meaning for every player regardless of player-list order.
+        for (ServerPlayer p : players) {
+            if (!p.isAlive()) continue;
+            CombatActor a = actor(p);
+            if (a.currentSkill() != null && !validSwing(p)) a.stun(1);
+            var advance = a.tick();
+            moveCharge(p);
+            applyPendingStyle(p);
+            boolean skillStarted = startedSkills(p);
+            if (advance.dodgeDistanceThisTick() > 0) {
+                Vec3 dir = dodgeDirections.getOrDefault(p.getUUID(), Vec3.ZERO);
+                p.move(MoverType.SELF, dir.scale(advance.dodgeDistanceThisTick()));
+                p.connection.teleport(p.getX(), p.getY(), p.getZ(), p.getYRot(), p.getXRot());
+            }
+            if (a.phase() != CombatPhase.DODGING) dodgeDirections.remove(p.getUUID());
+            if (ticks % 10 == 0) {
+                quests.visit(p.getUUID(), p.level().dimension().identifier().toString(), p.getX(), p.getY(), p.getZ());
+            }
+            if (skillStarted || advance.before() != advance.after() || ticks % 10 == 0) send(p, "", null);
+            broadcastAnimation(p, ticks % 10 == 0);
+        }
+        if (ticks % 100 == 0) save();
+    }
+    private boolean validSwing(ServerPlayer p) {
+        SkillDefinition skill = actor(p).currentSkill();
+        return mainItem(p).equals(swingItems.get(p.getUUID())) && (actor(p).style()==null || !actor(p).style().controls().dual() || BuiltInRegistries.ITEM.getKey(p.getOffhandItem().getItem()).toString().equals(swingOffhands.get(p.getUUID()))) && (skill == null || weaponMatches(p, skill));
+    }
+    private void applyHit(ServerPlayer attacker, LivingEntity target, org.fsrpg.combat.HitResult result) {
+        effects(attacker, target, result);
+        if (!result.dealsDamage()) return;
+        double multiplier = config.current().weapons().damageMultiplier(damageItems.getOrDefault(attacker.getUUID(), mainItem(attacker)));
+        CombatActor actor=actor(attacker);var bonus=progression.effects(attacker.getUUID());
+        if(target instanceof ServerPlayer defender&&actor(defender).receiveChargedParry()==1)return;
+        double damage=result.damage();
+        if(actor.currentSkill()!=null&&actor.currentSkill().id().equals("sword_thrust")&&actor.chargedParried()) {
+            var rules=config.current().skillTrees().rules().rapier();damage*=rules.thrustMultiplier()>0?rules.parriedMultiplier()/rules.thrustMultiplier():1;
+        }
+        damage+=bonus.damageBonus();
+        resolvingDamage = true;
+        try {
+            if(actor.currentSkill()!=null&&actor.currentSkill().id().equals("sword_thrust")&&target.invulnerableTime>10)target.invulnerableTime=0;
+            boolean hurt = target.hurtServer(attacker.level(), attacker.damageSources().playerAttack(attacker), (float) (damage * multiplier));
+            if(hurt&&actor.style()!=null&&actor.style().controls().dual())progression.recordDualHit(attacker.getUUID(),attacker.level().getGameTime(),MinecraftProgression.epochDay());
+            if(hurt&&actor.currentSkill()!=null&&actor.currentSkill().id().equals("sword_thrust")) {
+                rapierHasteUntil.put(attacker.getUUID(),ticks+60);
+                if(bonus.rapierExecution()&&target.isAlive()) {
+                    double missing=target.getMaxHealth()-target.getHealth();target.invulnerableTime=0;
+                    target.hurtServer(attacker.level(),attacker.damageSources().playerAttack(attacker),(float)(missing*config.current().skillTrees().rules().rapier().executionMissingHealthShare()));
+                }
+            }
+            if (hurt && result.knockback() > 0) target.knockback(result.knockback(), attacker.getX() - target.getX(), attacker.getZ() - target.getZ());
+        } finally { resolvingDamage = false; }
+    }
+    private void incoming(LivingIncomingDamageEvent event) {
+        if(event.getEntity().level().isClientSide())return;
+        archery.onOutgoing(event);
+        if (resolvingDamage || !(event.getEntity() instanceof ServerPlayer p) || event.getSource().getDirectEntity() == null) return;
+        reconcileAndSync(p);
+        training.incoming(p,event.getSource().getEntity());
+        if(archery.onIncoming(event,archeryProgress(p)))return;
+        if(actor(p).receiveChargedParry()==1){event.setCanceled(true);send(p,"拨挡成功，松开右键还击",null);broadcastAnimation(p,true);return;}
+        Entity source = event.getSource().getEntity();
+        Entity direct = event.getSource().getDirectEntity();
+        CombatActor attacker = source instanceof ServerPlayer q ? actor(q) : null;
+        double angle = direct instanceof AbstractArrow arrow ? angle(p.getLookAngle(), arrow.getDeltaMovement().scale(-1)) : facing(p, direct);
+        var result = CombatResolver.receiveIncoming(attacker, actor(p), angle, Math.min(1_000_000, event.getAmount()), 0, true, true, direct instanceof AbstractArrow);
+        if (result.dealsDamage()) event.setAmount((float) result.damage()); else event.setCanceled(true);
+        if (result.outcome() != HitOutcome.HIT) effects(source, p, result);
+    }
+    private void projectile(ProjectileImpactEvent event) {
+        if(archery.onProjectileImpact(event)||event.isCanceled())return;
+        if (event.getProjectile().level().isClientSide() || !(event.getProjectile() instanceof AbstractArrow arrow) || !(event.getRayTraceResult() instanceof EntityHitResult hit) || !(hit.getEntity() instanceof ServerPlayer p)) return;
+        reconcileAndSync(p);
+        CombatActor defender = actor(p);
+        if (defender.invulnerable()) { event.setCanceled(true); return; }
+        if (!defender.inPerfectGuardWindow() || defender.defenseLimitReached()
+                || defender.stamina() < defender.guardRules().perfectGuardStaminaCost()) return;
+        Vec3 incomingVelocity = arrow.getDeltaMovement();
+        if (incomingVelocity.lengthSqr() < 1e-9) return;
+        double incomingAngle = angle(p.getLookAngle(), incomingVelocity.scale(-1));
+        // This is only an interception prepass. Let ordinary damage handle nonfrontal arrows once.
+        if (!CombatResolver.withinArc(incomingAngle, defender.guardRules().arcDegrees())) return;
+        Entity shooter = arrow.getOwner();
+        if (shooter != null && (shooter.isRemoved() || shooter.level() != arrow.level())) shooter = null;
+        var result = CombatResolver.receiveIncoming(shooter instanceof ServerPlayer q ? actor(q) : null, defender, incomingAngle, 1, 0, true, true, true);
+        if (!result.reflectProjectile()) return;
+        event.setCanceled(true);
+        double speed = Math.max(1, incomingVelocity.length());
+        Vec3 direction = shooter != null ? shooter.getBoundingBox().getCenter().subtract(hit.getLocation()).normalize() : incomingVelocity.scale(-1).normalize();
+        if (direction.lengthSqr() < 1e-9) direction = incomingVelocity.scale(-1).normalize();
+        arrow.setOwner(p);
+        arrow.shoot(direction.x, direction.y, direction.z, (float) speed, 0);
+        arrow.setPos(hit.getLocation().add(direction.scale(arrow.getBbWidth() + 0.1)));
+        arrow.hurtMarked = true;
+        effects(shooter, p, result);
+    }
+    private void effects(Entity attacker, LivingEntity victim, org.fsrpg.combat.HitResult result) {
+        if (!(victim.level() instanceof net.minecraft.server.level.ServerLevel level)) return;
+        boolean metal = result.outcome() == HitOutcome.CLASH || result.outcome() == HitOutcome.PARRIED || result.outcome() == HitOutcome.BLOCKED;
+        if (metal) {
+            level.playSound(null, victim.blockPosition(), SoundEvents.SHIELD_BLOCK.value(), SoundSource.PLAYERS, 0.8f, result.outcome() == HitOutcome.PARRIED ? 1.5f : 1.0f);
+            level.sendParticles(ParticleTypes.CRIT, victim.getX(), victim.getY() + 1, victim.getZ(), 8, 0.25, 0.25, 0.25, 0.1);
+            if (result.outcome() == HitOutcome.PARRIED && victim instanceof ServerPlayer p) {
+                p.displayClientMessage(Component.literal("§b拨挡成功 · 右键还击"), true);
+                send(p, "", null);
+            }
+        }
+    }
+    private void claim(ServerPlayer p, String id) throws IOException {
+        var before = quests.snapshot();
+        var reward = quests.claim(p.getUUID(), id);
+        try { saveQuests(); } catch (IOException error) { quests.restore(before); throw error; }
+        for (var item : reward.items()) {
+            var value = BuiltInRegistries.ITEM.getValue(Identifier.parse(item.id()));
+            int remaining = item.count();
+            while (remaining > 0) {
+                ItemStack stack = new ItemStack(value, Math.min(remaining, value.getDefaultInstance().getMaxStackSize()));
+                remaining -= stack.getCount();
+                if (!p.addItem(stack)) p.drop(stack, false);
+            }
+        }
+        p.giveExperiencePoints(reward.xp());
+    }
+    private void saveQuests() throws IOException { store.save(quests.snapshot()); savedRevision = quests.revision(); }
+    private void saveCollections() throws IOException { collectionStore.save(collections.snapshot()); collectionSavedRevision = collections.revision(); }
+    private void exchangeCollection(ServerPlayer p, CollectionService.Plan plan) throws IOException {
+        CollectionInventory.preflight(p, plan);
+        var before = collections.snapshot();
+        var exchange = collections.begin(plan);
+        try { saveCollections(); } catch (IOException error) { collections.restore(before); throw error; }
+        try { CollectionInventory.applyOnce(server, p, exchange); }
+        catch (IOException | RuntimeException error) {
+            if (!CollectionInventory.applied(p, exchange.transactionId())) {
+                collections.cancel(p.getUUID(), exchange.transactionId()); saveCollections();
+            }
+            throw error;
+        }
+        var pending = collections.snapshot();
+        collections.finish(p.getUUID(), exchange.transactionId());
+        try { saveCollections(); }
+        catch (IOException error) { collections.restore(pending); throw new IOException("奖励已存入背包，进度保存待恢复，请稍后重试", error); }
+    }
+    private void recoverCollection(ServerPlayer p) {
+        collections.pending(p.getUUID()).ifPresent(exchange -> {
+            var before = collections.snapshot();
+            try {
+                if (CollectionInventory.applied(p, exchange.transactionId())) {
+                    CollectionInventory.applyOnce(server, p, exchange);
+                    collections.finish(p.getUUID(), exchange.transactionId());
+                } else collections.cancel(p.getUUID(), exchange.transactionId());
+                saveCollections();
+            }
+            catch (IOException error) { collections.restore(before); LOG.error("FSRPG collection recovery could not save for {}", p.getUUID(), error); }
+        });
+    }
+    private static String collectionMessage(String message) {
+        if (message.startsWith("hunt your first monster")) return "请先猎杀第一个怪物，再提交生物掉落物";
+        if (message.startsWith("creature already submitted")) return "这种生物已经提交过了";
+        if (message.startsWith("crop already submitted")) return "这种作物已经提交过了";
+        if (message.startsWith("not enough collection ingredients")) return "材料不足，请先收齐任务要求的物品";
+        if (message.startsWith("choose a different crop")) return "请选择与本次提交不同的作物种子";
+        if (message.startsWith("no unclaimed seed choice")) return "这个作物的种子奖励已领取，或尚未提交";
+        if (message.startsWith("a collection inventory exchange")) return "上次提交正在恢复，请稍后重试";
+        if (message.startsWith("unknown creature collection") || message.startsWith("unknown crop collection")) return "任务种类不存在，请重新打开任务页";
+        return message;
+    }
+    private JsonArray collectionItems(List<CollectionCatalog.Item> items, Map<String, Integer> owned) {
+        JsonArray result = new JsonArray();
+        for (var item : items) {
+            JsonObject value = RpgConfig.JSON.toJsonTree(item).getAsJsonObject();
+            if (owned != null) value.addProperty("owned", owned.getOrDefault(item.key(), 0)); result.add(value);
+        }
+        return result;
+    }
+    private JsonObject collectionSnapshot(ServerPlayer p) {
+        var state = collections.progress(p.getUUID()); var catalog = collections.catalog();
+        var owned = CollectionInventory.owned(p); boolean idle = collections.pending(p.getUUID()).isEmpty();
+        JsonObject result = new JsonObject(), hunt = new JsonObject();
+        hunt.addProperty("complete", state.firstHuntComplete()); hunt.addProperty("entityId", state.firstHuntEntity()); result.add("firstHunt", hunt);
+        result.addProperty("mobCount", state.mobCount()); result.addProperty("cropCount", state.cropCount());
+        JsonArray milestones = new JsonArray();
+        for (var milestone : catalog.mobMilestones()) {
+            JsonObject value = new JsonObject(); value.addProperty("target", milestone.target());
+            value.addProperty("claimed", state.claimedMobMilestones().contains(milestone.target()));
+            value.add("rewards", collectionItems(milestone.rewards(), null)); milestones.add(value);
+        }
+        result.add("mobMilestones", milestones);
+        JsonObject cropMilestone = new JsonObject(); cropMilestone.addProperty("target", catalog.cropMilestone().target());
+        cropMilestone.addProperty("claimed", state.cropMilestoneClaimed()); cropMilestone.add("rewards", collectionItems(catalog.cropMilestoneRewards(), null)); result.add("cropMilestone", cropMilestone);
+        JsonArray mobs = new JsonArray();
+        for (var mob : catalog.mobs()) {
+            JsonObject value = new JsonObject(); boolean submitted = state.submittedMobs().contains(mob.id());
+            value.addProperty("id", mob.id()); value.addProperty("entity", mob.entity()); value.addProperty("label", mob.label()); value.addProperty("submitted", submitted);
+            value.add("requirements", collectionItems(mob.drops(), owned)); value.add("rewards", collectionItems(catalog.mobRewards(mob.id()), null));
+            value.addProperty("canSubmit", idle && !submitted && (!catalog.firstHuntRequired() || state.firstHuntComplete()) && CollectionService.hasRequirements(mob.drops(), owned)); mobs.add(value);
+        }
+        result.add("mobs", mobs);
+        JsonArray crops = new JsonArray(), choices = new JsonArray();
+        for (var crop : catalog.crops()) {
+            JsonObject value = new JsonObject(); boolean submitted = state.submittedCrops().contains(crop.id());
+            value.addProperty("id", crop.id()); value.addProperty("label", crop.label()); value.addProperty("seed", crop.seed()); value.addProperty("mature", crop.mature());
+            value.addProperty("submitted", submitted); value.addProperty("pendingChoice", state.pendingSeedChoices().contains(crop.id())); value.addProperty("rewardClaimed", state.claimedSeedChoices().contains(crop.id()));
+            value.add("requirements", collectionItems(catalog.cropRequirements(crop.id()), owned));
+            value.addProperty("canSubmit", idle && !submitted && CollectionService.hasRequirements(catalog.cropRequirements(crop.id()), owned)); crops.add(value);
+            JsonObject choice = new JsonObject(); choice.addProperty("id", crop.id()); choice.addProperty("label", crop.label()); choice.addProperty("seed", crop.seed()); choices.add(choice);
+        }
+        result.add("crops", crops); result.add("seedChoices", choices); return result;
+    }
+    private void save() {
+        try {
+            if (savedRevision != quests.revision()) saveQuests();
+            if (collectionSavedRevision != collections.revision()) saveCollections();
+            if(progressionSavedRevision!=progression.revision()){progressionStore.save(progression.snapshot());progressionSavedRevision=progression.revision();}
+            archery.save(archeryFile);
+            for (var entry : actors.entrySet()) resources.put(entry.getKey(), persisted(entry.getValue()));
+            RpgConfig.atomicWrite(resourceFile, RpgConfig.JSON.toJson(resources));
+        } catch (IOException failure) { LOG.error("FSRPG progress save failed; existing files preserved", failure); }
+    }
+    private void validateRegistryIds(RpgConfig.Definitions definitions) {
+        definitions.collections().validateReferences(id -> BuiltInRegistries.ITEM.containsKey(Identifier.parse(id)),
+                id -> BuiltInRegistries.ENTITY_TYPE.containsKey(Identifier.parse(id)), id -> BuiltInRegistries.POTION.containsKey(Identifier.parse(id)));
+        for (var group : definitions.weapons().groups().values()) {
+            for (String id : group.mainItems()) weaponItemExists(id);
+            for (String id : group.offhandItems()) weaponItemExists(id);
+        }
+        for (String id : definitions.weapons().itemDamageMultipliers().keySet()) weaponItemExists(id);
+        for (var quest : definitions.quests().definitions()) {
+            for (var reward : quest.rewards().items()) itemExists(reward.id());
+            for (var objective : quest.objectives()) {
+                if (objective.type() == QuestDefinition.ObjectiveType.COLLECT) itemExists(objective.target());
+                if (objective.type() == QuestDefinition.ObjectiveType.KILL && !BuiltInRegistries.ENTITY_TYPE.containsKey(Identifier.parse(objective.target()))) throw new IllegalArgumentException("Unknown entity " + objective.target());
+            }
+        }
+    }
+    private static void itemExists(String id) { if (!BuiltInRegistries.ITEM.containsKey(Identifier.parse(id)) || id.equals("minecraft:air")) throw new IllegalArgumentException("Unknown/reward-invalid item " + id); }
+    private static void weaponItemExists(String id) { if (!BuiltInRegistries.ITEM.containsKey(Identifier.parse(id))) throw new IllegalArgumentException("Unknown weapon item " + id); }
+    private static WeaponStyleDefinition defaultStyle(RpgConfig.Definitions definitions) {
+        WeaponStyleDefinition rapier = definitions.styles().get("rapier");
+        return rapier != null && rapier.enabled() ? rapier : definitions.styles().values().stream().filter(WeaponStyleDefinition::enabled).findFirst().orElseThrow();
+    }
+    private static Resources persisted(CombatActor actor) {
+        return new Resources(actor.stamina(), actor.spirit(), actor.style() == null ? null : actor.style().id());
+    }
+    private static String comboRejection(ComboInputResult result) {
+        return switch (result.status()) {
+            case TOO_EARLY -> "输入过早，尚未到连击缓冲区";
+            case TOO_LATE -> "输入过晚，连击窗口已关闭";
+            case ALREADY_QUEUED -> "下一段已经排队，无需重复输入";
+            case COMBO_FINISHED -> "最后一段结束后才能开始新连击";
+            default -> "连击请求未通过：" + (result.rejection() == null ? result.status() : result.rejection());
+        };
+    }
+    private boolean startedSkills(ServerPlayer player) {
+        CombatActor actor = actor(player);
+        List<SkillStart> starts = actor.drainStartedSkills();
+        for (SkillStart started : starts) {
+            swingItems.put(player.getUUID(), mainItem(player));
+            String off=BuiltInRegistries.ITEM.getKey(player.getOffhandItem().getItem()).toString();
+            swingOffhands.put(player.getUUID(),off);
+            damageItems.put(player.getUUID(),actor.style()!=null&&actor.style().controls().leftHand(started.skillId())?off:mainItem(player));
+            quests.useSkill(player.getUUID(), started.skillId());
+        }
+        return !starts.isEmpty();
+    }
+    private RpgAnimationPayload animationPayload(ServerPlayer player) {
+        CombatActor actor = actor(player);
+        CombatSnapshot snapshot = actor.snapshot();
+        WeaponStyleDefinition style = actor.style();
+        String styleId = style == null ? "" : style.presentationStyleId();
+        SkillDefinition skill = actor.currentSkill();
+        boolean visible = (actor.drawn() || actor.phase()==CombatPhase.DRAWING&&style!=null&&!style.controls().spear()) && player.isAlive();
+        String model = "", action = "";
+        String phase=snapshot.phase().name();int remaining=snapshot.phaseTicksRemaining();
+        int windup=skill==null?0:skill.windupTicks(),active=skill==null?0:skill.activeTicks(),recovery=skill==null?0:skill.recoveryTicks();
+        if (visible && skill != null) { model = skill.model(); action = skill.action(); }
+        else if (visible && style != null && !style.leftCombo().isEmpty()) {
+            SkillDefinition base = config.current().skills().get(style.leftCombo().getFirst().skillId());
+            if (base != null) model = base.model();
+            if(style.controls().dual()) action=actor.phase()==CombatPhase.GUARDING?"dual_guard":"dual_idle_00";
+            else if(style.controls().spear()) action=actor.phase()==CombatPhase.GUARDING?"spear_guard":"spear_idle";
+            else if (styleId.equals("rapier")) action = actor.phase() == CombatPhase.GUARDING
+                    ? actor.heavyGuard() ? "rapier_guard_heavy" : "rapier_guard" : "rapier_idle";
+        }
+        if(visible&&style!=null&&style.controls().legacyDual()&&model.startsWith("legacy_")) {
+            model="legacy_dual_blade.fsvoxel";
+            if(skill==null)action=actor.phase()==CombatPhase.DRAWING?"dual_draw":actor.phase()==CombatPhase.GUARDING?"dual_guard":"dual_idle_"+Math.max(0,actor.leftSide()+1)+Math.max(0,actor.rightSide()+1);
+        }
+        if(visible&&styleId.equals("rapier")&&model.startsWith("legacy_")) {
+            if(actor.phase()==CombatPhase.DRAWING)action="rapier_draw";
+            if(skill!=null&&skill.id().equals("sword_thrust")&&actor.phase()==CombatPhase.WINDUP&&actor.chargeSnapshot().holding())
+                action=actor.chargeSnapshot().fullyCharged()?"rapier_full_charge":"rapier_charge";
+        }
+        if(visible&&styleId.equals("bow")) {
+            var bow=archery.snapshot(player,archeryProgress(player));model="legacy_bow.fsvoxel";action=bow.animationAction();
+            // The actor can become visible before the independent bow controller is active.
+            if(action.isBlank())action=style.id().equals("bow_snipe")?"bow_snipe_idle":"bow_rapid_idle";
+            windup=active=recovery=0;
+            if(actor.phase()==CombatPhase.DRAWING){action="bow_draw";phase="DRAWING";remaining=snapshot.phaseTicksRemaining();}
+            else if(bow.charging()&&!action.endsWith("_release")) {
+                phase="WINDUP";windup=Math.max(1,(int)Math.ceil(bow.requiredDrawTicks()));
+                remaining=Math.max(1,(int)Math.ceil(bow.requiredDrawTicks()*(1-bow.chargeProgress())));
+            } else if(action.endsWith("_release")||action.equals("bow_bash")) {
+                phase="ACTIVE";active=action.equals("bow_bash")?config.current().archery().bashAnimationTicks():config.current().archery().shotAnimationTicks();
+                remaining=Math.max(0,bow.animationRemainingTicks());
+            } else {phase=snapshot.phase().name();remaining=snapshot.phaseTicksRemaining();}
+        }
+        return new RpgAnimationPayload(player.getUUID(), styleId, model, action, phase, remaining,
+                windup,active,recovery,
+                animationSequences.getOrDefault(player.getUUID(), 0L), visible,actor.leftSide(),actor.rightSide(),actor.attackAim());
+    }
+    private void broadcastAnimation(ServerPlayer player, boolean heartbeat) {
+        CombatActor actor = actor(player);
+        RpgAnimationPayload payload = animationPayload(player);
+        String state = payload.style() + "|" + payload.model() + "|" + payload.action() + "|" + payload.phase() + "|" + payload.drawn() + "|" + actor.snapshot().swingSequence()
+                +(ArcheryServer.bowStyle(actor)?"|"+archery.snapshot(player,archeryProgress(player)).sequence():"");
+        boolean changed = !state.equals(animationStates.get(player.getUUID()));
+        if (changed) {
+            animationStates.put(player.getUUID(), state);
+            animationSequences.merge(player.getUUID(), 1L, Long::sum);
+            payload = animationPayload(player);
+        }
+        if (changed || heartbeat) PacketDistributor.sendToPlayersTrackingEntityAndSelf(player, payload);
+    }
+    private double attackFacing(ServerPlayer p,Entity target) {
+        var a=actor(p); if(a.style()!=null&&a.style().controls().spear())return 0;
+        if(a.style()!=null&&a.style().controls().dual()&&a.attackAim()!=null) {
+            var point=a.attackAim().sample(0);return angle(Vec3.directionFromRotation((float)point.pitch(),(float)point.yaw()),target.position().subtract(p.position()));
+        }
+        return facing(p,target);
+    }
+    private boolean spearContact(ServerPlayer p,LivingEntity target,CombatActor actor) {
+        var skill=actor.activeSkill();var aim=actor.attackAim();if(aim==null||skill==null)return false;
+        double end=(actor.snapshot().skillElapsedTicks()-skill.windupTicks()+1.0)/skill.activeTicks();
+        double begin=Math.max(0,end-1.0/skill.activeTicks());
+        var origin=p.getEyePosition();var box=target.getBoundingBox().inflate(actor.style().controls().spearRadius());
+        // Cover each active tick's traversed subarc without turning the sweep into an omnidirectional cone.
+        for(int i=0;i<=16;i++) {
+            var point=aim.sample(begin+(end-begin)*i/16);
+            var direction=Vec3.directionFromRotation((float)point.pitch(),(float)point.yaw());
+            var tip=origin.add(direction.scale(skill.reach()));var contact=box.clip(origin,tip);
+            if(contact.isPresent()) {
+                var wall=p.level().clip(new net.minecraft.world.level.ClipContext(origin,contact.get(),net.minecraft.world.level.ClipContext.Block.COLLIDER,net.minecraft.world.level.ClipContext.Fluid.NONE,p));
+                if(wall.getType()==net.minecraft.world.phys.HitResult.Type.MISS || wall.getLocation().distanceToSqr(origin)+.001>=contact.get().distanceToSqr(origin))return true;
+            }
+        }
+        return false;
+    }
+    private static double attackDistance(Entity attacker, Entity target) {
+        Vec3 origin = attacker.getEyePosition();
+        AABB box = target.getBoundingBox();
+        Vec3 contact = new Vec3(Math.max(box.minX, Math.min(box.maxX, origin.x)),
+                Math.max(box.minY, Math.min(box.maxY, origin.y)), Math.max(box.minZ, Math.min(box.maxZ, origin.z)));
+        return origin.distanceTo(contact);
+    }
+    private static double facing(Entity observer, Entity target) { return angle(observer.getLookAngle(), target.position().subtract(observer.position())); }
+    private static double angle(Vec3 forward, Vec3 direction) {
+        Vec3 a = forward.multiply(1, 0, 1).normalize(), b = direction.multiply(1, 0, 1).normalize();
+        if (a.lengthSqr() == 0 || b.lengthSqr() == 0) return 0;
+        return Math.toDegrees(Math.acos(Math.max(-1, Math.min(1, a.dot(b)))));
+    }
+    private void send(ServerPlayer p, String message, JsonObject editResult) {
+        JsonObject snapshot = RpgConfig.JSON.toJsonTree(actor(p).snapshot()).getAsJsonObject();
+        snapshot.addProperty("skill", actor(p).snapshot().skillId());
+        snapshot.addProperty("canEdit", canEdit(p)); snapshot.addProperty("message", message);
+        snapshot.add("skills", RpgConfig.JSON.toJsonTree(config.current().skills().values()));
+        snapshot.add("styles", RpgConfig.JSON.toJsonTree(config.current().styles().values()));
+        snapshot.addProperty("weaponStyle", actor(p).style() == null ? "" : actor(p).style().id());
+        snapshot.addProperty("weaponMode", actor(p).style() == null ? "" : actor(p).style().presentationStyleId());
+        snapshot.addProperty("weaponEquipped", hasWeapon(p));
+        List<WeaponStyleDefinition> drawStates = matchingStyles(p);
+        snapshot.addProperty("drawStateCount", drawStates.size());
+        snapshot.addProperty("drawStateIndex", drawStates.indexOf(actor(p).style()));
+        snapshot.addProperty("leftSide",actor(p).leftSide());snapshot.addProperty("rightSide",actor(p).rightSide());
+        snapshot.add("combo", RpgConfig.JSON.toJsonTree(actor(p).comboSnapshot()));
+        snapshot.addProperty("guardMode", actor(p).heavyGuard() ? "HEAVY" : "LIGHT");
+        snapshot.add("technique", RpgConfig.JSON.toJsonTree(actor(p).techniqueSnapshot()));
+        snapshot.addProperty("legacySkills",true);
+        snapshot.add("charge",RpgConfig.JSON.toJsonTree(actor(p).chargeSnapshot()));
+        var bowProgress=archeryProgress(p);var bowJson=archery.snapshotJson(p,bowProgress);var bowRules=archery.rules();
+        bowJson.addProperty("fullSnipeArrowSpeed",ArcheryScores.arrowSpeed(bowRules,bowProgress,true,1));
+        bowJson.addProperty("fullRapidArrowSpeed",ArcheryScores.arrowSpeed(bowRules,bowProgress,false,1));
+        bowJson.addProperty("scopeFullMagnification",ArcheryScores.scopeMagnification(bowRules,bowProgress,1));
+        bowJson.addProperty("scopeUnlocked",bowProgress.score()>=bowRules.scopeScore());
+        snapshot.add("archery",bowJson);
+        JsonObject skillTree=new JsonObject();skillTree.add("view",RpgConfig.JSON.toJsonTree(progression.view(p.getUUID())));
+        skillTree.add("nodes",RpgConfig.JSON.toJsonTree(progression.nodes(p.getUUID())));skillTree.add("effects",RpgConfig.JSON.toJsonTree(progression.effects(p.getUUID())));
+        skillTree.addProperty("trainingHint","睡眠开启心法；食物、在线时间增长心法；实际承受敌对伤害开启煅体；采矿、走路、承受攻击增长煅体与步法");
+        snapshot.add("progression",skillTree);
+        JsonArray journal = new JsonArray();
+        for (var progress : quests.progress(p.getUUID())) {
+            var definition = quests.catalog().get(progress.questId());
+            JsonObject quest = new JsonObject();
+            quest.addProperty("id", definition.id()); quest.addProperty("label", definition.label());
+            quest.addProperty("description", definition.description()); quest.addProperty("status", progress.status().name());
+            quest.addProperty("repeatable", definition.repeatable());
+            quest.addProperty("rewardText", RpgConfig.JSON.toJson(definition.rewards()));
+            JsonArray objectives = new JsonArray();
+            for (var objective : definition.objectives()) {
+                JsonObject obj = RpgConfig.JSON.toJsonTree(objective).getAsJsonObject();
+                obj.addProperty("label", objective.type() + " " + (objective.target() == null ? "" : objective.target()));
+                obj.addProperty("current", progress.objectiveCounts().getOrDefault(objective.id(), 0));
+                objectives.add(obj);
+            }
+            quest.add("objectives", objectives); journal.add(quest);
+        }
+        snapshot.add("quests", journal);
+        snapshot.add("collection", collectionSnapshot(p));
+        if (editResult != null) snapshot.add("editResult", editResult);
+        PacketDistributor.sendToPlayer(p, new RpgSnapshotPayload(RpgConfig.JSON.toJson(snapshot)));
+    }
+    private static void commands(RegisterCommandsEvent event) {
+        var root = Commands.literal("fsrpg");
+        for (String action : List.of("status", "draw", "dodge", "left", "right", "quests")) root.then(Commands.literal(action).executes(ctx -> {
+            ServerPlayer p = ctx.getSource().getPlayerOrException();
+            if (instance != null) {
+                instance.action(p, action.equals("left") || action.equals("right") ? "attack" : action.equals("quests") ? "status" : action, action);
+                if (action.equals("status") || action.equals("quests")) ctx.getSource().sendSuccess(() -> Component.literal("FSRPG: " + RpgConfig.JSON.toJson(instance.actor(p).snapshot()) + "; quests=" + instance.quests.progress(p.getUUID())), false);
+            }
+            return 1;
+        }));
+        root.then(Commands.literal("guard").then(Commands.argument("held", BoolArgumentType.bool()).executes(ctx -> { instance.action(ctx.getSource().getPlayerOrException(), "guard", String.valueOf(BoolArgumentType.getBool(ctx, "held"))); return 1; })));
+        root.then(Commands.literal("guardMode").then(Commands.argument("mode", StringArgumentType.word()).executes(ctx -> {
+            instance.action(ctx.getSource().getPlayerOrException(), "guard", StringArgumentType.getString(ctx, "mode")); return 1;
+        })));
+        root.then(Commands.literal("style").then(Commands.argument("id", StringArgumentType.word()).executes(ctx -> {
+            instance.action(ctx.getSource().getPlayerOrException(), "weaponStyle", StringArgumentType.getString(ctx, "id")); return 1;
+        })));
+        for (String verb : List.of("accept", "claim", "skill")) root.then(Commands.literal(verb).then(Commands.argument("id", StringArgumentType.word()).executes(ctx -> {
+            instance.action(ctx.getSource().getPlayerOrException(), verb.equals("accept") ? "acceptQuest" : verb.equals("claim") ? "claimQuest" : "attack", StringArgumentType.getString(ctx, "id")); return 1;
+        })));
+        root.then(Commands.literal("reload").requires(Commands.hasPermission(Commands.LEVEL_GAMEMASTERS)).executes(ctx -> {
+            if (ctx.getSource().getEntity() instanceof ServerPlayer p) instance.action(p, "reload", "");
+            else { try { instance.applyConfig(instance.config.reload()); ctx.getSource().sendSuccess(() -> Component.literal("FSRPG config reloaded"), true); } catch (Exception error) { ctx.getSource().sendFailure(Component.literal(error.getMessage())); } }
+            return 1;
+        }));
+        event.getDispatcher().register(root);
+    }
+}

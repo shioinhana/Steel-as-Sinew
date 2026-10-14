@@ -1,0 +1,35 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://fsrpg.local/schemas/weapons.schema.json",
+  "title": "FSRPG 武器组与伤害倍率",
+  "description": "config/fsrpg/weapons.json。允许其他模组的已注册物品。服务端重载检查所有物品 ID 确实存在；minecraft:air 表示空手。技能的 weapon 必须引用已定义武器组或 any。",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["groups", "itemDamageMultipliers"],
+  "properties": {
+    "groups": {
+      "type": "object",
+      "minProperties": 1,
+      "maxProperties": 128,
+      "propertyNames": { "pattern": "^[a-z0-9_]+$" },
+      "additionalProperties": { "$ref": "#/$defs/group" }
+    },
+    "itemDamageMultipliers": {
+      "type": "object",
+      "propertyNames": { "$ref": "#/$defs/itemId" },
+      "additionalProperties": { "type": "number", "minimum": 0, "maximum": 100 }
+    }
+  },
+  "$defs": {
+    "itemId": { "type": "string", "pattern": "^[a-z0-9_.-]+:[a-z0-9_./-]+$" },
+    "group": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["mainItems", "offhandItems"],
+      "properties": {
+        "mainItems": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/itemId" } },
+        "offhandItems": { "type": "array", "items": { "$ref": "#/$defs/itemId" }, "description": "空数组表示不限制副手；非空数组表示副手必须匹配其一。" }
+      }
+    }
+  }
+}

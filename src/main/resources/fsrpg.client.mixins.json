@@ -1,0 +1,23 @@
+{
+  "required": true,
+  "minVersion": "0.8",
+  "package": "org.fsrpg.mixin",
+  "compatibilityLevel": "JAVA_21",
+  "client": [
+    "PlayerModelMixin",
+    "HumanoidArmorMixin",
+    "ModelRenderContextMixin",
+    "SkinnedArmMixin",
+    "HeldItemMixin",
+    "ItemStateAccess",
+    "ItemLayerAccess",
+    "CombatMouseMixin",
+    "CombatCameraMixin",
+    "ClientInputAccess",
+    "GameRendererAccess",
+    "GuiContextAccess"
+  ],
+  "injectors": {
+    "defaultRequire": 1
+  }
+}

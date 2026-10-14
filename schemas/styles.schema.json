@@ -1,0 +1,326 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://fsrpg.local/schemas/styles.schema.json",
+  "title": "FSRPG 武器档位、连击窗口与格挡",
+  "description": "服务端 /fsrpg reload 后生效。同一实际装备匹配的 enabled 档位作为拔刀姿态；仅一个时拿出武器自动拔刀，多个时 R 循环切换。匹配副手的专门武器组优先于只约束主手的组。leftCombo 只定义动作顺序；任意阶段可缓存一招，有效判定结束后进入下一段。前摇与后摇的取消规则由 cancels 配置。旧门字段仅兼容读取，不再作为输入时机条件。",
+  "type": "array",
+  "minItems": 1,
+  "maxItems": 128,
+  "items": {
+    "$ref": "#/$defs/style"
+  },
+  "$defs": {
+    "ticks": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 72000
+    },
+    "skillId": {
+      "type": "string",
+      "pattern": "^[a-z0-9_.:-]+$",
+      "minLength": 1,
+      "maxLength": 128
+    },
+    "resource": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1000000
+    },
+    "style": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "label",
+        "weaponGroup",
+        "enabled",
+        "leftCombo",
+        "rightSkill",
+        "guard"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[a-z0-9_]+$",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "label": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256,
+          "pattern": "\\S"
+        },
+        "weaponGroup": {
+          "type": "string",
+          "pattern": "^[a-z0-9_]+$",
+          "minLength": 1,
+          "maxLength": 128,
+          "description": "weapons.json 中的组名，或 any；默认西洋剑使用兼容的 sword 组。同组的多个 enabled 档位可定义同武器的不同拔刀姿态；any 不使普通物品或空手自动进入战斗。双刀匹配副手时优先于单剑。"
+        },
+        "enabled": {
+          "type": "boolean",
+          "description": "false 表示预留档位，界面可以展示，但服务端不允许启用战斗。"
+        },
+        "leftCombo": {
+          "type": "array",
+          "maxItems": 16,
+          "items": {
+            "$ref": "#/$defs/stage"
+          },
+          "description": "左键动作顺序，只能引用 LEFT 技能。阶段切换时才扣资源和累计任务。"
+        },
+        "rightSkill": {
+          "type": "string",
+          "pattern": "^$|^[a-z0-9_.:-]+$",
+          "maxLength": 128,
+          "description": "RIGHT 或兼容 SPECIAL 技能；空字符串表示无右键动作。windupTicks 定义短蓄力时间。"
+        },
+        "guard": {
+          "$ref": "#/$defs/guard"
+        },
+        "heavyGuard": {
+          "$ref": "#/$defs/guard",
+          "description": "可选的重格挡规则；Shift+E。缺省时只支持旧版轻格挡。切换模式不刷新拨挡窗口或连续受击历史。"
+        },
+        "techniques": {
+          "$ref": "#/$defs/techniques"
+        },
+        "cancels": {
+          "$ref": "#/$defs/cancels"
+        },
+        "controls": {
+          "$ref": "#/$defs/controls"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "enabled": {
+                "const": true
+              }
+            },
+            "required": [
+              "enabled"
+            ]
+          },
+          "then": {
+            "properties": {
+              "leftCombo": {
+                "minItems": 1
+              }
+            }
+          }
+        }
+      ]
+    },
+    "stage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "skillId"
+      ],
+      "properties": {
+        "skillId": {
+          "$ref": "#/$defs/skillId"
+        },
+        "gateStartTick": {
+          "$ref": "#/$defs/ticks",
+          "description": "已废弃，仅兼容读取，不影响连击输入或衔接时刻。",
+          "deprecated": true
+        },
+        "gateEndTick": {
+          "$ref": "#/$defs/ticks",
+          "description": "已废弃，仅兼容读取，不影响连击输入或衔接时刻。",
+          "deprecated": true
+        },
+        "chainTick": {
+          "$ref": "#/$defs/ticks",
+          "description": "已废弃，仅兼容读取，不影响连击输入或衔接时刻。",
+          "deprecated": true
+        },
+        "bufferTicks": {
+          "$ref": "#/$defs/ticks",
+          "description": "已废弃，仅兼容读取，不影响连击输入或衔接时刻。",
+          "deprecated": true
+        }
+      }
+    },
+    "guard": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "arcDegrees",
+        "damageMultiplier",
+        "staminaCost",
+        "perfectGuardTicks",
+        "perfectGuardStaminaCost",
+        "parryStunTicks",
+        "guardBreakStunTicks",
+        "repeatHitWindowTicks",
+        "maxBlockedHits",
+        "heavyBreaksGuard",
+        "perfectGuardRequiresBlockable"
+      ],
+      "properties": {
+        "arcDegrees": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 360
+        },
+        "damageMultiplier": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "staminaCost": {
+          "$ref": "#/$defs/resource"
+        },
+        "perfectGuardTicks": {
+          "$ref": "#/$defs/ticks"
+        },
+        "perfectGuardStaminaCost": {
+          "$ref": "#/$defs/resource"
+        },
+        "parryStunTicks": {
+          "$ref": "#/$defs/ticks"
+        },
+        "guardBreakStunTicks": {
+          "$ref": "#/$defs/ticks"
+        },
+        "repeatHitWindowTicks": {
+          "$ref": "#/$defs/ticks",
+          "description": "短时间连续接触窗口；0 表示关闭此限制。松开再按格挡不会清除此历史。"
+        },
+        "maxBlockedHits": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 128,
+          "description": "该连续窗口内允许格挡或完美格挡的次数，之后攻击破防。默认西洋剑为 1。"
+        },
+        "heavyBreaksGuard": {
+          "type": "boolean",
+          "description": "重击或不可格挡技能可破防。"
+        },
+        "perfectGuardRequiresBlockable": {
+          "type": "boolean",
+          "description": "完美格挡也要求技能可格挡；默认西洋剑不能借弹反抵消不可格挡重刺。"
+        }
+      }
+    },
+    "techniques": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "riposteSkill",
+        "riposteWindowTicks",
+        "repriseSkill",
+        "repriseWindowTicks"
+      ],
+      "properties": {
+        "riposteSkill": {
+          "type": "string",
+          "pattern": "^$|^[a-z0-9_.:-]+$",
+          "maxLength": 128,
+          "description": "轻格挡成功拨挡后，右键的一次性还击技能；必须引用RIGHT技能。空字符串关闭，并要求窗口为0。"
+        },
+        "riposteWindowTicks": {
+          "$ref": "#/$defs/ticks",
+          "description": "拨挡成功起算的右键还击窗口。"
+        },
+        "repriseSkill": {
+          "type": "string",
+          "pattern": "^$|^[a-z0-9_.:-]+$",
+          "maxLength": 128,
+          "description": "完成闪避后，右键的一次性回刺技能；必须引用RIGHT技能，且与还击和普通右键不同。"
+        },
+        "repriseWindowTicks": {
+          "$ref": "#/$defs/ticks",
+          "description": "成功完成闪避后起算；受击打断的闪避不授予。"
+        }
+      }
+    },
+    "cancels": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "windupAttack",
+        "windupGuard",
+        "windupDodge",
+        "recoveryAttack",
+        "recoveryGuard",
+        "recoveryDodge"
+      ],
+      "properties": {
+        "windupAttack": {
+          "type": "boolean",
+          "default": true
+        },
+        "windupGuard": {
+          "type": "boolean",
+          "default": true
+        },
+        "windupDodge": {
+          "type": "boolean",
+          "default": true
+        },
+        "recoveryAttack": {
+          "type": "boolean",
+          "default": true
+        },
+        "recoveryGuard": {
+          "type": "boolean",
+          "default": true
+        },
+        "recoveryDodge": {
+          "type": "boolean",
+          "default": true
+        }
+      },
+      "description": "缺省全部 true。有效判定阶段始终不能被普通主动操作取消；攻击输入可缓存，命中硬直和拨挡等被动强制打断照常生效。"
+    },
+    "controls": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "mode",
+        "leftHandLeft",
+        "rightHandLeft",
+        "rightHandRight",
+        "leftHandRight",
+        "sweepSkill",
+        "spearRadius"
+      ],
+      "properties": {
+        "mode": {
+          "enum": [
+            "ordered",
+            "dual",
+            "spear"
+          ]
+        },
+        "leftHandLeft": {
+          "type": "string"
+        },
+        "rightHandLeft": {
+          "type": "string"
+        },
+        "rightHandRight": {
+          "type": "string"
+        },
+        "leftHandRight": {
+          "type": "string"
+        },
+        "sweepSkill": {
+          "type": "string"
+        },
+        "spearRadius": {
+          "type": "number",
+          "minimum": 0.02,
+          "maximum": 0.6
+        }
+      }
+    }
+  }
+}

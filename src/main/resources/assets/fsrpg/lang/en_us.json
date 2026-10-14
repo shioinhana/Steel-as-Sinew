@@ -1,0 +1,22 @@
+{
+  "key.category.fsrpg.combat": "FSRPG Adventure & Combat",
+  "key.fsrpg.draw": "Cycle weapon stance / bow mode",
+  "key.fsrpg.left": "Left attack",
+  "key.fsrpg.right": "Right attack",
+  "key.fsrpg.guard": "Guard (hold)",
+  "key.fsrpg.style": "Switch weapon style",
+  "key.fsrpg.dodge": "Dodge",
+  "key.fsrpg.editor": "Combat timing editor",
+  "key.fsrpg.journal": "Quest journal",
+  "key.fsrpg.skill": "Use skill",
+  "key.fsrpg.skill_tree": "Cultivation skill tree",
+  "item.fsrpg.money_pouch": "Money Pouch",
+  "item.fsrpg.gold_coin": "Gold Coin",
+  "item.fsrpg.silver_coin": "Silver Coin",
+  "item.fsrpg.crystal_coin": "Crystal Coin",
+  "item.fsrpg.nether_coin": "Nether Coin",
+  "item.fsrpg.gold_adventurer_badge": "Gold Adventurer Badge",
+  "item.fsrpg.cobalt_adventurer_badge": "Cobalt Adventurer Badge",
+  "item.fsrpg.copper_adventurer_badge": "Copper Adventurer Badge",
+  "item.fsrpg.silver_adventurer_badge": "Silver Adventurer Badge"
+}

@@ -1,0 +1,40 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://fsrpg.local/schemas/skills.schema.json",
+  "title": "FSRPG 技能配置",
+  "description": "config/fsrpg/skills.json。所有时间值以每秒 20 tick 计。修改后 /fsrpg reload；游戏中的前后摇编辑窗口只能修改时间、伤害、范围、击退和资源消耗。服务器另行校验 ID 唯一、武器组存在和同步数据大小；修改时间后，styles.json 的连击切换点也必须仍位于有效攻击结束之后的后摇内。",
+  "type": "array",
+  "minItems": 1,
+  "maxItems": 128,
+  "items": { "$ref": "#/$defs/skill" },
+  "$defs": {
+    "ticks": { "type": "integer", "minimum": 0, "maximum": 72000 },
+    "cost": { "type": "number", "minimum": 0, "maximum": 1000000 },
+    "skill": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "label", "weapon", "input", "windupTicks", "activeTicks", "recoveryTicks", "cooldownTicks", "staminaCost", "spiritCost", "damage", "reach", "arcDegrees", "knockback", "blockable", "parryable", "clashable", "model", "action"],
+      "properties": {
+        "id": { "type": "string", "pattern": "^[a-z0-9_.:-]+$", "minLength": 1, "maxLength": 128 },
+        "label": { "type": "string", "minLength": 1, "maxLength": 256, "pattern": "\\S" },
+        "weapon": { "type": "string", "pattern": "^[a-z0-9_]+$", "description": "weapons.json 中的武器组名，或 any。" },
+        "input": { "enum": ["LEFT", "RIGHT", "SPECIAL"] },
+        "windupTicks": { "$ref": "#/$defs/ticks", "description": "攻击前摇。" },
+        "activeTicks": { "type": "integer", "minimum": 1, "maximum": 72000, "description": "有效攻击判定持续时间。" },
+        "recoveryTicks": { "$ref": "#/$defs/ticks", "description": "攻击后摇。" },
+        "cooldownTicks": { "$ref": "#/$defs/ticks" },
+        "staminaCost": { "$ref": "#/$defs/cost", "description": "服务端接受动作时的实际体力扣除。0.5.3 按原配置乘 0.2，仅迁移一次；此后编辑按写入值扣除。" },
+        "spiritCost": { "$ref": "#/$defs/cost" },
+        "damage": { "$ref": "#/$defs/cost", "description": "基础伤害，实际伤害乘以 weapons.json 配置的物品倍率。" },
+        "reach": { "type": "number", "minimum": 0.001, "maximum": 128 },
+        "arcDegrees": { "type": "number", "minimum": 0.001, "maximum": 360 },
+        "knockback": { "type": "number", "minimum": 0, "maximum": 128 },
+        "blockable": { "type": "boolean" },
+        "parryable": { "type": "boolean" },
+        "clashable": { "type": "boolean", "description": "对刀还要求双方满足方向、有效攻击阶段、距离和朝向条件。" },
+        "model": { "type": "string", "maxLength": 256, "pattern": "^(?!/)(?!.*\\.\\.)[^\\\\:]*$", "description": "模型目录中的相对 fsvoxel 路径，可以为空；禁止绝对路径、冒号、反斜线和 ..。" },
+        "action": { "type": "string", "maxLength": 128, "description": "fsvoxel 模型内动作名，可以为空。" }
+      }
+    }
+  }
+}
