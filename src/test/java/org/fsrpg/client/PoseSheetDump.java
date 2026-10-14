@@ -152,7 +152,7 @@ public final class PoseSheetDump {
             String idle = attack ? "dual_idle_11" : step.action();
             for (; tick < begin + length - 1e-9; tick += 20 / HZ) {
                 double elapsed = tick - begin;
-                double seconds = attack ? clip.duration() * Math.clamp(elapsed / total, 0, 1) : tick / 20;
+                double seconds = attack ? PoseRemap.warp(dual.rig(), clip).clipTime(elapsed / total) : tick / 20;
                 var pose = new HashMap<>(dual.rig().sampleLocal(List.of(dual.rig().clips().get(idle)), tick / 20, Map.of()));
                 if (attack) {
                     var sampled = dual.rig().sampleLocal(List.of(clip), seconds, Map.of());

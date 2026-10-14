@@ -269,6 +269,10 @@ public final class PlayerAnimations {
         boolean sword = SwordMotion.applies(binding.asset.full());
         if (LegacyMotion.applies(binding.asset.full()) && !sword) {
             seconds=LegacyMotion.actionSeconds(clip,server,elapsed,Math.max(0,renderTick-binding.started)/20);
+            if (elapsed >= 0 && LegacyMotion.kind(binding.asset.full()).equals("dual_blade") && clip.id().contains("attack")) {
+                double total = Math.max(1, server.windupTicks() + server.activeTicks() + server.recoveryTicks());
+                seconds = PoseRemap.warp(binding.asset.full().rig(), clip).clipTime(elapsed / total);
+            }
             binding.sampledClipSeconds=seconds;
             var pose=LegacyMotion.sample(binding.asset.full(),server,seconds,renderTick/20,state,living);
             // The imported dual strokes hand a held end pose straight to the next action. Without

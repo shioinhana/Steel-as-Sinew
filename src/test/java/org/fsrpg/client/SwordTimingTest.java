@@ -33,6 +33,7 @@ public final class SwordTimingTest {
         strikeLeanTiltsTorso(sword, spear);
         dualHandoffIsContinuous(dual);
         bridgedSequenceIsContinuous(dual);
+        dualStrokeIsReadable(dual);
         System.out.println("SwordTimingTest passed: " + samples + " samples / " + checks + " checks");
     }
 
@@ -244,7 +245,8 @@ public final class SwordTimingTest {
         check(worstSwitch < 15, "No switch-frame jump between dual clips: " + worstSwitch + " deg");
         // The imported strokes carry abrupt authored steps of their own (about 71 degrees on the
         // forearm at the windup/contact border); the bridge is not allowed to make those worse.
-        check(worstInside < 75, "In-clip motion stays within the authored range: " + worstInside + " deg");
+        System.out.printf("DUAL SEQUENCE switch %.1f inside %.1f deg%n", worstSwitch, worstInside);
+        check(worstInside < 35, "In-clip motion stays within the authored range: " + worstInside + " deg");
     }
 
     private static double rotation(Pose a, Pose b) {
@@ -254,4 +256,43 @@ public final class SwordTimingTest {
     }
 
     private static void check(boolean condition, String label) { checks++; if (!condition) throw new AssertionError(label); }
+
+    /** The warp spreads the fast part of each dual stroke over more render frames without reordering time. */
+    private static void dualStrokeIsReadable(ModelDocument dual) {
+        var bones = List.of("right_arm", "right_forearm", "left_arm", "left_forearm", "right_item", "left_item");
+        for (String id : List.of("legacy_dual_blade_attack_1_upper", "legacy_dual_blade_attack2_upper", "legacy_dual_blade_attack3_upper",
+                "legacy_dual_blade_attack4_upper", "legacy_dual_blade_attack_dual_upper")) {
+            Clip clip = dual.rig().clips().get(id);
+            var warp = PoseRemap.warp(dual.rig(), clip);
+            check(Math.abs(warp.clipTime(0)) < 1e-9 && Math.abs(warp.clipTime(1) - clip.duration()) < 1e-6, id + " warp keeps both ends");
+            double previous = -1, worstLinear = 0, worstWarped = 0, widestJump = 0;
+            Map<String, Pose> lastLinear = null, lastWarped = null;
+            double worstTick = 0;
+            int frames = (int) Math.round(10 * .05 * HZ);
+            for (int frame = 0; frame <= frames; frame++) {
+                double fraction = (double) frame / frames;
+                double warped = warp.clipTime(fraction);
+                check(warped >= previous - 1e-9, id + " clip time never runs backward");
+                widestJump = Math.max(widestJump, warped - Math.max(previous, 0));
+                previous = warped;
+                var linear = dual.rig().sampleLocal(List.of(clip), clip.duration() * fraction, Map.of());
+                var shaped = dual.rig().sampleLocal(List.of(clip), warped, Map.of());
+                if (lastLinear != null) for (String bone : bones) {
+                    worstLinear = Math.max(worstLinear, angle(linear.get(bone), lastLinear.get(bone)));
+                    double w = angle(shaped.get(bone), lastWarped.get(bone));
+                    if (w > worstWarped) { worstWarped = w; worstTick = frame * 20.0 / HZ; }
+                }
+                lastLinear = linear; lastWarped = shaped;
+                samples++;
+            }
+            check(worstWarped < worstLinear * .6 && worstWarped < 30, id + " fastest joint step drops: " + worstLinear + " -> " + worstWarped);
+            check(worstTick >= 3 && worstTick <= 9, id + " fastest step lands inside the active window: tick " + worstTick);
+            System.out.printf("DUAL STROKE %s worst 60Hz joint step %.1f -> %.1f deg at tick %.2f%n", id, worstLinear, worstWarped, worstTick);
+        }
+    }
+
+    private static double angle(Pose a, Pose b) {
+        double dot = Math.abs(new Quaternionf(a.fsQuaternion()).normalize().dot(new Quaternionf(b.fsQuaternion()).normalize()));
+        return Math.toDegrees(2 * Math.acos(Math.min(1, dot)));
+    }
 }

@@ -131,6 +131,14 @@ tasks.register('poseSheetDump', JavaExec) {
     args project.hasProperty('poseSheetOutput') ? project.property('poseSheetOutput').toString() : 'build/pose-sheet/poses.json'
 }
 
+tasks.register('dualClipAudit', JavaExec) {
+    dependsOn testClasses
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'org.fsrpg.client.DualClipAudit'
+    jvmArgs '-Dfile.encoding=UTF-8'
+    args project.hasProperty('auditFilter') ? project.property('auditFilter').toString() : 'attack'
+}
+
 tasks.register('spearStanceTest', JavaExec) {
     dependsOn testClasses
     classpath = sourceSets.test.runtimeClasspath

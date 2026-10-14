@@ -114,6 +114,76 @@ public final class PoseRemap {
     /** Deepest pullback the windup can ask for, exposed so callers can bound it. */
     public static float holdWeight() { return ANTICIPATION_STRENGTH; }
 
+    /** Joint speed in degrees per second at which the clip clock has halved its pace. */
+    private static final double SPEED_CAP = 600;
+    private static final int WARP_SAMPLES = 480;
+    private static final Map<String, Warp> WARPS = new java.util.concurrent.ConcurrentHashMap<>();
+
+    /**
+     * Monotone map between clip time and the share of the action elapsed. The authored dual
+     * strokes cross about two hundred degrees in four render frames, so the blade is a smear
+     * rather than a motion. The clip clock is slowed in proportion to the blade's own speed:
+     * the faster the joints turn the slower the clock runs, slow stretches keep their pace,
+     * and because the slowing follows the speed curve there is no threshold and no velocity step.
+     */
+    public static final class Warp {
+        private final double duration;
+        private final double[] cumulative;
+        private Warp(double duration, double[] cumulative) { this.duration = duration; this.cumulative = cumulative; }
+
+        /** Clip time reached when {@code fraction} of the whole action has elapsed. */
+        public double clipTime(double fraction) {
+            double target = Math.clamp(fraction, 0, 1) * cumulative[WARP_SAMPLES];
+            int low = 0, high = WARP_SAMPLES;
+            while (high - low > 1) {
+                int middle = (low + high) >>> 1;
+                if (cumulative[middle] <= target) low = middle; else high = middle;
+            }
+            double span = cumulative[high] - cumulative[low];
+            double within = span <= 1e-12 ? 0 : (target - cumulative[low]) / span;
+            return duration * (low + within) / WARP_SAMPLES;
+        }
+
+        /** Share of the whole action that has elapsed when the clip reaches {@code seconds}. */
+        public double fraction(double seconds) {
+            double position = Math.clamp(seconds / duration, 0, 1) * WARP_SAMPLES;
+            int low = (int) Math.min(WARP_SAMPLES - 1, Math.floor(position));
+            double within = position - low;
+            return (cumulative[low] + (cumulative[low + 1] - cumulative[low]) * within) / cumulative[WARP_SAMPLES];
+        }
+    }
+
+    public static Warp warp(Rig rig, Clip clip) {
+        return WARPS.computeIfAbsent(rig.id() + "/" + clip.id(), id -> analyseWarp(rig, clip));
+    }
+
+    private static Warp analyseWarp(Rig rig, Clip clip) {
+        double duration = Math.max(1e-4, clip.duration());
+        var bones = clip.tracks().keySet();
+        var poses = new java.util.ArrayList<Map<String, Pose>>();
+        for (int n = 0; n <= WARP_SAMPLES; n++) poses.add(rig.sampleLocal(List.of(clip), duration * n / WARP_SAMPLES, Map.of()));
+        double[] raw = new double[WARP_SAMPLES + 1];
+        for (int n = 1; n <= WARP_SAMPLES; n++) {
+            double worst = 0;
+            for (String bone : bones) {
+                Pose a = poses.get(n - 1).get(bone), b = poses.get(n).get(bone);
+                if (a == null || b == null) continue;
+                double dot = Math.abs(new Quaternionf(a.fsQuaternion()).normalize().dot(new Quaternionf(b.fsQuaternion()).normalize()));
+                worst = Math.max(worst, Math.toDegrees(2 * Math.acos(Math.min(1, dot))));
+            }
+            raw[n] = worst;
+        }
+        raw[0] = raw[1];
+        double[] cumulative = new double[WARP_SAMPLES + 1];
+        double step = duration / WARP_SAMPLES;
+        for (int n = 1; n <= WARP_SAMPLES; n++) {
+            // Joint speed per clip second. Dividing by the cap makes the clip clock run slower the
+            // faster the joints turn, so speed saturates instead of growing without bound, and an
+            // authored one-key jump is spread over time instead of landing in a single frame.
+            double rate = (raw[n - 1] + raw[n]) * .5 / step;
+            cumulative[n] = cumulative[n - 1] + 1 + rate / SPEED_CAP;
+        }        return new Warp(duration, cumulative);
+    }
     /**
      * Blend the stroke pose toward a hold pose, which supplies the windup's counter-move. The
      * imported strokes start already extended, so without this the windup has nothing to show.
