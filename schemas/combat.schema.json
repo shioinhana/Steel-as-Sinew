@@ -30,7 +30,18 @@
     "dodgeStaminaCost": { "$ref": "#/$defs/resource", "description": "服务端接受闪避时的实际体力扣除，默认 6。" },
     "dodgeDistance": { "type": "number", "minimum": 0, "maximum": 32 },
     "dodgeCancelsRecovery": { "type": "boolean" },
-    "allowAirDodge": { "type": "boolean" }
+    "allowAirDodge": { "type": "boolean" },
+    "rapierTargetLock": {
+      "type": "object", "additionalProperties": false,
+      "description": "仅拔刀西洋剑启用。距离为双方实体位置之间的三维格数，边界包含；敌对优先，同优先级保持现锁，不自动锁玩家、盟友或宠物。旧配置仅补缺字段并备份。",
+      "required": ["enabled", "range", "allowPassive", "requireLineOfSight"],
+      "properties": {
+        "enabled": { "type": "boolean", "default": true },
+        "range": { "type": "number", "minimum": 0.5, "maximum": 64, "default": 10 },
+        "allowPassive": { "type": "boolean", "default": true },
+        "requireLineOfSight": { "type": "boolean", "default": true }
+      }
+    }
   },
   "$defs": {
     "ticks": { "type": "integer", "minimum": 0, "maximum": 72000 },

@@ -258,7 +258,7 @@ final class RenderObservations {
             finalLower.addProperty("phaseRadians",lower.phase());
             finalLower.addProperty("pelvisYawRadians",lower.pelvisYaw());
             finalLower.addProperty("pelvisDropCm",lower.pelvisDropCm());
-            float pelvisYaw=frame.model().rig().id().equals("fsrpg.spear")?lower.pelvisYaw():Float.NaN;
+            float pelvisYaw=frame.model().rig().id().equals("fsrpg.spear")||org.fsrpg.client.SwordMotion.applies(frame.model())?lower.pelvisYaw():Float.NaN;
             finalLower.add("right",finalLeg(model.rightLeg,frame.rightKnee(),lower.right().support(),pelvisYaw));
             finalLower.add("left",finalLeg(model.leftLeg,frame.leftKnee(),lower.left().support(),pelvisYaw));
             observation.add("finalLowerBody",finalLower);

@@ -59,9 +59,9 @@ public final class PlayerAnimations {
         Quaternionf lastSpearChest, lastSpearSourceChest;
         Map<String, Matrix4f> lastSpearWorld;
         PoseRemap.Knots swordKnots;
-        Map<String, Pose> swordHold;
         SpearMotion.State spearMotion = new SpearMotion.State();
         SpearTurn.State spearTurn = new SpearTurn.State();
+        SpearTurn.State swordTurn = new SpearTurn.State();
         double lastSpearChestTick = Double.NaN;
         double aimTransitionStarted, aimTransitionTicks;
         boolean aimTransitionPending;
@@ -87,7 +87,6 @@ public final class PlayerAnimations {
                     var clip = asset.full().rig().clips().get(state.action());
                     if (clip != null) {
                         swordKnots = PoseRemap.knots(asset.full().rig(), clip);
-                        swordHold = PoseRemap.holdPose(asset.full().rig(), clip);
                     }
                 } catch (Exception failure) { throw new IllegalArgumentException("Unable to load current spear lower-body stance", failure); }
             }
@@ -149,6 +148,8 @@ public final class PlayerAnimations {
                 next.lowerPlayback.inheritMovement(previous.lowerPlayback);
             next.inspection = previous.inspection; next.inspection.interrupt(renderTick);
             next.lastAim = previous.lastAim;
+            if (SwordMotion.applies(asset.full()) && previous.asset == asset)
+                next.swordTurn = previous.swordTurn;
             if (state.style().equals("spear") && previous.state.style().equals("spear") && previous.asset == asset) {
                 next.lastSpearRear = previous.lastSpearRear == null ? null : new Vector3f(previous.lastSpearRear);
                 next.lastSpearSourceRear = previous.lastSpearSourceRear == null ? null : new Vector3f(previous.lastSpearSourceRear);
@@ -306,26 +307,20 @@ public final class PlayerAnimations {
                 ClientOptions.MOVING_FULL_BODY_LOWER_WEIGHT.get().floatValue(), ClientOptions.STANCE_FOOT_YAW_LIMIT.get().floatValue());
         if (sword) {
             var upper = SwordMotion.sampleUpper(binding.asset.full(), clip, seconds, breathSeconds, entity.getXRot(), state.yRot);
-            // The imported stroke finishes inside the first fifth of its clip, so it is retimed
-            // onto the authoritative windows: the blade now moves through the contact window
-            // instead of freezing before it, and the windup shows a counter-move.
-            float anticipation = 0;
+            // Retiming changes only the source clock. Do not add the 0.6 counter-pose,
+            // strike lean or locomotion sway to the authored torso/hand/item chain.
             if (elapsed >= 0 && binding.swordKnots != null) {
                 var attack = PoseRemap.plan(binding.swordKnots, clip, elapsed, server.windupTicks(), server.activeTicks(), server.recoveryTicks());
-                var retimed = SwordMotion.sampleUpper(binding.asset.full(), clip, attack.clipTime(), breathSeconds, entity.getXRot(), state.yRot);
-                anticipation = attack.anticipation();
-                if (anticipation > 0 && binding.swordHold != null) retimed = PoseRemap.anticipate(retimed, binding.swordHold, anticipation);
-                upper = retimed;
+                upper = SwordMotion.sampleUpper(binding.asset.full(), clip, attack.clipTime(), breathSeconds, entity.getXRot(), state.yRot);
                 binding.sampledClipSeconds = attack.clipTime();
             }
             upper = SwordMotion.waist(binding.asset.full(), upper);
             var lower = binding.lowerPlayback.sample(renderTick / 20, renderTick / 20, renderTick, state.walkAnimationSpeed,
-                    -state.yRot, ClientOptions.MOVING_FULL_BODY_LOWER_WEIGHT.get().floatValue(), ClientOptions.STANCE_FOOT_YAW_LIMIT.get().floatValue());
+                    0, ClientOptions.MOVING_FULL_BODY_LOWER_WEIGHT.get().floatValue(), ClientOptions.STANCE_FOOT_YAW_LIMIT.get().floatValue());
             boolean full = SwordMotion.fullAction(clip);
-            // The pelvis and feet carry half the stance yaw, so the lower body stops staying
-            // square while the trunk stands side-on to the target.
-            sample = new PoseLayers.Sample(SwordMotion.stance(binding.asset.full(), upper, binding.lowerAsset.full().worldMatrices(lower.pose()),
-                            SwordMotion.bodyYaw(binding.asset.full(), upper)),
+            // The support solver carries the stance yaw with alternate turning steps below.
+            // Keep this source stance square here so the turn is never counted twice.
+            sample = new PoseLayers.Sample(SwordMotion.lower(binding.asset.full(), upper, binding.lowerAsset.full().worldMatrices(lower.pose())),
                     sample.movingWeight(), Locomotion.lowerWeight(sample.movingWeight(), full,
                             PoseLayers.movingLowerWeight(clip, ClientOptions.MOVING_FULL_BODY_LOWER_WEIGHT.get().floatValue())), full ? "full" : "upper");
         }
@@ -405,22 +400,18 @@ public final class PlayerAnimations {
         binding.lastPose = pose;
         binding.lastBase = pose;
         binding.lastLowerWeight = lowerWeight;
-        float visualWalkPhase = binding.motion.gaitPhase(renderTick, sample.movingWeight(), lowerWeight, ClientOptions.STRIDE_LENGTH.get().floatValue());
+        float strideScale = ClientOptions.STRIDE_LENGTH.get().floatValue();
+        if (sword) strideScale = Math.min(strideScale, SwordMotion.MAXIMUM_STRIDE_SCALE);
+        float visualWalkPhase = binding.motion.gaitPhase(renderTick, sample.movingWeight(), lowerWeight, strideScale);
         float leanStrength = elapsed >= 0 ? ClientOptions.ATTACK_LEAN_WEIGHT.get().floatValue() : server.phase().equals("GUARDING") ? .6f : 1;
-        pose = PresentationMotion.stride(pose, visualWalkPhase, entity.onGround() ? sample.movingWeight() : 0,
-                ClientOptions.STRIDE_WEIGHT.get().floatValue() * (elapsed >= 0 ? .25f : 1) * (sword ? SwordMotion.STRIDE_BODY_SCALE : 1));
+        if (!sword) pose = PresentationMotion.stride(pose, visualWalkPhase, entity.onGround() ? sample.movingWeight() : 0,
+                ClientOptions.STRIDE_WEIGHT.get().floatValue() * (elapsed >= 0 ? .25f : 1));
         // Existing client values stay intact on disk; only the additive movement
         // layer is capped. Authored attack/stance rotations remain source-faithful.
         float leanDegrees = Math.min(ClientOptions.MOVEMENT_LEAN.get().floatValue(), SwordMotion.MAXIMUM_MOVEMENT_LEAN);
         float hipShift = ClientOptions.HIP_SHIFT.get().floatValue();
-        if (sword) {
-            hipShift = Math.min(hipShift, SwordMotion.MAXIMUM_HIP_SHIFT_CM);
-        }
-        pose = binding.motion.applyLean(pose, leanDegrees, leanStrength, ClientOptions.HEAD_LEAN_FOLLOW.get().floatValue());
-        if (sword && elapsed >= 0)
-            pose = SwordMotion.strikeLean(binding.asset.full(), pose,
-                    SwordMotion.STRIKE_LEAN * Math.min(1, (float) elapsed / 3f));
-        var balance = binding.motion.balance(hipShift, leanStrength);
+        if (!sword) pose = binding.motion.applyLean(pose, leanDegrees, leanStrength, ClientOptions.HEAD_LEAN_FOLLOW.get().floatValue());
+        var balance = sword ? new PresentationMotion.Balance(0, 0, 0) : binding.motion.balance(hipShift, leanStrength);
         var hipBalance = balance;
         var restBody = sword ? SwordMotion.waistRest() : binding.asset.full().rig().parts().get("body").rest().position();
         hipBalance = PresentationMotion.withAuthoredHipShift(pose, restBody, balance);
@@ -436,7 +427,7 @@ public final class PlayerAnimations {
                 aimCrouchCm = SpearMotion.aimCrouchCm(authoredPitch, ClientOptions.SPEAR_AIM_CROUCH.get().floatValue());
             supportedLower = Locomotion.supported(lowerWorld.get("right_leg"), lowerWorld.get("left_leg"), lowerWeight,
                     visualWalkPhase, state.walkAnimationSpeed, sample.movingWeight(),
-                    binding.motion.lateralLean(), binding.motion.forwardLean(), ClientOptions.STRIDE_LENGTH.get().floatValue(),
+                    binding.motion.lateralLean(), binding.motion.forwardLean(), strideScale,
                     ClientOptions.KNEE_BEND.get().floatValue(), hipBalance,
                     pose.get("body").position().y()-restBody.y(), binding.motion.gaitLane(), aimCrouchCm);
             if(server.style().equals("spear")) {
@@ -447,6 +438,13 @@ public final class PlayerAnimations {
                         (float)Math.toRadians(ClientOptions.SPEAR_TURN_STEP_ANGLE.get()),ClientOptions.SPEAR_TURN_STEP_LIFT.get().floatValue()/6.25f);
                 supportedLower=Locomotion.turn(supportedLower,binding.spearTurn.advance(renderTick,pelvisYaw,bodyYaw,sample.movingWeight(),turnSettings),sample.movingWeight());
             }
+            if (sword) {
+                float pelvisYaw = -SwordMotion.bodyYaw(binding.asset.full(), pose) * SwordMotion.STANCE_FOLLOW;
+                var turn = binding.swordTurn.advance(renderTick, pelvisYaw, bodyYaw, sample.movingWeight());
+                supportedLower = Locomotion.turn(supportedLower, turn, sample.movingWeight());
+            }
+            // One shared vertical translation keeps the unscaled legs grounded. The sword's
+            // authored upper joint rotations, relative positions and official item locator remain intact.
             pose = PresentationMotion.shiftTorso(pose, new PresentationMotion.Balance(0, -supportedLower.pelvisDropCm(), 0));
         }
         if (server.style().equals("rapier") && binding.runPlayback != null && server.phase().equals("READY"))

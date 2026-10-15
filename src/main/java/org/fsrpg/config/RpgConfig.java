@@ -53,6 +53,7 @@ public final class RpgConfig {
         if (!Files.exists(styles)) atomicWrite(styles, JSON.toJson(compatibleStyles(read("skills.json"), read("weapons.json"))));
         LegacySkillMigration.migrate(directory);
         if (staminaMigration != null) staminaMigration.apply();
+        RapierTargetLockMigration.migrate(directory);
     }
     private JsonElement read(String name) throws IOException {
         Path path = directory.resolve(name);
@@ -201,7 +202,8 @@ public final class RpgConfig {
             boolean optionalStyleExtension = record == WeaponStyleDefinition.class
                     && Set.of("heavyGuard", "techniques", "cancels", "controls").contains(component.getName());
             boolean optionalLegacyGate = record == WeaponStyleDefinition.ComboStage.class && !component.getName().equals("skillId");
-            if (required && !optionalStyleExtension && !optionalLegacyGate && (!obj.has(component.getName()) || obj.get(component.getName()).isJsonNull()))
+            boolean optionalTargetLock = record == CombatRules.class && component.getName().equals("rapierTargetLock") && !obj.has(component.getName());
+            if (required && !optionalStyleExtension && !optionalLegacyGate && !optionalTargetLock && (!obj.has(component.getName()) || obj.get(component.getName()).isJsonNull()))
                 throw new IllegalArgumentException(record.getSimpleName() + " missing field " + component.getName());
             if (obj.has(component.getName()) && !obj.get(component.getName()).isJsonNull())
                 checkType(obj.get(component.getName()), component.getGenericType(), record.getSimpleName() + "." + component.getName());
@@ -223,7 +225,8 @@ public final class RpgConfig {
         if (clazz.isRecord()) {
             if (!value.isJsonObject()) throw new IllegalArgumentException(path + " must be an object");
             boolean completeStyleRules = clazz == WeaponStyleDefinition.ComboStage.class || clazz == WeaponStyleDefinition.GuardRules.class
-                    || clazz == WeaponStyleDefinition.Techniques.class || clazz == WeaponStyleDefinition.CancelRules.class || clazz == org.fsrpg.combat.WeaponControls.class;
+                    || clazz == WeaponStyleDefinition.Techniques.class || clazz == WeaponStyleDefinition.CancelRules.class || clazz == org.fsrpg.combat.WeaponControls.class
+                    || clazz == org.fsrpg.combat.RapierTargeting.Rules.class;
             recordFields(value.getAsJsonObject(), clazz, completeStyleRules); return;
         }
         if (!value.isJsonPrimitive()) throw new IllegalArgumentException(path + " must be a scalar");

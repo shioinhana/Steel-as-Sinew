@@ -22,5 +22,11 @@
   "dodgeStaminaCost": 6.0,
   "dodgeDistance": 3.0,
   "dodgeCancelsRecovery": true,
-  "allowAirDodge": false
+  "allowAirDodge": false,
+  "rapierTargetLock": {
+    "enabled": true,
+    "range": 10,
+    "allowPassive": true,
+    "requireLineOfSight": true
+  }
 }

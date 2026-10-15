@@ -73,6 +73,12 @@ neoForge {
                 jvmArgument "-Dfsrpg.spearSolverWorld=${project.property('smokeWorld')}"
                 jvmArgument "-Dfsrpg.smokeEvidence=${project.hasProperty('smokeEvidence') ? file(project.property('smokeEvidence')).absolutePath : file('verification/spear-solver-20261012/game').absolutePath}"
             }
+            if(project.hasProperty('rapierLockSmoke')) {
+                if(!project.hasProperty('smokeWorld'))throw new GradleException('rapierLockSmoke requires a copied marked test world')
+                jvmArgument '-Dfsrpg.rapierLockSmoke=true'
+                jvmArgument "-Dfsrpg.rapierLockWorld=${project.property('smokeWorld')}"
+                jvmArgument "-Dfsrpg.smokeEvidence=${file('verification/rapier-lock-20261016/game').absolutePath}"
+            }
             if(project.hasProperty('artSmoke')) { jvmArgument '-Dfsrpg.artSmoke=true'; jvmArgument "-Dfsrpg.smokeEvidence=" + file('verification/five-packs-20261016/game').absolutePath }
             if(project.hasProperty('actionLimitsSmoke')) {
                 if(!project.hasProperty('smokeWorld'))throw new GradleException('actionLimitsSmoke requires a copied spear test world');
@@ -90,7 +96,7 @@ neoForge {
     }
     mods { fsrpg {
         if (project.hasProperty('rpgJarSmoke')) sourceSet sourceSets.packagedSmoke
-        else { sourceSet sourceSets.main; if (project.hasProperty('artSmoke') || project.hasProperty('rpgSmoke') || project.hasProperty('poseSmoke') || project.hasProperty('hudSmoke') || project.hasProperty('collectionSmoke') || project.hasProperty('legacySkillSmoke') || project.hasProperty('spearSolverSmoke') || project.hasProperty('actionLimitsSmoke')) sourceSet sourceSets.smoke }
+        else { sourceSet sourceSets.main; if (project.hasProperty('rapierLockSmoke') || project.hasProperty('artSmoke') || project.hasProperty('rpgSmoke') || project.hasProperty('poseSmoke') || project.hasProperty('hudSmoke') || project.hasProperty('collectionSmoke') || project.hasProperty('legacySkillSmoke') || project.hasProperty('spearSolverSmoke') || project.hasProperty('actionLimitsSmoke')) sourceSet sourceSets.smoke }
     } }
 }
 tasks.named('runClient') { dependsOn monitorAgentJar }
@@ -277,3 +283,15 @@ tasks.named('check') { dependsOn 'weaponControlsTest', 'combatTest', 'questTest'
 
 tasks.register('creatureArtTest', JavaExec) { dependsOn testClasses; classpath = sourceSets.test.runtimeClasspath; mainClass = 'org.fsrpg.art.CreatureArtTest' }
 tasks.named('check') { dependsOn 'creatureArtTest' }
+
+['rapierTargetingTest':'org.fsrpg.combat.RapierTargetingTest','orbitMovementTest':'org.fsrpg.client.OrbitMovementTest'].each { taskName,className ->
+    tasks.register(taskName,JavaExec){dependsOn testClasses;classpath=sourceSets.test.runtimeClasspath;mainClass=className;jvmArgs '-Dfile.encoding=UTF-8'}
+    tasks.named('check'){dependsOn taskName}
+}
+
+tasks.named('check') { dependsOn 'swordMotionTest', 'torsoConnectionTest', 'spearTurnTest' }
+
+tasks.register('stageRapierConfig',JavaExec) {
+    dependsOn testClasses;classpath=sourceSets.test.runtimeClasspath;mainClass='org.fsrpg.config.StageRapierConfig'
+    doFirst {args file(project.property('rapierStageDirectory')).absolutePath,file(project.property('rapierStageReport')).absolutePath}
+}

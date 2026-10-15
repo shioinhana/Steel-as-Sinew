@@ -22,6 +22,7 @@ import net.neoforged.neoforge.common.NeoForge;
 import org.fsrpg.network.RpgActionPayload;
 import org.fsrpg.network.RpgSnapshotPayload;
 import org.fsrpg.network.RpgAnimationPayload;
+import org.fsrpg.network.RpgTargetLockPayload;
 import org.lwjgl.glfw.GLFW;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -32,7 +33,7 @@ public final class ClientHooks {
     private static final KeyMapping DRAW = key("draw", GLFW.GLFW_KEY_R);
     private static final KeyMapping LEFT = new KeyMapping("key.fsrpg.left", KeyConflictContext.IN_GAME, InputConstants.Type.MOUSE, GLFW.GLFW_MOUSE_BUTTON_LEFT, CATEGORY);
     private static final KeyMapping RIGHT = new KeyMapping("key.fsrpg.right", KeyConflictContext.IN_GAME, InputConstants.Type.MOUSE, GLFW.GLFW_MOUSE_BUTTON_RIGHT, CATEGORY);
-    private static final KeyMapping GUARD = key("guard", GLFW.GLFW_KEY_E);
+    private static final KeyMapping GUARD = key("guard", GLFW.GLFW_KEY_C);
     private static final KeyMapping STYLE = key("style", GLFW.GLFW_KEY_V);
     private static final KeyMapping DODGE = key("dodge", GLFW.GLFW_KEY_LEFT_ALT);
     private static final KeyMapping EDITOR = key("editor", GLFW.GLFW_KEY_K);
@@ -81,6 +82,10 @@ public final class ClientHooks {
         for (KeyMapping key : new KeyMapping[]{DRAW, LEFT, RIGHT, GUARD, DODGE, EDITOR, JOURNAL, SKILL, STYLE, TREE, ART}) event.register(key);
     }
     private static void payloads(RegisterClientPayloadHandlersEvent event) {
+        event.register(RpgTargetLockPayload.TYPE,(payload,context)->{
+            try {ClientState.acceptTargetLock(payload.json());}
+            catch(RuntimeException error){LOG.warn("Ignored invalid target lock update",error);}
+        });
         event.register(RpgSnapshotPayload.TYPE, (payload, context) -> acceptSnapshot(payload.json()));
         event.register(RpgAnimationPayload.TYPE, (payload, context) -> {
             PlayerAnimations.accept(payload);
@@ -109,6 +114,17 @@ public final class ClientHooks {
         }
     }
     public static void send(String action, String argument) {
+        var game=Minecraft.getInstance();
+        boolean rapier=ClientState.drawn()&&CombatCamera.style().equals("rapier");
+        if(rapier&&(action.equals("attack")||action.equals("aimAttack")||action.equals("rapierCharge")&&argument.equals("true"))) {
+            CombatCamera.prepareRapierAttack();
+            // This handler runs after the usual player movement send. Keep a no-lock
+            // orbit-and-click in order: vanilla rotation first, then combat intent.
+            if(game.player!=null&&game.getConnection()!=null&&CombatCamera.lockedTarget()==null)
+                game.getConnection().send(new net.minecraft.network.protocol.game.ServerboundMovePlayerPacket.Rot(
+                        game.player.getYRot(),game.player.getXRot(),game.player.onGround(),game.player.horizontalCollision));
+        }
+        if(rapier&&action.equals("dodge")&&argument.isBlank())argument=CombatCamera.dodgeIntent();
         if (action.equals("attack") || action.equals("aimAttack") || action.equals("dodge") || action.equals("draw") || action.equals("guard") || action.equals("guardMode"))
             PlayerAnimations.interruptInspection();
         if (Minecraft.getInstance().getConnection() != null)
@@ -170,7 +186,8 @@ public final class ClientHooks {
         while (ART.consumeClick()) game.setScreen(new ArtGalleryScreen());
     }
     private static void screenOpening(ScreenEvent.Opening event) {
-        if (event.getNewScreen() instanceof InventoryScreen && ClientState.drawn() && GUARD.isDown()) event.setCanceled(true);
+        if (event.getNewScreen() instanceof InventoryScreen && ClientState.drawn() && GUARD.isDown()
+                && GUARD.getKey().equals(Minecraft.getInstance().options.keyInventory.getKey())) event.setCanceled(true);
     }
     private static void interaction(InputEvent.InteractionKeyMappingTriggered event) {
         Minecraft game = Minecraft.getInstance();

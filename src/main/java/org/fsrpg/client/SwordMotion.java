@@ -16,12 +16,10 @@ import org.joml.Vector3f;
 /** The original sword torso and arms, carried by the current supported-foot pipeline. */
 public final class SwordMotion {
     public static final float MAXIMUM_MOVEMENT_LEAN = 4;
-    public static final float MAXIMUM_HIP_SHIFT_CM = 1.5f;
-    public static final float STRIDE_BODY_SCALE = .2f;
+    /** A fencing step is shorter than a running spear stride; cadence still follows real travel. */
+    public static final float MAXIMUM_STRIDE_SCALE = .55f;
     /** Share of the torso's stance yaw the pelvis and legs carry. */
     public static final float STANCE_FOLLOW = .5f;
-    /** Weight the lead shoulder takes into a stroke, in degrees of torso tilt. */
-    public static final float STRIKE_LEAN = 15f;
     private static final V WAIST_REST = new V(0, -75, 0);
     private SwordMotion() {}
 
@@ -139,20 +137,6 @@ public final class SwordMotion {
     public static Map<String, Pose> lower(ModelDocument sword, Map<String, Pose> upper,
                                          Map<String, Matrix4f> spearWorld) {
         return stance(sword, upper, spearWorld, 0);
-    }
-
-    /** Tilt the torso into the strike along the weapon's own vertical plane, so a cut carries
-     * the shoulders and hips instead of leaving the trunk bolt upright behind a moving arm. */
-    public static Map<String, Pose> strikeLean(ModelDocument sword, Map<String, Pose> pose, float tiltDegrees) {
-        if (Math.abs(tiltDegrees) < .01f) return pose;
-        var world = sword.worldMatrices(pose);
-        Matrix4f body = world.get("body");
-        if (body == null) return pose;
-        // The blade side of the fence is the right hand; leaning that way loads the stroke.
-        Vector3f blade = world.containsKey("right_item")
-                ? world.get("right_item").transformDirection(new Vector3f(0, 1, 0)) : new Vector3f(0, -1, 0);
-        float side = blade.y <= 0 ? 1 : -1;
-        return PresentationMotion.lean(pose, side * tiltDegrees, 0, 1);
     }
 
     private static Pose matrixPose(Matrix4f matrix) {

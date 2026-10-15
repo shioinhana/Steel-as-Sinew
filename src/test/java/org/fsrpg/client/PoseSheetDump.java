@@ -57,6 +57,7 @@ public final class PoseSheetDump {
     static JsonArray swordSequence(ModelDocument sword, ModelDocument spear, List<Step> steps) {
         var frames = new JsonArray();
         var lowerPlayback = new PoseLayers.Playback(spear.rig(), PoseLayers.DEFAULT_STANCE);
+        var swordTurn = new SpearTurn.State();
         Map<String, Pose> lastPose = null, transitionFrom = null, lastBase = null;
         PoseLayers.OffsetDecay swordDecay = null;
         Map<String, Pose> swordPending = null, swordVelocity = null;
@@ -67,7 +68,6 @@ public final class PoseSheetDump {
             boolean attack = total > 0;
             double length = attack ? total : step.holdTicks();
             var knots = attack ? PoseRemap.knots(sword.rig(), clip) : null;
-            var hold = PoseRemap.holdPose(sword.rig(), clip);
             if (lastPose != null) {
                 transitionFrom = lastPose; transitionStarted = tick;
                 transitionTicks = PoseLayers.transitionTicks(clip, .12, step.windup(), attack);
@@ -83,15 +83,14 @@ public final class PoseSheetDump {
                         : new PoseRemap.Attack(tick / 20, 0);
                 double seconds = attackPlan.clipTime();
                 var upper = SwordMotion.sampleUpper(sword, clip, seconds, tick / 20, 0, 0);
-                if (attackPlan.anticipation() > 0 && hold != null) upper = PoseRemap.anticipate(upper, hold, attackPlan.anticipation());
                 upper = SwordMotion.waist(sword, upper);
                 var lower = lowerPlayback.sample(tick / 20, tick / 20, tick, 0, 0, .25f, 55);
-                Map<String, Pose> pose = SwordMotion.stance(sword, upper, spear.worldMatrices(lower.pose()),
-                        SwordMotion.bodyYaw(sword, upper));
-                if (attack) pose = SwordMotion.strikeLean(sword, pose, SwordMotion.STRIKE_LEAN * Math.min(1, (float) elapsed / 3f));
+                Map<String, Pose> pose = SwordMotion.lower(sword, upper, spear.worldMatrices(lower.pose()));
                 var supported = Locomotion.supported(sword.worldMatrices(pose).get("right_leg"), sword.worldMatrices(pose).get("left_leg"), 1, 0, 0, 0, 0, 1, .72f, 48,
                         PresentationMotion.withAuthoredHipShift(pose, SwordMotion.waistRest(), new PresentationMotion.Balance(0, 0, 0)),
                         pose.get("body").position().y() - SwordMotion.waistRest().y(), 0);
+                supported = Locomotion.turn(supported, swordTurn.advance(tick,
+                        -SwordMotion.bodyYaw(sword, upper) * SwordMotion.STANCE_FOLLOW, 0, 0), 0);
                 var base = PresentationMotion.shiftTorso(pose, new PresentationMotion.Balance(0, -supported.pelvisDropCm(), 0));
                 lastBase = base;
                 if (transitionFrom != null && transitionTicks > 0) {

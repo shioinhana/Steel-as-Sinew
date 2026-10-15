@@ -23,6 +23,11 @@ public final class ClientState {
         revision++;
         for (var observer : observers) observer.accept(snapshot.deepCopy());
     }
+    public static void acceptTargetLock(String json) {
+        JsonElement value=JsonParser.parseString(json);
+        if(!value.isJsonObject())throw new IllegalArgumentException("Expected target lock object");
+        snapshot.add("targetLock",value.getAsJsonObject());revision++;
+    }
     /** Observe each received authoritative snapshot, even when several phases arrive in one render frame. */
     public static AutoCloseable observeSnapshots(Consumer<JsonObject> observer) {
         observers.add(observer); return () -> observers.remove(observer);

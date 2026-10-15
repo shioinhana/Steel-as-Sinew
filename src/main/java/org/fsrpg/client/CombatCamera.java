@@ -7,6 +7,7 @@ import net.minecraft.util.Mth;
 import net.minecraft.world.phys.Vec2;
 import net.minecraft.world.phys.Vec3;
 import net.minecraft.world.level.ClipContext;
+import net.minecraft.world.entity.LivingEntity;
 import net.neoforged.neoforge.client.event.MovementInputUpdateEvent;
 import net.neoforged.neoforge.client.event.ViewportEvent;
 import org.fsrpg.combat.AttackAim;
@@ -41,7 +42,8 @@ public final class CombatCamera {
         return selected;
     }
     public static boolean active() {
-        var g=Minecraft.getInstance(); return ClientState.drawn() && g.player!=null && g.options.getCameraType()==net.minecraft.client.CameraType.THIRD_PERSON_BACK;
+        var g=Minecraft.getInstance(); return ClientState.drawn() && g.player!=null
+                && (style().equals("rapier") || g.options.getCameraType()==net.minecraft.client.CameraType.THIRD_PERSON_BACK);
     }
     private static void sync() {
         var g=Minecraft.getInstance();String next=active()?style():"";
@@ -58,11 +60,12 @@ public final class CombatCamera {
             float facing=g.player.getYRot();
             g.player.yBodyRot=facing;g.player.yBodyRotO=facing;
         }
+        if(mode.equals("rapier")) lockFacing();
     }
     public static void reset() { mode="";held=false;dualFacingLocked=false;path.clear();cursorX=cursorY=0; }
     public static boolean mouse(double dx,double dy) {
         sync();var g=Minecraft.getInstance();
-        if(!active() || g.screen!=null || (!mode.equals("dual_blade")&&!mode.equals("spear"))) return false;
+        if(!active() || g.screen!=null || (!mode.equals("dual_blade")&&!mode.equals("spear")&&!mode.equals("rapier"))) return false;
         double sensitivity=g.options.sensitivity().get()*.6+.2;
         double gain=sensitivity*sensitivity*sensitivity*8;
         dx*=gain*(g.options.invertMouseX().get()?-1:1);dy*=gain*(g.options.invertMouseY().get()?-1:1);
@@ -73,13 +76,54 @@ public final class CombatCamera {
             cursorX=movement.x();cursorY=movement.y();
             // Within the displayed field only the pole moves. Overflow turns the actor.
             if(Math.abs(movement.overflowX())>.00001 || Math.abs(movement.overflowY())>.00001)face(yaw,pitch);
-        } else {yaw+=(float)(dx*.15);pitch=Mth.clamp(pitch+(float)(dy*.15),-65,65);}
+        } else {yaw+=(float)(dx*.15);pitch=Mth.clamp(pitch+(float)(dy*.15),mode.equals("rapier")?-80:-65,mode.equals("rapier")?80:65);}
         yaw=Mth.wrapDegrees(yaw);
         if(held) samplePath();
         return true;
     }
     public static float yaw() { sync();return yaw; }
     public static float pitch() { sync();return pitch; }
+    /** The server selects this entity; local positions only predict its visible facing. */
+    public static LivingEntity lockedTarget() {
+        var game=Minecraft.getInstance();if(game.level==null||game.player==null||!ClientState.drawn()||!style().equals("rapier"))return null;
+        var lock=ClientState.object(ClientState.snapshot(),"targetLock");
+        if(!ClientState.bool(lock,"enabled",false))return null;
+        int id=(int)ClientState.number(lock,"targetId",-1);var entity=game.level.getEntity(id);
+        double range=ClientState.number(lock,"range",10);
+        if(!(entity instanceof LivingEntity living)||!living.isAlive()||!Double.isFinite(range)||range<=0
+                ||game.player.distanceToSqr(living)>range*range
+                ||!living.getUUID().toString().equals(ClientState.text(lock,"targetUuid","")))return null;
+        return living;
+    }
+    public static float lockYaw() {
+        var game=Minecraft.getInstance();var target=lockedTarget();if(target==null)return game.player==null?0:game.player.getYRot();
+        var delta=target.position().subtract(game.player.position());
+        return delta.horizontalDistanceSqr()<1e-10?game.player.getYRot():(float)AttackAim.wrap(-Math.toDegrees(Math.atan2(delta.x,delta.z)));
+    }
+    private static void lockFacing() {
+        var game=Minecraft.getInstance();var target=lockedTarget();if(target==null)return;
+        var player=game.player;var delta=target.getBoundingBox().getCenter().subtract(player.getEyePosition());
+        float facing=lockYaw(),elevation=(float)Math.clamp(-Math.toDegrees(Math.atan2(delta.y,delta.horizontalDistance())),-80,80);
+        face(facing,elevation);
+        // Vanilla strafing/head limits must not turn a locked fighter toward travel or camera.
+        player.yBodyRotO=facing;player.yHeadRotO=facing;player.yRotO=facing;player.xRotO=elevation;
+    }
+    private static float inputCameraYaw() {
+        return yaw+(Minecraft.getInstance().options.getCameraType()==net.minecraft.client.CameraType.THIRD_PERSON_FRONT?180:0);
+    }
+    public static void prepareRapierAttack() {
+        sync();if(!mode.equals("rapier"))return;
+        if(lockedTarget()!=null)lockFacing();else face(inputCameraYaw(),pitch);
+    }
+    /** Direction intent only; the server retains dodge distance, cost and allowed states. */
+    public static String dodgeIntent() {
+        var game=Minecraft.getInstance();if(game.player==null)return "";
+        var move=game.player.input.getMoveVector();if(move.lengthSquared()<.001)return "";
+        var world=OrbitMovement.relative(move.x,move.y,game.player.getYRot(),0);
+        double length=Math.hypot(world.left(),world.forward());if(length<1e-6)return "";
+        var request=new JsonObject();request.addProperty("x",world.left()/length);request.addProperty("z",world.forward()/length);
+        return request.toString();
+    }
     public static double cursorX() { return cursorX; }
     public static double cursorY() { return cursorY; }
     /** Same pixel field for input, reticle, picking and the focused live review. */
@@ -93,7 +137,7 @@ public final class CombatCamera {
     }
     private static org.joml.Vector3f vector(Vec3 value){return new org.joml.Vector3f((float)value.x,(float)value.y,(float)value.z);}
     public static void angles(ViewportEvent.ComputeCameraAngles event) {
-        sync();if(active() && (mode.equals("dual_blade")||mode.equals("spear"))) {event.setYaw(yaw);event.setPitch(pitch);}
+        sync();if(active() && (mode.equals("dual_blade")||mode.equals("spear")||mode.equals("rapier"))) {event.setYaw(yaw);event.setPitch(pitch);}
     }
     private static String phase() { return ClientState.text(ClientState.snapshot(),"phase",""); }
     private static boolean locked() { return java.util.Set.of("WINDUP","ACTIVE","RECOVERY","GUARDING").contains(phase()); }
@@ -102,16 +146,17 @@ public final class CombatCamera {
         p.setYRot(angle);p.setXRot(elevation);p.yHeadRot=angle;p.yBodyRot=angle;
     }
     public static void movement(MovementInputUpdateEvent event) {
-        sync(); if(!active() || !mode.equals("dual_blade"))return;
+        sync(); if(!active() || (!mode.equals("dual_blade")&&!mode.equals("rapier")))return;
         var p=Minecraft.getInstance().player;var v=event.getInput().getMoveVector();
-        if(v.lengthSquared()>.001 && !locked()) {
+        boolean rapier=mode.equals("rapier"),targeted=rapier&&lockedTarget()!=null;
+        if(v.lengthSquared()>.001 && !locked()&&!targeted) {
             dualFacingLocked=false;
-            float target=yaw-(float)Math.toDegrees(Math.atan2(v.x,v.y));
+            float target=OrbitMovement.facing(inputCameraYaw(),v.x,v.y);
             face(p.getYRot()+Mth.wrapDegrees(target-p.getYRot())*.65f,0);
         }
         // Rotate camera-relative WASD into the actor's local movement basis.
-        double delta=Math.toRadians(yaw-p.getYRot()),c=Math.cos(delta),s=Math.sin(delta);
-        ((ClientInputAccess)event.getInput()).fsrpg$move(new Vec2((float)(v.x*c-v.y*s),(float)(v.x*s+v.y*c)));
+        var relative=OrbitMovement.relative(v.x,v.y,inputCameraYaw(),p.getYRot());
+        ((ClientInputAccess)event.getInput()).fsrpg$move(new Vec2(relative.left(),relative.forward()));
     }
     public static void attack(String button) {
         sync();var p=Minecraft.getInstance().player;
@@ -203,6 +248,11 @@ public final class CombatCamera {
             int x=cx+(int)(cursorX*gui.guiWidth()/g.getWindow().getScreenWidth()),y=cy+(int)(cursorY*gui.guiHeight()/g.getWindow().getScreenHeight());
             gui.fill(x-5,y,x+6,y+1,0xffffdf83);gui.fill(x,y-5,x+1,y+6,0xffffdf83);
             gui.drawString(g.font,held?"松开扫击 · 拖动记录轨迹":"点按刺击 · 按住拖动扫击",10,66,0xffe6edff);
+        } else if(mode.equals("rapier")) {
+            var target=lockedTarget();var lock=ClientState.object(ClientState.snapshot(),"targetLock");
+            String info=target==null?"索敌范围 "+HudReadout.number(ClientState.number(lock,"range",10))+" 格 · 优先敌对生物"
+                    :"锁定 "+target.getDisplayName().getString()+" · "+String.format(java.util.Locale.ROOT,"%.1f",g.player.distanceTo(target))+" 格";
+            gui.drawString(g.font,info,10,66,target==null?0xffa8b7c9:0xffffdf83);
         } else if(mode.equals("dual_blade")) {
             var combo=ClientState.snapshot().getAsJsonObject("combo");
             String queued=combo!=null&&ClientState.bool(combo,"queued",false)?" · 下一刀已缓存":"";

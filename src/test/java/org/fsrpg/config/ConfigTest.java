@@ -24,8 +24,62 @@ public final class ConfigTest {
         collectionsValidationAndLegacySeeding();
         skillTreeAndArcheryMilestoneValidation();
         legacyDefaultFieldMigration();
+        rapierTargetLockValidationAndMigration();
         if (!failures.isEmpty()) throw new AssertionError("ConfigTest failed " + failures.size() + "/" + checks + " checks: " + String.join("; ", failures));
         System.out.println("ConfigTest passed: " + checks + " checks");
+    }
+
+    private static void rapierTargetLockValidationAndMigration() throws Exception {
+        JsonObject combat = resource("combat.json").getAsJsonObject();
+        var skills=resource("skills.json");var quests=resource("quests.json");var weapons=resource("weapons.json");
+        var defaults=RpgConfig.parse(combat,skills,quests,weapons).combat().rapierTargetLock();
+        equal(10.0,defaults.range(),"rapier lock default is 10 blocks");
+        check(defaults.enabled()&&defaults.allowPassive()&&defaults.requireLineOfSight(),"default locking filters enabled");
+        JsonObject old=combat.deepCopy();old.remove("rapierTargetLock");
+        equal(10.0,RpgConfig.parse(old,skills,quests,weapons).combat().rapierTargetLock().range(),"pre-lock combat JSON parses with defaults");
+        for(String field:List.of("enabled","range","allowPassive","requireLineOfSight")) {
+            JsonObject invalid=combat.deepCopy();invalid.getAsJsonObject("rapierTargetLock").remove(field);
+            rejects(()->RpgConfig.parse(invalid,skills,quests,weapons),"partial lock rules rejected: "+field);
+        }
+        JsonObject typo=combat.deepCopy();typo.getAsJsonObject("rapierTargetLock").addProperty("rang",10);
+        rejects(()->RpgConfig.parse(typo,skills,quests,weapons),"unknown lock field rejected");
+        JsonObject scalar=combat.deepCopy();scalar.getAsJsonObject("rapierTargetLock").addProperty("range","10");
+        rejects(()->RpgConfig.parse(scalar,skills,quests,weapons),"lock range numeric string rejected");
+        JsonObject invalid=combat.deepCopy();invalid.getAsJsonObject("rapierTargetLock").addProperty("range",-1);
+        rejects(()->RpgConfig.parse(invalid,skills,quests,weapons),"invalid lock range rejected");
+        JsonObject nullable=combat.deepCopy();nullable.add("rapierTargetLock",com.google.gson.JsonNull.INSTANCE);
+        rejects(()->RpgConfig.parse(nullable,skills,quests,weapons),"explicit null lock rules rejected");
+        Path directory=Files.createTempDirectory("fsrpg-rapier-lock-config-");
+        try {
+            var config=new RpgConfig(directory);config.reload();
+            Path combatFile=directory.resolve("combat.json");
+            JsonObject custom=JsonParser.parseString(Files.readString(combatFile)).getAsJsonObject();
+            custom.remove("rapierTargetLock");custom.addProperty("maxStamina",157);custom.addProperty("dodgeDistance",2.25);
+            String original=RpgConfig.JSON.toJson(custom);Files.writeString(combatFile,original);
+            var updated=config.reload();
+            equal(157.0,updated.combat().maxStamina(),"target migration preserves custom stamina");
+            equal(2.25,updated.combat().dodgeDistance(),"target migration preserves custom dodge");
+            equal(10.0,updated.combat().rapierTargetLock().range(),"target migration adds default range");
+            equal(original,Files.readString(directory.resolve("rapier-target-lock-backup-v1/combat.json")),"target migration backs up exact prior text");
+            String first=Files.readString(combatFile);config.seed();
+            equal(first,Files.readString(combatFile),"target migration idempotent");
+            custom=JsonParser.parseString(first).getAsJsonObject();
+            custom.getAsJsonObject("rapierTargetLock").addProperty("range",7.5);
+            custom.getAsJsonObject("rapierTargetLock").addProperty("allowPassive",false);
+            custom.getAsJsonObject("rapierTargetLock").remove("requireLineOfSight");
+            Files.writeString(combatFile,RpgConfig.JSON.toJson(custom));
+            updated=config.reload();
+            equal(7.5,updated.combat().rapierTargetLock().range(),"field migration preserves custom range");
+            check(!updated.combat().rapierTargetLock().allowPassive(),"field migration preserves false");
+            check(updated.combat().rapierTargetLock().requireLineOfSight(),"field migration adds only absent option");
+        } finally {
+            try(var paths=Files.walk(directory)) {
+                for(Path path:paths.sorted(Comparator.reverseOrder()).toList()) {
+                    if(!path.toAbsolutePath().normalize().startsWith(directory.toAbsolutePath().normalize()))throw new IllegalStateException("test cleanup escaped temp");
+                    Files.deleteIfExists(path);
+                }
+            }
+        }
     }
 
     private static void defaultAndTransaction() throws Exception {

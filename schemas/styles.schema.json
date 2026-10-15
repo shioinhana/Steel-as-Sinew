@@ -81,7 +81,7 @@
         },
         "heavyGuard": {
           "$ref": "#/$defs/guard",
-          "description": "可选的重格挡规则；Shift+E。缺省时只支持旧版轻格挡。切换模式不刷新拨挡窗口或连续受击历史。"
+          "description": "可选的重格挡规则；Shift+C。缺省时只支持旧版轻格挡。切换模式不刷新拨挡窗口或连续受击历史。"
         },
         "techniques": {
           "$ref": "#/$defs/techniques"

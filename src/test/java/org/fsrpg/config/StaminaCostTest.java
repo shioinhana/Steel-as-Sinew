@@ -171,7 +171,13 @@ public final class StaminaCostTest {
     private static CombatActor ready(CombatRules rules) { CombatActor actor = new CombatActor(UUID.randomUUID(), rules); actor.toggleDrawn(); for (int i = 0; i < rules.drawTicks(); i++) actor.tick(); return actor; }
     private static void compareCosts(JsonElement before, JsonElement after, String path) {
         if (before.isJsonObject()) {
-            equal(before.getAsJsonObject().keySet(), after.getAsJsonObject().keySet(), path + " preserves fields");
+            Set<String> afterFields = new HashSet<>(after.getAsJsonObject().keySet());
+            if (path.endsWith("combat.json") && !before.getAsJsonObject().has("rapierTargetLock")) {
+                equal(RpgConfig.JSON.toJsonTree(RapierTargeting.Rules.defaults()),
+                        after.getAsJsonObject().get("rapierTargetLock"), path + " adds exact default targeting rules");
+                afterFields.remove("rapierTargetLock");
+            }
+            equal(before.getAsJsonObject().keySet(), afterFields, path + " preserves all original fields");
             for (var field : before.getAsJsonObject().entrySet()) {
                 if (field.getKey().equals("staminaCost") || field.getKey().endsWith("StaminaCost")) near(field.getValue().getAsDouble() / 5, after.getAsJsonObject().get(field.getKey()).getAsDouble(), path + "." + field.getKey());
                 else compareCosts(field.getValue(), after.getAsJsonObject().get(field.getKey()), path + "." + field.getKey());

@@ -37,6 +37,7 @@ import org.fsrpg.network.*;
 import org.fsrpg.quest.*;
 import org.fsrpg.progression.*;
 import org.fsrpg.archery.*;
+import org.fsrpg.targeting.RapierTargetLock;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -71,6 +72,8 @@ public final class RpgServer {
     private final Map<UUID, String> animationStates = new HashMap<>();
     private final Map<UUID, Long> animationSequences = new HashMap<>();
     private final Map<UUID, WeaponStyleDefinition> pendingStyles = new HashMap<>();
+    private final RapierTargetLock rapierTargets = new RapierTargetLock();
+    private final Map<UUID, RapierTargetLock.Snapshot> sentTargetLocks = new HashMap<>();
     private boolean resolvingDamage;
     private long ticks;
     private long savedRevision = -1;
@@ -81,6 +84,7 @@ public final class RpgServer {
     public ProgressionService progression(){return progression;}
     public RpgConfig config(){return config;}
     public ArcheryServer archery(){return archery;}
+    public RapierTargetLock.Snapshot targetLock(ServerPlayer player){return rapierTargets.snapshot(player,actor(player));}
     private RpgServer(MinecraftServer server) throws IOException {
         this.server = server;
         config = new RpgConfig(FMLPaths.CONFIGDIR.get().resolve("fsrpg"));
@@ -209,6 +213,7 @@ public final class RpgServer {
         dodgeDirections.remove(p.getUUID()); swingItems.remove(p.getUUID());
         pendingStyles.remove(p.getUUID());
         drawControllers.remove(p.getUUID());
+        rapierTargets.remove(p.getUUID()); sentTargetLocks.remove(p.getUUID());
         archery.remove(p.getUUID());training.remove(p.getUUID());
         actor(p); reconcileWeapon(p); send(p, "", null); broadcastAnimation(p, true);
     }
@@ -218,6 +223,7 @@ public final class RpgServer {
         dodgeDirections.remove(p.getUUID()); swingItems.remove(p.getUUID());
         pendingStyles.remove(p.getUUID());
         drawControllers.remove(p.getUUID());
+        rapierTargets.remove(p.getUUID()); sentTargetLocks.remove(p.getUUID());
         requestCounts.remove(p.getUUID()); requestTicks.remove(p.getUUID()); save();
         swingOffhands.remove(p.getUUID());damageItems.remove(p.getUUID());
         animationStates.remove(p.getUUID()); animationSequences.remove(p.getUUID());
@@ -235,6 +241,7 @@ public final class RpgServer {
             CombatActor a = actor(p);
             applyPendingStyle(p);
             reconcileWeapon(p);
+            refreshTargetLock(p, false);
             switch (action) {
                 case "status" -> { }
                 case "draw" -> {
@@ -294,12 +301,12 @@ public final class RpgServer {
                     }
                     if (argument.equals("left") || argument.equals("right")) {
                         if (!hasWeapon(p)) throw new IllegalStateException("当前物品不匹配所选武器档位");
-                        var result = a.aimedInput(argument.equals("left") ? SkillInput.LEFT : SkillInput.RIGHT, skillsFor(p),org.fsrpg.combat.AttackAim.at(p.getYRot(),p.getXRot()));
+                        var result = a.aimedInput(argument.equals("left") ? SkillInput.LEFT : SkillInput.RIGHT, skillsFor(p),attackAim(p));
                         if (!result.accepted()) throw new IllegalStateException(comboRejection(result));
                         if (!result.started()) message = result.status() == ComboInputStatus.BUFFERED ? "输入已缓冲" : "下一段已排队";
                     } else {
                         SkillDefinition skill = selectSkill(p, argument);
-                        accepted(a.aimedSkill(skill,org.fsrpg.combat.AttackAim.at(p.getYRot(),p.getXRot())));
+                        accepted(a.aimedSkill(skill,attackAim(p)));
                     }
                     startedSkills(p);
                 }
@@ -321,9 +328,10 @@ public final class RpgServer {
                     accepted(a.setGuarding(!argument.equals("false"), argument.equals("heavy")));
                 }
                 case "dodge" -> {
+                    Vec3 intended = rapierDodgeDirection(a, argument);
                     archery.cancelCharge(p);training.forced(p,20);
                     accepted(a.requestDodge(p.onGround()));
-                    Vec3 direction = p.getLastClientMoveIntent().multiply(1, 0, 1);
+                    Vec3 direction = intended != null ? intended : p.getLastClientMoveIntent().multiply(1, 0, 1);
                     if (direction.lengthSqr() < 0.001) direction = p.getLookAngle().multiply(1, 0, 1);
                     dodgeDirections.put(p.getUUID(), direction.normalize());
                 }
@@ -367,10 +375,25 @@ public final class RpgServer {
             }
             p.sendSystemMessage(Component.literal("[FSRPG] " + message));
         }
+        refreshTargetLock(p, false);
         broadcastAnimation(p, false);
         send(p, message, editResult);
     }
     private static void accepted(ActionResult result) { if (result != ActionResult.ACCEPTED) throw new IllegalStateException(result.toString()); }
+    private static Vec3 rapierDodgeDirection(CombatActor actor, String argument) {
+        if (argument.isBlank() || actor.style() == null || !actor.style().presentationStyleId().equals("rapier")) return null;
+        JsonElement parsed = JsonParser.parseString(argument);
+        if (!parsed.isJsonObject()) throw new IllegalArgumentException("dodge intent must be an object containing x and z");
+        JsonObject intent = parsed.getAsJsonObject();
+        if (!intent.keySet().equals(Set.of("x", "z"))) throw new IllegalArgumentException("dodge intent requires only x and z");
+        for (String component : List.of("x", "z")) {
+            JsonElement value = intent.get(component);
+            if (!value.isJsonPrimitive() || !value.getAsJsonPrimitive().isNumber())
+                throw new IllegalArgumentException("dodge intent coordinates must be numbers");
+        }
+        var direction = RapierTargeting.dodgeDirection(intent.get("x").getAsDouble(), intent.get("z").getAsDouble());
+        return new Vec3(direction.x(), 0, direction.z());
+    }
     private void requireEditor(ServerPlayer p) { if (!canEdit(p)) throw new IllegalStateException("修改服务端配置需要管理员权限"); }
     private static JsonObject editResult(String id, boolean ok, String message) { var result = new JsonObject(); result.addProperty("id", id); result.addProperty("ok", ok); result.addProperty("message", message); return result; }
     private SkillDefinition selectSkill(ServerPlayer p, String arg) {
@@ -449,13 +472,31 @@ public final class RpgServer {
         if(!effects.rapierThrust())throw new IllegalStateException("突刺需要80次西洋剑击杀及对应修行条件，请查看 P 技能树");
         SkillDefinition skill=config.current().skills().get("sword_thrust");
         skill=new SkillDefinition(skill.id(),skill.label(),skill.weapon(),skill.input(),rules.windupTicks(),rules.activeTicks(),rules.recoveryTicks(),rules.cooldownTicks(),skill.staminaCost(),skill.spiritCost(),rules.thrustDamage(),rules.range(),skill.arcDegrees(),skill.knockback(),skill.blockable(),skill.parryable(),skill.clashable(),skill.model(),skill.action());
-        accepted(actor.beginChargedAttack(skill,AttackAim.at(player.getYRot(),player.getXRot()),effects.rapierParry(),effects.rapierParry(),rules.fullChargeTicks(),rules.guardBreakCooldownTicks()));
+        accepted(actor.beginChargedAttack(skill,attackAim(player),effects.rapierParry(),effects.rapierParry(),rules.fullChargeTicks(),rules.guardBreakCooldownTicks()));
     }
     private void moveCharge(ServerPlayer player) {
         if(!actor(player).consumeChargeLunge())return;
         double speed=config.current().skillTrees().rules().rapier().lungeSpeedMps()/20;
-        Vec3 direction=player.getLookAngle().normalize();player.setDeltaMovement(player.getDeltaMovement().add(direction.scale(speed)));
+        var aim=actor(player).attackAim();
+        Vec3 direction=aim==null?player.getLookAngle().normalize():Vec3.directionFromRotation((float)aim.sample(0).pitch(),(float)aim.sample(0).yaw());
+        player.setDeltaMovement(player.getDeltaMovement().add(direction.scale(speed)));
         player.hurtMarked=true;training.forced(player,10);
+    }
+    private AttackAim attackAim(ServerPlayer player) {
+        refreshTargetLock(player, false);
+        var lock = rapierTargets.snapshot(player, actor(player));
+        return lock.locked() ? lock.aim() : AttackAim.at(player.getYRot(), player.getXRot());
+    }
+    private void refreshTargetLock(ServerPlayer player, boolean force) {
+        var lock = rapierTargets.update(player, actor(player), hasWeapon(player));
+        var previous = sentTargetLocks.get(player.getUUID());
+        boolean changed = previous == null || previous.enabled() != lock.enabled()
+                || previous.targetId() != lock.targetId() || !previous.targetUuid().equals(lock.targetUuid())
+                || previous.range() != lock.range();
+        if (force || changed || lock.enabled() && ticks % 5 == 0 && !lock.equals(previous)) {
+            sentTargetLocks.put(player.getUUID(), lock);
+            PacketDistributor.sendToPlayer(player, new RpgTargetLockPayload(RpgConfig.JSON.toJson(lock)));
+        }
     }
     private void reconcileAndSync(ServerPlayer p) { if (reconcileWeapon(p)) { send(p, "", null); broadcastAnimation(p, true); } }
     private void applyPendingStyle(ServerPlayer p) {
@@ -492,6 +533,7 @@ public final class RpgServer {
         for (ServerPlayer p : players) {
             CombatActor a = actor(p);
             if (reconcileWeapon(p)) { send(p, "", null); broadcastAnimation(p, true); }
+            refreshTargetLock(p, false);
             if (!p.isAlive()) { broadcastAnimation(p, false); continue; }
             training.tick(p,a);archery.tick(p,a,archeryProgress(p));
             if (a.currentSkill() != null && !validSwing(p)) a.stun(1);
@@ -855,7 +897,7 @@ public final class RpgServer {
     }
     private double attackFacing(ServerPlayer p,Entity target) {
         var a=actor(p); if(a.style()!=null&&a.style().controls().spear())return 0;
-        if(a.style()!=null&&a.style().controls().dual()&&a.attackAim()!=null) {
+        if(a.style()!=null&&(a.style().controls().dual() || a.style().presentationStyleId().equals("rapier"))&&a.attackAim()!=null) {
             var point=a.attackAim().sample(0);return angle(Vec3.directionFromRotation((float)point.pitch(),(float)point.yaw()),target.position().subtract(p.position()));
         }
         return facing(p,target);
@@ -908,6 +950,7 @@ public final class RpgServer {
         snapshot.add("technique", RpgConfig.JSON.toJsonTree(actor(p).techniqueSnapshot()));
         snapshot.addProperty("legacySkills",true);
         snapshot.add("charge",RpgConfig.JSON.toJsonTree(actor(p).chargeSnapshot()));
+        snapshot.add("targetLock",RpgConfig.JSON.toJsonTree(rapierTargets.snapshot(p, actor(p))));
         var bowProgress=archeryProgress(p);var bowJson=archery.snapshotJson(p,bowProgress);var bowRules=archery.rules();
         bowJson.addProperty("fullSnipeArrowSpeed",ArcheryScores.arrowSpeed(bowRules,bowProgress,true,1));
         bowJson.addProperty("fullRapidArrowSpeed",ArcheryScores.arrowSpeed(bowRules,bowProgress,false,1));

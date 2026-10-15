@@ -44,7 +44,8 @@ public final class SkinnedArms {
     public static boolean render(ModelPart part, PoseStack poses, VertexConsumer consumer, int light, int overlay, int tint) {
         if (contexts.isEmpty() || contexts.peek().actor == null) return false;
         Actor actor = contexts.peek().actor;
-        boolean connectedWaist=actor.frame.supportedLower()!=null&&actor.frame.model().rig().id().equals("fsrpg.spear");
+        boolean connectedWaist=actor.frame.supportedLower()!=null&&(actor.frame.model().rig().id().equals("fsrpg.spear")
+                || SwordMotion.applies(actor.frame.model()));
         if(part==actor.model.body&&connectedWaist) {
             drawTorso(part,new TorsoDeformation(actor.frame.world().get("body"),actor.frame.supportedLower()),poses,consumer,light,overlay,tint);
             return true;

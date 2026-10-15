@@ -49,6 +49,12 @@ public final class CombatActor {
     public boolean chargedParried() { return chargeArmed && chargeParried; }
     public boolean consumeChargeLunge() { boolean result=chargeLungePending; chargeLungePending=false; return result; }
     public AttackAim attackAim() { return attackAim; }
+    /** Server adapter may track its validated rapier target through preparation and contact. */
+    public void trackRapierAim(AttackAim aim) {
+        if (style == null || !style.presentationStyleId().equals("rapier")) return;
+        if (skill != null) attackAim = aim;
+        if (queuedSkill != null) queuedAim = aim;
+    }
     public ComboInputResult aimedInput(SkillInput input, Map<String,SkillDefinition> skills, AttackAim aim) {
         inputAim=aim; try { return requestStyledAttack(input,skills); } finally { inputAim=null; }
     }
