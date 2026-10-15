@@ -73,6 +73,7 @@ neoForge {
                 jvmArgument "-Dfsrpg.spearSolverWorld=${project.property('smokeWorld')}"
                 jvmArgument "-Dfsrpg.smokeEvidence=${project.hasProperty('smokeEvidence') ? file(project.property('smokeEvidence')).absolutePath : file('verification/spear-solver-20261012/game').absolutePath}"
             }
+            if(project.hasProperty('artSmoke')) { jvmArgument '-Dfsrpg.artSmoke=true'; jvmArgument "-Dfsrpg.smokeEvidence=" + file('verification/five-packs-20261016/game').absolutePath }
             if(project.hasProperty('actionLimitsSmoke')) {
                 if(!project.hasProperty('smokeWorld'))throw new GradleException('actionLimitsSmoke requires a copied spear test world');
                 jvmArgument '-Dfsrpg.actionLimitsSmoke=true'
@@ -89,7 +90,7 @@ neoForge {
     }
     mods { fsrpg {
         if (project.hasProperty('rpgJarSmoke')) sourceSet sourceSets.packagedSmoke
-        else { sourceSet sourceSets.main; if (project.hasProperty('rpgSmoke') || project.hasProperty('poseSmoke') || project.hasProperty('hudSmoke') || project.hasProperty('collectionSmoke') || project.hasProperty('legacySkillSmoke') || project.hasProperty('spearSolverSmoke') || project.hasProperty('actionLimitsSmoke')) sourceSet sourceSets.smoke }
+        else { sourceSet sourceSets.main; if (project.hasProperty('artSmoke') || project.hasProperty('rpgSmoke') || project.hasProperty('poseSmoke') || project.hasProperty('hudSmoke') || project.hasProperty('collectionSmoke') || project.hasProperty('legacySkillSmoke') || project.hasProperty('spearSolverSmoke') || project.hasProperty('actionLimitsSmoke')) sourceSet sourceSets.smoke }
     } }
 }
 tasks.named('runClient') { dependsOn monitorAgentJar }
@@ -273,3 +274,6 @@ tasks.named('check') { dependsOn 'weaponControlsTest', 'combatTest', 'questTest'
     tasks.register(taskName,JavaExec){dependsOn testClasses;classpath=sourceSets.test.runtimeClasspath;mainClass=className;jvmArgs '-Dfile.encoding=UTF-8'}
     tasks.named('check'){dependsOn taskName}
 }
+
+tasks.register('creatureArtTest', JavaExec) { dependsOn testClasses; classpath = sourceSets.test.runtimeClasspath; mainClass = 'org.fsrpg.art.CreatureArtTest' }
+tasks.named('check') { dependsOn 'creatureArtTest' }

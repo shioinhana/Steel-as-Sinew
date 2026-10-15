@@ -38,6 +38,7 @@ public final class ClientHooks {
     private static final KeyMapping EDITOR = key("editor", GLFW.GLFW_KEY_K);
     private static final KeyMapping JOURNAL = key("journal", GLFW.GLFW_KEY_J);
     private static final KeyMapping SKILL = key("skill", GLFW.GLFW_KEY_Z);
+    private static final KeyMapping ART = key("art_gallery", GLFW.GLFW_KEY_F8);
     private static final KeyMapping TREE = key("skill_tree", GLFW.GLFW_KEY_P);
     private static boolean bowCharging, rapierCharging, bowAuto, dualTogether;
     private static boolean guarding;
@@ -52,6 +53,7 @@ public final class ClientHooks {
         return new KeyMapping("key.fsrpg." + name, KeyConflictContext.IN_GAME, InputConstants.Type.KEYSYM, code, CATEGORY);
     }
     public static void register(IEventBus modBus) {
+        modBus.addListener(CreatureArtRenderer::register);
         modBus.addListener(ClientHooks::keys);
         modBus.addListener(ClientHooks::payloads);
         modBus.addListener(PlayerAnimations::layers);
@@ -76,7 +78,7 @@ public final class ClientHooks {
     }
     private static void keys(RegisterKeyMappingsEvent event) {
         event.registerCategory(CATEGORY);
-        for (KeyMapping key : new KeyMapping[]{DRAW, LEFT, RIGHT, GUARD, DODGE, EDITOR, JOURNAL, SKILL, STYLE, TREE}) event.register(key);
+        for (KeyMapping key : new KeyMapping[]{DRAW, LEFT, RIGHT, GUARD, DODGE, EDITOR, JOURNAL, SKILL, STYLE, TREE, ART}) event.register(key);
     }
     private static void payloads(RegisterClientPayloadHandlersEvent event) {
         event.register(RpgSnapshotPayload.TYPE, (payload, context) -> acceptSnapshot(payload.json()));
@@ -165,6 +167,7 @@ public final class ClientHooks {
         while (EDITOR.consumeClick()) openEditor();
         while (JOURNAL.consumeClick()) openJournal();
         while (TREE.consumeClick()) openSkillTree();
+        while (ART.consumeClick()) game.setScreen(new ArtGalleryScreen());
     }
     private static void screenOpening(ScreenEvent.Opening event) {
         if (event.getNewScreen() instanceof InventoryScreen && ClientState.drawn() && GUARD.isDown()) event.setCanceled(true);
