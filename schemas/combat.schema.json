@@ -7,9 +7,9 @@
   "additionalProperties": false,
   "required": ["maxStamina", "maxSpirit", "staminaRegenPerSecond", "spiritRegenPerSecond", "resourceRegenDelayTicks", "drawTicks", "sheathTicks", "guardArcDegrees", "guardDamageMultiplier", "guardStaminaCost", "perfectGuardTicks", "perfectGuardStaminaCost", "parryStunTicks", "guardBreakStunTicks", "hitStunTicks", "clashFacingArcDegrees", "dodgeDurationTicks", "dodgeInvulnerabilityStartTicks", "dodgeInvulnerabilityTicks", "dodgeCooldownTicks", "dodgeStaminaCost", "dodgeDistance", "dodgeCancelsRecovery", "allowAirDodge"],
   "properties": {
-    "maxStamina": { "type": "number", "minimum": 1, "maximum": 1000000 },
+    "maxStamina": { "type": "number", "minimum": 1, "maximum": 1000000, "default": 50, "description": "0级基础体力上限，默认50。正等级x的实际上限为基础值+x^0.8+3ln(x)，保留小数；系数由staminaLevelScaling配置。" },
     "maxSpirit": { "type": "number", "minimum": 1, "maximum": 1000000 },
-    "staminaRegenPerSecond": { "$ref": "#/$defs/resource", "description": "基础体力回复点数/秒，默认3。0.7.2首次升级按旧配置乘3并备份，仅迁移一次；回复延迟和成长倍率保持原规则。" },
+    "staminaRegenPerSecond": { "$ref": "#/$defs/resource", "default": 5, "description": "0级基础体力回复点数/秒，默认5。正等级x的实际回复为floor(基础值+sqrt(x)+ln(x))，仅回复向下取整；沿用现有回复延迟。0.7.4仅迁移一次基础值并备份。" },
     "spiritRegenPerSecond": { "$ref": "#/$defs/resource" },
     "resourceRegenDelayTicks": { "$ref": "#/$defs/ticks" },
     "drawTicks": { "$ref": "#/$defs/ticks" },
@@ -31,6 +31,18 @@
     "dodgeDistance": { "type": "number", "minimum": 0, "maximum": 32 },
     "dodgeCancelsRecovery": { "type": "boolean" },
     "allowAirDodge": { "type": "boolean" },
+    "staminaLevelScaling": {
+      "type": "object", "additionalProperties": false,
+      "description": "x取服务端同步的原版经验等级experienceLevel（HUD Lv），必须非负；0级直接使用基础值，避免ln(0)。只对正等级回复的完整表达式向下取整，上限保留小数。升级不补体力，降级只截到新上限。缺省兼容默认系数。",
+      "required": ["regenSqrtCoefficient", "regenLogCoefficient", "maxPowerCoefficient", "maxPowerExponent", "maxLogCoefficient"],
+      "properties": {
+        "regenSqrtCoefficient": { "$ref": "#/$defs/resource", "default": 1 },
+        "regenLogCoefficient": { "$ref": "#/$defs/resource", "default": 1 },
+        "maxPowerCoefficient": { "$ref": "#/$defs/resource", "default": 1 },
+        "maxPowerExponent": { "type": "number", "minimum": 0, "maximum": 4, "default": 0.8 },
+        "maxLogCoefficient": { "$ref": "#/$defs/resource", "default": 3 }
+      }
+    },
     "perfectGuardCounter": {
       "type": "object", "additionalProperties": false,
       "description": "与旧右键riposte独立。成功完美格挡后4tick内实际左键可使一招伤害乘1.5；只有成功启动攻击才消费，失败输入保留机会。到期、死亡、换武器与强制中断清理。下一招不继承倍率。缺省兼容4tick/1.5倍。",

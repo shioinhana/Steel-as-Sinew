@@ -30,6 +30,8 @@ public final class CombatActor {
     private long staminaRegenAt;
     private long spiritRegenAt;
     private double stamina;
+    private int playerLevel;
+    private double maxStamina, staminaRegenPerSecond;
     private double spirit;
     private int pendingHitStun;
     private SkillDefinition skill;
@@ -88,7 +90,8 @@ public final class CombatActor {
         if (id == null || rules == null) throw new IllegalArgumentException("id and rules are required");
         this.id = id;
         this.rules = rules;
-        stamina = rules.maxStamina();
+        updateStaminaLimits();
+        stamina = maxStamina;
         spirit = rules.maxSpirit();
     }
 
@@ -99,6 +102,21 @@ public final class CombatActor {
     public SkillDefinition activeSkill() { return phase == CombatPhase.ACTIVE ? skill : null; }
     public SkillDefinition currentSkill() { return skill; }
     public double stamina() { return stamina; }
+    public int playerLevel() { return playerLevel; }
+    public double maxStamina() { return maxStamina; }
+    public double staminaRegenPerSecond() { return staminaRegenPerSecond; }
+    /** Experience-level changes never refill resources; a lower cap only clips the current amount. */
+    public void setPlayerLevel(int level) {
+        StaminaLevelScaling.checkLevel(level);
+        if (playerLevel == level) return;
+        playerLevel = level;
+        updateStaminaLimits();
+        stamina = Math.min(stamina, maxStamina);
+    }
+    private void updateStaminaLimits() {
+        maxStamina = rules.maxStaminaAtLevel(playerLevel);
+        staminaRegenPerSecond = rules.staminaRegenAtLevel(playerLevel);
+    }
     public double spirit() { return spirit; }
     public WeaponStyleDefinition style() { return style; }
     public int counterRemainingTicks() { return drawn ? (int)Math.max(0, counterUntil - tick) : 0; }
@@ -162,21 +180,30 @@ public final class CombatActor {
         if (replacement == null) throw new IllegalArgumentException("rules are required");
         rules = replacement;
         clearCounter();
-        stamina = Math.min(stamina, rules.maxStamina());
+        updateStaminaLimits();
+        stamina = Math.min(stamina, maxStamina);
         spirit = Math.min(spirit, rules.maxSpirit());
     }
 
     public void setResources(double stamina, double spirit) {
-        SkillDefinition.checkNumber(stamina, "stamina", 0, 1_000_000);
+        SkillDefinition.checkNumber(stamina, "stamina", 0, Math.max(1_000_000, maxStamina));
         SkillDefinition.checkNumber(spirit, "spirit", 0, 1_000_000);
-        this.stamina = Math.min(stamina, rules.maxStamina());
+        this.stamina = Math.min(stamina, maxStamina);
+        this.spirit = Math.min(spirit, rules.maxSpirit());
+    }
+
+    /** Absolute persisted values may come from a formerly higher level; validate before clipping. */
+    public void restoreSavedResources(double stamina, double spirit) {
+        if (!Double.isFinite(stamina) || stamina < 0 || !Double.isFinite(spirit) || spirit < 0)
+            throw new IllegalArgumentException("saved resources must be finite and nonnegative");
+        this.stamina = Math.min(stamina, maxStamina);
         this.spirit = Math.min(spirit, rules.maxSpirit());
     }
 
     public void restoreResources(double staminaAmount, double spiritAmount) {
-        SkillDefinition.checkNumber(staminaAmount, "staminaAmount", 0, 1_000_000);
+        SkillDefinition.checkNumber(staminaAmount, "staminaAmount", 0, Math.max(1_000_000, maxStamina));
         SkillDefinition.checkNumber(spiritAmount, "spiritAmount", 0, 1_000_000);
-        stamina = Math.min(rules.maxStamina(), stamina + staminaAmount);
+        stamina = Math.min(maxStamina, stamina + staminaAmount);
         spirit = Math.min(rules.maxSpirit(), spirit + spiritAmount);
     }
 
@@ -578,7 +605,7 @@ public final class CombatActor {
                 default -> { }
             }
         }
-        if (tick >= staminaRegenAt) stamina = Math.min(rules.maxStamina(), stamina + rules.staminaRegenPerSecond() / 20.0);
+        if (tick >= staminaRegenAt) stamina = Math.min(maxStamina, stamina + staminaRegenPerSecond / 20.0);
         if (tick >= spiritRegenAt) spirit = Math.min(rules.maxSpirit(), spirit + rules.spiritRegenPerSecond() / 20.0);
         if(style!=null && style.controls().legacyDual() && phase==CombatPhase.READY && tick-lastDualEnd>=40) leftRest=rightRest=-1;
         skillReadyAt.entrySet().removeIf(entry -> entry.getValue() <= tick);
@@ -589,7 +616,7 @@ public final class CombatActor {
         return new CombatSnapshot(drawn, phase, Math.max(0, phaseRemaining),
                 skill == null ? "" : skill.id(), skillElapsed,
                 phase == CombatPhase.GUARDING ? (int) Math.min(Integer.MAX_VALUE, tick - guardStarted) : 0,
-                invulnerable(), stamina, rules.maxStamina(), spirit, rules.maxSpirit(), tick, swingSequence);
+                invulnerable(), stamina, maxStamina, spirit, rules.maxSpirit(), tick, swingSequence);
     }
 
     public boolean hasHit(UUID victim) { return swingVictims.contains(victim); }

@@ -39,6 +39,8 @@ import org.fsrpg.quest.*;
 import org.fsrpg.progression.*;
 import org.fsrpg.archery.*;
 import org.fsrpg.targeting.RapierTargetLock;
+import org.fsrpg.creature.CreatureCombatCatalog;
+import org.fsrpg.creature.CreatureMeleeServer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -65,6 +67,8 @@ public final class RpgServer {
     private final Map<UUID, CombatActor> actors = new HashMap<>();
     private record EnemyStun(LivingEntity entity, long untilGameTick) {}
     private final Map<UUID, EnemyStun> enemyStuns = new HashMap<>();
+    private CreatureCombatCatalog validatedCreatureCombat;
+    private final CreatureMeleeServer creatureMelee;
     private final Map<UUID, WeaponDrawController> drawControllers = new HashMap<>();
     private final Map<UUID, Resources> resources = new HashMap<>();
     private final Map<UUID, Vec3> dodgeDirections = new HashMap<>();
@@ -87,12 +91,14 @@ public final class RpgServer {
     public ProgressionService progression(){return progression;}
     public RpgConfig config(){return config;}
     public ArcheryServer archery(){return archery;}
+    public CreatureMeleeServer creatureMelee(){return creatureMelee;}
     public RapierTargetLock.Snapshot targetLock(ServerPlayer player){return rapierTargets.snapshot(player,actor(player));}
     private RpgServer(MinecraftServer server) throws IOException {
         this.server = server;
         config = new RpgConfig(FMLPaths.CONFIGDIR.get().resolve("fsrpg"));
         config.setValidator(this::validateRegistryIds);
         var definitions = config.reload();
+        creatureMelee = new CreatureMeleeServer(validatedCreatureCombat, this::perfectGuardStunRemaining);
         quests = new QuestService(definitions.quests());
         Path data = server.getWorldPath(LevelResource.ROOT).resolve("data/fsrpg");
         store = new QuestStore(data.resolve("quests.json"), RpgConfig.JSON);
@@ -137,12 +143,15 @@ public final class RpgServer {
         bus.addListener((PlayerEvent.StartTracking event) -> {
             if (instance != null && event.getEntity() instanceof ServerPlayer viewer && event.getTarget() instanceof ServerPlayer target)
                 PacketDistributor.sendToPlayer(viewer, instance.animationPayload(target));
+            if (instance != null && event.getEntity() instanceof ServerPlayer viewer)
+                instance.creatureMelee.startTracking(viewer,event.getTarget());
         });
         bus.addListener((PlayerEvent.PlayerLoggedOutEvent event) -> { if (instance != null && event.getEntity() instanceof ServerPlayer p) instance.logout(p); });
         bus.addListener((PlayerEvent.PlayerRespawnEvent event) -> { if (instance != null && event.getEntity() instanceof ServerPlayer p) instance.resetActor(p); });
         bus.addListener((LivingDeathEvent event) -> {
             if (instance != null) {
                 instance.enemyStuns.remove(event.getEntity().getUUID());
+                instance.creatureMelee.cancel(event.getEntity());
                 if (event.getEntity() instanceof ServerPlayer dead) instance.actor(dead).forceSheathed();
             }
             if(instance!=null)instance.archery.onDeath(event);
@@ -205,15 +214,19 @@ public final class RpgServer {
     }
     private CombatActor actor(ServerPlayer p) {
         training.ensure(p);
-        return actors.computeIfAbsent(p.getUUID(), id -> {
+        CombatActor current = actors.computeIfAbsent(p.getUUID(), id -> {
             CombatActor actor = new CombatActor(id, config.current().combat());
+            actor.setPlayerLevel(p.experienceLevel);
             Resources value = resources.get(id);
-            if (value != null) actor.setResources(value.stamina(), value.spirit());
+            if (value != null) actor.restoreSavedResources(value.stamina(), value.spirit());
+            else actor.setResources(actor.maxStamina(),actor.spirit());
             WeaponStyleDefinition selected = value == null ? null : config.current().styles().get(value.weaponStyle());
             if (selected == null || !selected.enabled()) selected = defaultStyle(config.current());
             accepted(actor.setStyle(selected));
             return actor;
         });
+        current.setPlayerLevel(p.experienceLevel);
+        return current;
     }
     private void resetActor(ServerPlayer p) {
         CombatActor previous = actors.remove(p.getUUID());
@@ -516,6 +529,7 @@ public final class RpgServer {
         }
     }
     private void applyConfig(RpgConfig.Definitions definitions) {
+        creatureMelee.reconfigure(validatedCreatureCombat);
         QuestService replacement = new QuestService(definitions.quests());
         replacement.restore(quests.snapshot());
         quests = replacement;
@@ -538,6 +552,7 @@ public final class RpgServer {
         ticks++;
         enemyStuns.entrySet().removeIf(entry -> !entry.getValue().entity().isAlive() || entry.getValue().entity().isRemoved()
                 || entry.getValue().entity().level().getGameTime() >= entry.getValue().untilGameTick());
+        creatureMelee.tick();
         var players = List.copyOf(server.getPlayerList().getPlayers());
         // Validate every actor before taking a shared collision-phase snapshot.
         for (ServerPlayer p : players) {
@@ -691,6 +706,7 @@ public final class RpgServer {
             int duration = victim instanceof ServerPlayer defender ? actor(defender).guardRules().parryStunTicks() : config.current().combat().parryStunTicks();
             if (duration > 0 && living.isAlive()) {
                 enemyStuns.put(living.getUUID(), new EnemyStun(living, living.level().getGameTime() + duration));
+                creatureMelee.cancel(living);
                 stopStunnedEnemy(living);
             }
         }
@@ -842,6 +858,13 @@ public final class RpgServer {
         } catch (IOException failure) { LOG.error("FSRPG progress save failed; existing files preserved", failure); }
     }
     private void validateRegistryIds(RpgConfig.Definitions definitions) {
+        try {
+            CreatureCombatCatalog candidate = CreatureCombatCatalog.read(config.directory().resolve("creature_combat.json"));
+            for (var attack : candidate.definitions())
+                if (!BuiltInRegistries.ENTITY_TYPE.containsKey(Identifier.parse(attack.entityType())))
+                    throw new IllegalArgumentException("Unknown creature combat entity " + attack.entityType());
+            validatedCreatureCombat = candidate;
+        } catch (IOException error) { throw new IllegalArgumentException("creature_combat.json: " + error.getMessage(),error); }
         definitions.collections().validateReferences(id -> BuiltInRegistries.ITEM.containsKey(Identifier.parse(id)),
                 id -> BuiltInRegistries.ENTITY_TYPE.containsKey(Identifier.parse(id)), id -> BuiltInRegistries.POTION.containsKey(Identifier.parse(id)));
         for (var group : definitions.weapons().groups().values()) {
@@ -985,6 +1008,8 @@ public final class RpgServer {
     }
     private void send(ServerPlayer p, String message, JsonObject editResult) {
         JsonObject snapshot = RpgConfig.JSON.toJsonTree(actor(p).snapshot()).getAsJsonObject();
+        snapshot.addProperty("playerLevel",actor(p).playerLevel());
+        snapshot.addProperty("staminaRegenPerSecond",actor(p).staminaRegenPerSecond());
         snapshot.addProperty("skill", actor(p).snapshot().skillId());
         snapshot.addProperty("canEdit", canEdit(p)); snapshot.addProperty("message", message);
         snapshot.add("skills", RpgConfig.JSON.toJsonTree(config.current().skills().values()));

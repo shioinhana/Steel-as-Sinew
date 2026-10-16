@@ -1,7 +1,7 @@
 {
-  "maxStamina": 100,
+  "maxStamina": 50,
   "maxSpirit": 100,
-  "staminaRegenPerSecond": 3.0,
+  "staminaRegenPerSecond": 5.0,
   "spiritRegenPerSecond": 1.0,
   "resourceRegenDelayTicks": 20,
   "drawTicks": 8,
@@ -28,6 +28,13 @@
     "range": 10,
     "allowPassive": true,
     "requireLineOfSight": true
+  },
+  "staminaLevelScaling": {
+    "regenSqrtCoefficient": 1.0,
+    "regenLogCoefficient": 1.0,
+    "maxPowerCoefficient": 1.0,
+    "maxPowerExponent": 0.8,
+    "maxLogCoefficient": 3.0
   },
   "perfectGuardCounter": {
     "windowTicks": 4,

@@ -11,7 +11,24 @@ public record CombatRules(
         int dodgeDurationTicks, int dodgeInvulnerabilityStartTicks, int dodgeInvulnerabilityTicks,
         int dodgeCooldownTicks, double dodgeStaminaCost, double dodgeDistance,
         boolean dodgeCancelsRecovery, boolean allowAirDodge, RapierTargeting.Rules rapierTargetLock,
-        PerfectGuardCounter perfectGuardCounter) {
+        PerfectGuardCounter perfectGuardCounter, StaminaLevelScaling staminaLevelScaling) {
+
+    /** Keep the 0.7.3 constructor source-compatible. */
+    public CombatRules(double maxStamina, double maxSpirit, double staminaRegenPerSecond,
+                       double spiritRegenPerSecond, int resourceRegenDelayTicks, int drawTicks, int sheathTicks,
+                       double guardArcDegrees, double guardDamageMultiplier, double guardStaminaCost,
+                       int perfectGuardTicks, double perfectGuardStaminaCost, int parryStunTicks, int guardBreakStunTicks,
+                       int hitStunTicks, double clashFacingArcDegrees, int dodgeDurationTicks,
+                       int dodgeInvulnerabilityStartTicks, int dodgeInvulnerabilityTicks, int dodgeCooldownTicks,
+                       double dodgeStaminaCost, double dodgeDistance, boolean dodgeCancelsRecovery, boolean allowAirDodge,
+                       RapierTargeting.Rules rapierTargetLock, PerfectGuardCounter perfectGuardCounter) {
+        this(maxStamina, maxSpirit, staminaRegenPerSecond, spiritRegenPerSecond, resourceRegenDelayTicks,
+                drawTicks, sheathTicks, guardArcDegrees, guardDamageMultiplier, guardStaminaCost,
+                perfectGuardTicks, perfectGuardStaminaCost, parryStunTicks, guardBreakStunTicks, hitStunTicks,
+                clashFacingArcDegrees, dodgeDurationTicks, dodgeInvulnerabilityStartTicks, dodgeInvulnerabilityTicks,
+                dodgeCooldownTicks, dodgeStaminaCost, dodgeDistance, dodgeCancelsRecovery, allowAirDodge,
+                rapierTargetLock, perfectGuardCounter, StaminaLevelScaling.defaults());
+    }
 
     /** A left-click opportunity is separate from a style's existing right-click riposte. */
     public record PerfectGuardCounter(int windowTicks, double damageMultiplier) {
@@ -58,6 +75,7 @@ public record CombatRules(
     public CombatRules {
         if (rapierTargetLock == null) rapierTargetLock = RapierTargeting.Rules.defaults();
         if (perfectGuardCounter == null) perfectGuardCounter = PerfectGuardCounter.defaults();
+        if (staminaLevelScaling == null) staminaLevelScaling = StaminaLevelScaling.defaults();
         SkillDefinition.checkNumber(maxStamina, "maxStamina", 1, 1_000_000);
         SkillDefinition.checkNumber(maxSpirit, "maxSpirit", 1, 1_000_000);
         SkillDefinition.checkNumber(staminaRegenPerSecond, "staminaRegenPerSecond", 0, 1_000_000);
@@ -85,8 +103,11 @@ public record CombatRules(
     }
 
     public static CombatRules defaults() {
-        return new CombatRules(100, 100, 3, 1, 20, 8, 8,
+        return new CombatRules(50, 100, 5, 1, 20, 8, 8,
                 120, 0.25, 10, 2, 10, 4, 10, 2, 120,
                 12, 0, 6, 20, 6, 3, true, false);
     }
+
+    public double maxStaminaAtLevel(int level) { return staminaLevelScaling.maximum(maxStamina, level); }
+    public double staminaRegenAtLevel(int level) { return staminaLevelScaling.regeneration(staminaRegenPerSecond, level); }
 }

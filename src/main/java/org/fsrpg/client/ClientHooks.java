@@ -23,6 +23,7 @@ import org.fsrpg.network.RpgActionPayload;
 import org.fsrpg.network.RpgSnapshotPayload;
 import org.fsrpg.network.RpgAnimationPayload;
 import org.fsrpg.network.RpgTargetLockPayload;
+import org.fsrpg.network.RpgCreatureAttackPayload;
 import org.lwjgl.glfw.GLFW;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -82,6 +83,10 @@ public final class ClientHooks {
         for (KeyMapping key : new KeyMapping[]{DRAW, LEFT, RIGHT, GUARD, DODGE, EDITOR, JOURNAL, SKILL, STYLE, TREE, ART}) event.register(key);
     }
     private static void payloads(RegisterClientPayloadHandlersEvent event) {
+        event.register(RpgCreatureAttackPayload.TYPE,(payload,context)->{
+            try {CreatureCombatAnimation.accept(payload);}
+            catch(RuntimeException error){LOG.warn("Ignored invalid creature combat animation update",error);}
+        });
         event.register(RpgTargetLockPayload.TYPE,(payload,context)->{
             try {ClientState.acceptTargetLock(payload.json());}
             catch(RuntimeException error){LOG.warn("Ignored invalid target lock update",error);}
@@ -263,6 +268,7 @@ public final class ClientHooks {
         }
     }
     private static void logout(ClientPlayerNetworkEvent.LoggingOut event) {
+        CreatureCombatAnimation.clear();
         ArcheryPresentation.reset();
         CombatCamera.reset(); ClientState.clear(); PlayerAnimations.clear(); updateCamera(); guarding = heavyGuarding = bowCharging = rapierCharging = bowAuto = dualTogether = false; statusClock = 0; guardRetryClock = 0;
     }

@@ -25,7 +25,7 @@ public final class StaminaRegenTest {
             RpgConfig config = new RpgConfig(directory);
             CombatRules rules = config.reload().combat();
             equal(CombatRules.defaults(), rules, "fallback matches seeded rules");
-            near(3, rules.staminaRegenPerSecond(), "fresh seed starts at three");
+            near(5, rules.staminaRegenPerSecond(), "current fresh seed starts at five");
             near(1, rules.spiritRegenPerSecond(), "spirit regeneration unchanged");
             equal(20, rules.resourceRegenDelayTicks(), "regeneration delay unchanged");
             equal(resource("combat.json"), read(directory), "fresh combat bytes represent exact bundled defaults");
@@ -33,21 +33,21 @@ public final class StaminaRegenTest {
             CombatActor actor = new CombatActor(UUID.randomUUID(), rules);
             actor.setResources(40, 40);
             for (int tick = 0; tick < 20; tick++) actor.tick();
-            near(43, actor.stamina(), "authoritative 20 Hz ticks recover three stamina per second");
+            near(45, actor.stamina(), "authoritative 20 Hz ticks recover current five stamina per second");
             near(41, actor.spirit(), "authoritative spirit rate remains one");
             actor.consumeStamina(5);
             double drained = actor.stamina();
             for (int tick = 1; tick < rules.resourceRegenDelayTicks(); tick++) actor.tick();
             near(drained, actor.stamina(), "spending retains existing recovery delay");
             actor.tick();
-            near(drained + .15, actor.stamina(), "first eligible tick restores 3/20 stamina");
-            actor.setResources(99.95, 100);
+            near(drained + .25, actor.stamina(), "first eligible tick restores 5/20 stamina");
+            actor.setResources(49.95, 100);
             actor.tick();
-            near(100, actor.stamina(), "faster recovery still respects maximum");
+            near(50, actor.stamina(), "faster recovery still respects current maximum");
             Map<String, String> before = texts(directory);
             config.reload();
             equal(before, texts(directory), "fresh reload preserves every config byte");
-            near(3, config.current().combat().staminaRegenPerSecond(), "fresh reload never triples seed again");
+            near(5, config.current().combat().staminaRegenPerSecond(), "fresh reload never triples seed again");
         } finally { cleanup(directory); }
     }
 
@@ -98,7 +98,7 @@ public final class StaminaRegenTest {
         try {
             StaminaRegenMigration.capture(directory);
             copyDefaults(directory);
-            near(3, new RpgConfig(directory).reload().combat().staminaRegenPerSecond(), "fresh seed interrupted before marker resumes at three, not nine");
+            near(5, new RpgConfig(directory).reload().combat().staminaRegenPerSecond(), "fresh seed interrupted before marker resumes at five without tripling");
         } finally { cleanup(directory); }
     }
 
@@ -139,6 +139,9 @@ public final class StaminaRegenTest {
         copyDefaults(directory);
         Files.writeString(directory.resolve(StaminaCostMigration.MARKER), "{}");
         Files.writeString(directory.resolve("legacy-skill-migration-v1.json"), "{}");
+        // Isolate the historical x3 upgrade; StaminaLevelMigrationTest separately
+        // verifies the subsequent 0.7.4 base replacement and complete upgrade chain.
+        Files.writeString(directory.resolve(StaminaLevelMigration.MARKER), "{}");
         return directory;
     }
     private static void copyDefaults(Path directory) throws Exception {

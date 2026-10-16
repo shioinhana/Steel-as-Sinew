@@ -7,6 +7,8 @@ config="fsrpg.client.mixins.json"
 config="fsrpg.archery.mixins.json"
 [[mixins]]
 config="fsrpg.progression.mixins.json"
+[[mixins]]
+config="fsrpg.creature.mixins.json"
 [[mods]]
 modId="fsrpg"
 version="${mod_version}"

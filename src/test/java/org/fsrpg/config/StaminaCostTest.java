@@ -192,11 +192,13 @@ public final class StaminaCostTest {
     private static void skipLaterBalanceUpgrades(Path directory)throws Exception {
         Files.writeString(directory.resolve(WeaponStaminaBalanceMigration.MARKER),"{}");
         Files.writeString(directory.resolve(PerfectGuardMigration.MARKER),"{}");
+        Files.writeString(directory.resolve(StaminaLevelMigration.MARKER),"{}");
     }
     private static void currentTemplateRules(JsonElement before,String name) {
         if(name.equals("combat.json")) {
             var o=before.getAsJsonObject();o.addProperty("perfectGuardTicks",2);o.addProperty("parryStunTicks",4);
             o.add("perfectGuardCounter",RpgConfig.JSON.toJsonTree(CombatRules.PerfectGuardCounter.defaults()));
+            o.addProperty("maxStamina",50);o.add("staminaLevelScaling",RpgConfig.JSON.toJsonTree(StaminaLevelScaling.defaults()));
         } else if(name.equals("styles.json")) {
             for(var entry:before.getAsJsonArray())for(String field:List.of("guard","heavyGuard")) {
                 var o=entry.getAsJsonObject();if(!o.has(field)||!o.get(field).isJsonObject())continue;
@@ -226,7 +228,7 @@ public final class StaminaCostTest {
             equal(before.getAsJsonObject().keySet(), afterFields, path + " preserves all original fields");
             for (var field : before.getAsJsonObject().entrySet()) {
                 if (field.getKey().equals("staminaCost") || field.getKey().endsWith("StaminaCost")) near(field.getValue().getAsDouble() / 5, after.getAsJsonObject().get(field.getKey()).getAsDouble(), path + "." + field.getKey());
-                else if (field.getKey().equals("staminaRegenPerSecond")) near(field.getValue().getAsDouble() * 3, after.getAsJsonObject().get(field.getKey()).getAsDouble(), path + " regeneration upgrade is independent of cost scaling");
+                else if (field.getKey().equals("staminaRegenPerSecond")) near(path.equals("combat.json") ? 5 : field.getValue().getAsDouble() * 3, after.getAsJsonObject().get(field.getKey()).getAsDouble(), path + " current template base or isolated historical x3 upgrade");
                 else compareCosts(field.getValue(), after.getAsJsonObject().get(field.getKey()), path + "." + field.getKey());
             }
         } else if (before.isJsonArray()) {

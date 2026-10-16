@@ -45,7 +45,7 @@ public final class WeaponStaminaBalanceTest {
             equal(skillsText,Files.readString(dir.resolve(WeaponStaminaBalanceMigration.BACKUP).resolve("skills.json")),"exact custom skill backup");
             equal(bowText,Files.readString(dir.resolve(WeaponStaminaBalanceMigration.BACKUP).resolve("archery.json")),"exact custom bow backup");
             for(var skill:defs.skills().values()) {near(17.25,skill.damage(),"preserve custom damage");Double e=expected(skill);near(e==null?42:e,skill.staminaCost(),"only requested cost");}
-            near(13,defs.archery().rapidDrawTicks(),"preserve custom draw timing");near(3,defs.combat().staminaRegenPerSecond(),"regen never re-triples");
+            near(13,defs.archery().rapidDrawTicks(),"preserve custom draw timing");near(5,defs.combat().staminaRegenPerSecond(),"current base regen never re-triples");
             String once=Files.readString(dir.resolve("skills.json"));config.reload();equal(once,Files.readString(dir.resolve("skills.json")),"reload idempotent");
             Files.delete(dir.resolve(WeaponStaminaBalanceMigration.MARKER));config.reload();equal(once,Files.readString(dir.resolve("skills.json")),"interrupted marker retry never doubles costs");
             equal(skillsText,Files.readString(dir.resolve(WeaponStaminaBalanceMigration.BACKUP).resolve("skills.json")),"retry retains original backup");

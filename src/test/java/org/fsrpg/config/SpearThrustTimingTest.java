@@ -33,7 +33,7 @@ public final class SpearThrustTimingTest {
             near(0, thrust.spiritCost(), "thrust spirit cost unchanged");
             near(4.5, thrust.reach(), "thrust reach unchanged");
             equal(0, thrust.cooldownTicks(), "existing cooldown remains zero");
-            near(3, definitions.combat().staminaRegenPerSecond(), "0.7.2 stamina rate remains three");
+            near(5, definitions.combat().staminaRegenPerSecond(), "current default stamina base is five");
             var sweep = definitions.skills().get("spear_sweep");
             equal(28, sweep.durationTicks(), "trajectory sweep cadence unchanged");
             CombatActor actor = new CombatActor(UUID.randomUUID(), definitions.combat());
@@ -131,6 +131,11 @@ public final class SpearThrustTimingTest {
         Path directory = Files.createTempDirectory("fsrpg-thrust-existing-");
         // Isolate timing retries from the release's independently tested guard and cost upgrades.
         new RpgConfig(directory).reload();
+        // A completed level migration may be explicitly tuned later. Keep a
+        // historical rate of three here and prove the timing-only retry preserves it.
+        JsonObject combat = read(directory, "combat.json").getAsJsonObject();
+        combat.addProperty("staminaRegenPerSecond", 3);
+        Files.writeString(directory.resolve("combat.json"), RpgConfig.JSON.toJson(combat));
         Files.delete(directory.resolve(SpearThrustTimingMigration.MARKER));
         return directory;
     }
