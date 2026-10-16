@@ -9,7 +9,7 @@
   "properties": {
     "maxStamina": { "type": "number", "minimum": 1, "maximum": 1000000 },
     "maxSpirit": { "type": "number", "minimum": 1, "maximum": 1000000 },
-    "staminaRegenPerSecond": { "$ref": "#/$defs/resource" },
+    "staminaRegenPerSecond": { "$ref": "#/$defs/resource", "description": "基础体力回复点数/秒，默认3。0.7.2首次升级按旧配置乘3并备份，仅迁移一次；回复延迟和成长倍率保持原规则。" },
     "spiritRegenPerSecond": { "$ref": "#/$defs/resource" },
     "resourceRegenDelayTicks": { "$ref": "#/$defs/ticks" },
     "drawTicks": { "$ref": "#/$defs/ticks" },

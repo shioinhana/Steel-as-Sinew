@@ -39,6 +39,7 @@ public final class RpgConfig {
     public void seed() throws IOException {
         Files.createDirectories(directory);
         StaminaCostMigration staminaMigration = StaminaCostMigration.capture(directory);
+        StaminaRegenMigration staminaRegenMigration = StaminaRegenMigration.capture(directory);
         for (String name : List.of("combat.json", "skills.json", "quests.json", "weapons.json", "collections.json", "skill_trees.json", "archery.json")) {
             Path target = directory.resolve(name);
             if (!Files.exists(target)) {
@@ -54,6 +55,7 @@ public final class RpgConfig {
         LegacySkillMigration.migrate(directory);
         if (staminaMigration != null) staminaMigration.apply();
         RapierTargetLockMigration.migrate(directory);
+        if (staminaRegenMigration != null) staminaRegenMigration.apply();
     }
     private JsonElement read(String name) throws IOException {
         Path path = directory.resolve(name);

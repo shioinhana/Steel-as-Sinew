@@ -180,6 +180,7 @@ public final class StaminaCostTest {
             equal(before.getAsJsonObject().keySet(), afterFields, path + " preserves all original fields");
             for (var field : before.getAsJsonObject().entrySet()) {
                 if (field.getKey().equals("staminaCost") || field.getKey().endsWith("StaminaCost")) near(field.getValue().getAsDouble() / 5, after.getAsJsonObject().get(field.getKey()).getAsDouble(), path + "." + field.getKey());
+                else if (field.getKey().equals("staminaRegenPerSecond")) near(field.getValue().getAsDouble() * 3, after.getAsJsonObject().get(field.getKey()).getAsDouble(), path + " regeneration upgrade is independent of cost scaling");
                 else compareCosts(field.getValue(), after.getAsJsonObject().get(field.getKey()), path + "." + field.getKey());
             }
         } else if (before.isJsonArray()) {

@@ -1,7 +1,7 @@
 {
   "maxStamina": 100,
   "maxSpirit": 100,
-  "staminaRegenPerSecond": 1.0,
+  "staminaRegenPerSecond": 3.0,
   "spiritRegenPerSecond": 1.0,
   "resourceRegenDelayTicks": 20,
   "drawTicks": 8,

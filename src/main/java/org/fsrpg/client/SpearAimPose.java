@@ -201,7 +201,7 @@ public final class SpearAimPose {
                 var shoulder=world.get(side+"_arm").getTranslation(new Vector3f());
                 var palm=new Vector3f(rear).fma(side.equals("right")?0:limits.gripSpacingCm(),shaft);
                 var elbow=selectedArms[sideIndex].elbow();
-                deep+=space.deepArmContact(shoulder,elbow,palm);
+                deep+=selectedArms[sideIndex].deepContact(space,shoulder,palm);
             }
             if(deep>50 || space.shaft(rear,shaft)>50 || selectedScore.peak()>space.motionBudget+2) {
                 // Comfort yaw can trap the arms on a penetrating ring. Keep the
@@ -254,7 +254,7 @@ public final class SpearAimPose {
                 if(candidate==null)continue;
                 var axis=new Vector3f(target).sub(candidate).normalize();
                 if(!trialSpace.shaftClear(candidate,axis))continue;
-                var score=gripScore(trialWorld,axis,candidate,authored,trialSpace,continuity,previous,limits);
+                var score=rankedGripScore(trialWorld,axis,candidate,authored,trialSpace,continuity,previous,limits,best,actualHistory,0);
                 if(betterGrip(score,best,actualHistory,0)) {best=score;bestRear.set(candidate);bestPose=new HashMap<>(trialPose);bestYaw=trialYaw;bestBank=trialBank;}
                 // Once a connected, clear rear-elbow branch is available, there
                 // is no reason to evaluate the remaining distant seed grid.
@@ -328,7 +328,8 @@ public final class SpearAimPose {
                 var candidate=finiteRear(world,target,seed,limits);
                 var candidateShaft=new Vector3f(target).sub(candidate).normalize();
                 if(closedRear(world,candidateShaft,candidate,limits).distanceSquared(candidate)>.00000001f)continue;
-                var score=gripScore(world,candidateShaft,candidate,authored,space,continuity,actual,limits);
+                if(!mayBeatClear(bestScore,space,candidate,candidateShaft))continue;
+                var score=rankedGripScore(world,candidateShaft,candidate,authored,space,continuity,actual,limits,bestScore,space.transported&&actual!=null,0);
                 if(betterGrip(score,bestScore,space.transported && actual!=null,0)){best.set(candidate);bestScore=score;}
             } catch(IllegalArgumentException unreachableTrial) {
                 // A trial's parallax can leave the common reach domain; skip that seed.
@@ -530,6 +531,11 @@ public final class SpearAimPose {
         float shoulderAlong=separation.dot(shaft);
         var center=new Vector3f(separation).sub(new Vector3f(shaft).mul(shoulderAlong));
         var desired=new Vector3f(delta).sub(new Vector3f(shaft).mul(delta.dot(shaft)));
+        // A goal already inside both annuli is the unique zero-distance candidate.
+        // Return the same reconstructed point before building all circle intersections.
+        float desiredFirst=desired.length(),desiredSecond=desired.distance(center);
+        if(desiredFirst>=rightLow-.001f&&desiredFirst<=rightHigh+.001f&&desiredSecond>=leftLow-.001f&&desiredSecond<=leftHigh+.001f)
+            return new Vector3f(right).add(new Vector3f(shaft).mul(a)).add(desired);
         var candidates=new java.util.ArrayList<Vector3f>();candidates.add(new Vector3f(desired));
         var down=radialPole(world.get("body"),shaft,"right");
         for(float radius:new float[]{rightLow,rightHigh})candidates.add(circleProjection(desired,new Vector3f(),radius,down));
@@ -561,7 +567,41 @@ public final class SpearAimPose {
         if(direction.lengthSquared()<.0001f)direction.set(down);else direction.normalize();
         return direction.mul(radius).add(center);
     }
-    private record Arm(Vector3f upper,Vector3f fore,Vector3f hinge,Vector3f elbow,float twist,float cost,float continuity,float peakStep) {}
+    /** A candidate's collision geometry stays fixed throughout its ranking and acceptance. */
+    private static final class Arm {
+        private final Vector3f upper,fore,hinge,elbow;
+        private final float twist,continuity,peakStep,wristCost,comfortCost,historyCost,temporalCost;
+        private final SpearConstraints.Space space;
+        private final String side;
+        private final Vector3f shoulder,palm;
+        private float cost=Float.NaN,contact=Float.NaN,deepContact=Float.NaN;
+        Arm(Vector3f upper,Vector3f fore,Vector3f hinge,Vector3f elbow,float twist,float continuity,float peakStep,
+            float wristCost,float comfortCost,float historyCost,float temporalCost,SpearConstraints.Space space,String side,Vector3f shoulder,Vector3f palm) {
+            this.upper=upper;this.fore=fore;this.hinge=hinge;this.elbow=elbow;
+            this.twist=twist;this.continuity=continuity;this.peakStep=peakStep;
+            this.wristCost=wristCost;this.comfortCost=comfortCost;this.historyCost=historyCost;this.temporalCost=temporalCost;
+            this.space=space;this.side=side;this.shoulder=shoulder;this.palm=palm;
+        }
+        Vector3f upper(){return upper;} Vector3f fore(){return fore;} Vector3f hinge(){return hinge;} Vector3f elbow(){return elbow;}
+        float twist(){return twist;} float continuity(){return continuity;} float peakStep(){return peakStep;}
+        float cost(){
+            if(Float.isNaN(cost)) {
+                // Geometry and temporal branch selection precede collision scoring.
+                // Discarded pronation roots never need their expensive contact scan.
+                cost=180*space.arm(shoulder,elbow,palm,side,contact());
+                if(space.deepArmWeight>0)cost+=space.deepArmWeight*deepContact(space,shoulder,palm);
+                cost+=wristCost;cost+=comfortCost;
+                if(!Float.isNaN(historyCost))cost+=historyCost;
+                if(!Float.isNaN(temporalCost))cost+=temporalCost;
+            }
+            return cost;
+        }
+        float contact(){if(Float.isNaN(contact))contact=space.contact(shoulder,elbow,palm);return contact;}
+        float deepContact(SpearConstraints.Space space,Vector3f shoulder,Vector3f palm) {
+            if(Float.isNaN(deepContact))deepContact=space.deepArmContact(shoulder,elbow,palm);
+            return deepContact;
+        }
+    }
     private static Arm arm(String side,Vector3f shoulder,Vector3f palm,Vector3f shaft,SpearConstraints.Space space,
                            Map<String,Matrix4f> previous,SpearConstraints.Limits limits) {
         if(space.tucked&&side.equals("left"))return supportArm(shoulder,palm,shaft,space,previous,limits);
@@ -613,22 +653,27 @@ public final class SpearAimPose {
         var parent=new Quaternionf(space.inverseParent).invert();
         var radial=parent.transform(new Vector3f(.5f,-.4f,.8f));radial.fma(-radial.dot(axis),axis).normalize();
         var tangent=new Vector3f(axis).cross(radial).normalize();
-        var hints=new java.util.ArrayList<Vector3f>();
         var actual=space.actualHistory.get("left");
-        if(actual!=null)hints.add(actual.worldArm().transform(new Vector3f(0,-UPPER,0)).add(shoulder).sub(center));
-        if(previous!=null)hints.add(previous.get("left_forearm").getTranslation(new Vector3f()).sub(center));
-        hints.add(new Vector3f(radial));
-        for(int i=1;i<16;i++)hints.add(new Vector3f(radial).mul((float)java.lang.Math.cos(i*java.lang.Math.PI/8)).fma((float)java.lang.Math.sin(i*java.lang.Math.PI/8),tangent));
+        int historicalHints=(actual!=null?1:0)+(previous!=null?1:0);
         Arm best=null;int evaluated=0;
-        for(var hint:hints) {
+        // Most connected support hands accept their first history hint. Construct
+        // the remaining circle points only if their turn in the unchanged search is reached.
+        for(int hintIndex=0;hintIndex<historicalHints+16;hintIndex++) {
+            Vector3f hint;
+            if(actual!=null&&hintIndex==0)hint=actual.worldArm().transform(new Vector3f(0,-UPPER,0)).add(shoulder).sub(center);
+            else if(previous!=null&&hintIndex==(actual!=null?1:0))hint=previous.get("left_forearm").getTranslation(new Vector3f()).sub(center);
+            else {
+                int i=hintIndex-historicalHints;
+                hint=i==0?new Vector3f(radial):new Vector3f(radial).mul((float)java.lang.Math.cos(i*java.lang.Math.PI/8)).fma((float)java.lang.Math.sin(i*java.lang.Math.PI/8),tangent);
+            }
             hint.fma(-hint.dot(axis),axis);if(hint.lengthSquared()<.000001f)continue;hint.normalize();
             var elbow=new Vector3f(center).fma(radius,hint);
             var fore=new Vector3f(palm).sub(elbow).normalize();
             var candidate=armCandidate("left",shoulder,palm,shaft,fore,space,previous,limits);
             if(java.lang.Math.abs(candidate.twist())>150.01f)continue;
-            if(previous!=null&&candidate.peakStep()<=space.motionBudget+1&&space.deepArmContact(shoulder,candidate.elbow(),palm)<.1f)return candidate;
+            if(previous!=null&&candidate.peakStep()<=space.motionBudget+1&&candidate.deepContact(space,shoulder,palm)<.1f)return candidate;
             if(best==null||candidate.cost()<best.cost())best=candidate;
-            if(++evaluated>=3&&best.peakStep()<=35&&space.deepArmContact(shoulder,best.elbow(),palm)<.1f)return best;
+            if(++evaluated>=3&&best.peakStep()<=35&&best.deepContact(space,shoulder,palm)<.1f)return best;
         }
         if(best==null)throw new IllegalArgumentException("Front support wrist has no legal orientation");
         return best;
@@ -643,10 +688,9 @@ public final class SpearAimPose {
         float twist=(float)java.lang.Math.toDegrees(java.lang.Math.atan2(shaft.dot(hinge),shaft.dot(lowerZ)));
         boolean frontGuide=space.tucked&&side.equals("left");
         if(frontGuide)twist=0;
-        float cost=180*space.arm(shoulder,elbow,palm,side);
-        if(space.deepArmWeight>0)cost+=space.deepArmWeight*space.deepArmContact(shoulder,elbow,palm);
-        cost+=4*SpearConstraints.square(java.lang.Math.max(0,java.lang.Math.abs(twist)-limits.wristDegrees()));
-        cost+=.01f*SpearConstraints.square(java.lang.Math.max(0,java.lang.Math.abs(twist)-80));
+        float wristCost=4*SpearConstraints.square(java.lang.Math.max(0,java.lang.Math.abs(twist)-limits.wristDegrees()));
+        float comfortCost=.01f*SpearConstraints.square(java.lang.Math.max(0,java.lang.Math.abs(twist)-80));
+        float historyCost=Float.NaN,temporalCost=Float.NaN;
         float continuity=0,peak=0;
         var worldUpper=frame(upperAxis,hinge);
         var worldFore=frame(fore,hinge);
@@ -661,7 +705,7 @@ public final class SpearAimPose {
         if(history!=null) {
             var transported=space.body.transformDirection(new Vector3f(elbow).sub(shoulder));
             float angle=rotationStep(local,history.arm()),foreAngle=rotationStep(localFore,history.fore()),handAngle=rotationStep(hand,history.hand());
-            cost+=.08f*(transported.distanceSquared(history.upper())+angle*angle+foreAngle*foreAngle+handAngle*handAngle);
+            historyCost=.08f*(transported.distanceSquared(history.upper())+angle*angle+foreAngle*foreAngle+handAngle*handAngle);
         }
         var actual=space.actualHistory.get(side);
         if(actual!=null) {
@@ -671,9 +715,9 @@ public final class SpearAimPose {
             float handAngle=space.transported?rotationStep(worldHand,actual.worldHand()):rotationStep(hand,actual.hand());
             continuity=actualUpper.distanceSquared(actual.upper())+angle*angle+foreAngle*foreAngle+handAngle*handAngle;
             peak=java.lang.Math.max(angle,java.lang.Math.max(foreAngle,handAngle));
-            cost+=space.temporalWeight*SpearConstraints.square(java.lang.Math.max(0,peak-space.motionBudget));
+            temporalCost=space.temporalWeight*SpearConstraints.square(java.lang.Math.max(0,peak-space.motionBudget));
         }
-        return new Arm(upperAxis,fore,hinge,elbow,twist,cost,continuity,peak);
+        return new Arm(upperAxis,fore,hinge,elbow,twist,continuity,peak,wristCost,comfortCost,historyCost,temporalCost,space,side,shoulder,palm);
     }
     private static float rotationStep(Quaternionf a,Quaternionf b) {
         return (float)java.lang.Math.toDegrees(2*java.lang.Math.acos(java.lang.Math.clamp(java.lang.Math.abs(a.dot(b)),0,1)));
@@ -683,6 +727,10 @@ public final class SpearAimPose {
         return gripScore(world,shaft,rear,authored,space,previous,null,limits).cost();
     }
     private record GripScore(float peak,float cost,boolean shaftClear,boolean rearTucked) {}
+    /** A blocked candidate cannot outrank a clear one, regardless of either arm's soft score. */
+    private static boolean mayBeatClear(GripScore best,SpearConstraints.Space space,Vector3f rear,Vector3f shaft) {
+        return !best.shaftClear()||!space.tucked||(space.shaftInFront(shaft)&&space.shaftClear(rear,shaft));
+    }
     /** Rank closed poses directly; a large scalar penalty can hide meaningful cost differences. */
     private static boolean betterGrip(GripScore candidate,GripScore best,boolean actualHistory,float costEpsilon) {
         if(candidate.shaftClear()!=best.shaftClear())return candidate.shaftClear();
@@ -708,6 +756,30 @@ public final class SpearAimPose {
     private static GripScore gripScore(Map<String,Matrix4f> world,Vector3f shaft,Vector3f rear,Vector3f authored,
                                       SpearConstraints.Space space,Map<String,Matrix4f> continuity,
                                       Map<String,Matrix4f> actual,SpearConstraints.Limits limits,Arm[] selectedArms) {
+        return gripScore(world,shaft,rear,authored,space,continuity,actual,limits,selectedArms,null,false,0);
+    }
+    private static GripScore rankedGripScore(Map<String,Matrix4f> world,Vector3f shaft,Vector3f rear,Vector3f authored,
+                                      SpearConstraints.Space space,Map<String,Matrix4f> continuity,
+                                      Map<String,Matrix4f> actual,SpearConstraints.Limits limits,GripScore incumbent,boolean actualHistory,float epsilon) {
+        return gripScore(world,shaft,rear,authored,space,continuity,actual,limits,null,incumbent,actualHistory,epsilon);
+    }
+    /** Remaining limb costs are nonnegative and its peak can only increase. */
+    private static boolean mayBeatRemaining(float peak,float cost,boolean clear,boolean rearTucked,
+                                            GripScore best,boolean actualHistory,float epsilon) {
+        if(clear!=best.shaftClear())return clear;
+        if(rearTucked!=best.rearTucked()) {
+            if(!actualHistory)return rearTucked;
+            if(best.peak()<=35)return rearTucked&&peak<=35;
+            return peak<=35||peak<best.peak();
+        }
+        if(actualHistory&&best.peak()>CONTINUOUS_PEAK)
+            return peak<=CONTINUOUS_PEAK||peak-best.peak()<=PEAK_TIE;
+        return (!actualHistory||peak<=CONTINUOUS_PEAK)&&cost<best.cost()-epsilon;
+    }
+    private static GripScore gripScore(Map<String,Matrix4f> world,Vector3f shaft,Vector3f rear,Vector3f authored,
+                                      SpearConstraints.Space space,Map<String,Matrix4f> continuity,
+                                      Map<String,Matrix4f> actual,SpearConstraints.Limits limits,Arm[] selectedArms,
+                                      GripScore incumbent,boolean actualHistory,float epsilon) {
         boolean clear=!space.tucked||space.shaftClear(rear,shaft);
         float shaftCost=space.tucked&&clear?0:space.shaft(rear,shaft);
         float cost=space.poseWeight*rear.distanceSquared(authored)+space.shaftWeight*shaftCost;
@@ -741,6 +813,10 @@ public final class SpearAimPose {
             }
             cost+=candidate.cost();peak=java.lang.Math.max(peak,candidate.peakStep());
             if(selectedArms!=null)selectedArms[sideIndex]=candidate;
+            // A complete right arm establishes tuck status. Reject a provably
+            // losing lower bound before enumerating the front support elbow circle.
+            if(sideIndex==0&&incumbent!=null&&!mayBeatRemaining(peak,cost,clear&&(!space.tucked||space.shaftInFront(shaft)),rearTucked,incumbent,actualHistory,epsilon))
+                return incumbent;
         }
         return new GripScore(peak,cost,clear&&(!space.tucked||space.shaftInFront(shaft)),rearTucked);
     }
@@ -762,8 +838,8 @@ public final class SpearAimPose {
                 var upper=space.body.transformDirection(new Vector3f(candidate.elbow()).sub(shoulder));
                 rearPosture=-upper.z>=java.lang.Math.max(20,-upper.y*1.2f);
             }
-            contacts+=space.contact(shoulder,candidate.elbow(),palm);
-            if(space.tucked)deepContacts+=space.deepArmContact(shoulder,candidate.elbow(),palm);
+            contacts+=candidate.contact();
+            if(space.tucked)deepContacts+=candidate.deepContact(space,shoulder,palm);
             twist=java.lang.Math.max(twist,java.lang.Math.abs(candidate.twist()));
         }
         // A safe, moving prediction already satisfies the hard grip/angle limits.
@@ -794,7 +870,8 @@ public final class SpearAimPose {
                 var candidate=trialRear(world,target,shaft,seed,transported,limits);
                 if(candidate==null)continue;
                 var axis=transported?new Vector3f(target).sub(candidate).normalize():shaft;
-                var score=gripScore(world,axis,candidate,authored,space,previous,actual,limits);
+                if(!mayBeatClear(bestScore,space,candidate,axis))continue;
+                var score=rankedGripScore(world,axis,candidate,authored,space,previous,actual,limits,bestScore,rankActual,.001f);
                 if(betterGrip(score,bestScore,rankActual,.001f)){best.set(candidate);bestScore=score;}
             }
         }
@@ -805,7 +882,8 @@ public final class SpearAimPose {
                 var candidate=trialRear(world,target,shaft,new Vector3f(origin).fma(sign*step,direction),transported,limits);
                 if(candidate==null)continue;
                 var axis=transported?new Vector3f(target).sub(candidate).normalize():shaft;
-                var score=gripScore(world,axis,candidate,authored,space,previous,actual,limits);
+                if(!mayBeatClear(bestScore,space,candidate,axis))continue;
+                var score=rankedGripScore(world,axis,candidate,authored,space,previous,actual,limits,bestScore,rankActual,.001f);
                 if(betterGrip(score,bestScore,rankActual,.001f)){best.set(candidate);bestScore=score;}
             }
         }

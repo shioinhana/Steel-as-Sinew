@@ -57,7 +57,7 @@ public record CombatRules(
     }
 
     public static CombatRules defaults() {
-        return new CombatRules(100, 100, 1, 1, 20, 8, 8,
+        return new CombatRules(100, 100, 3, 1, 20, 8, 8,
                 120, 0.25, 10, 4, 10, 8, 10, 2, 120,
                 12, 0, 6, 20, 6, 3, true, false);
     }

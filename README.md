@@ -1,6 +1,8 @@
 # FSRPG 冒险与动作战斗基础模组
 
-Minecraft Java **1.21.11 / NeoForge 21.11.45 / Java 21**，当前开发版本 **0.7.1**。服务端管理战斗判定、资源、修行、任务与奖励；客户端提供常驻 HUD、任务页、技能树、动作预览和武器输入。动画使用独立的 FSVOXEL 依赖，手持物品仍由 Minecraft 官方 ItemStack 渲染。
+Minecraft Java **1.21.11 / NeoForge 21.11.45 / Java 21**，当前开发版本 **0.7.2**。服务端管理战斗判定、资源、修行、任务与奖励；客户端提供常驻 HUD、任务页、技能树、动作预览和武器输入。动画使用独立的 FSVOXEL 依赖，手持物品仍由 Minecraft 官方 ItemStack 渲染。
+
+0.7.2 优化长枪逐帧握点与避碰搜索：缓存同一手臂候选的碰撞结果、延后计算未入选肘分支的评分，并按原有排序的保守下界排除必败候选；碰撞盒热路径改为直接读取坐标。求解频率、搜索顺序、关节限位、避碰余量与最终握持链保留。体力基础回复由 **1 点/秒提高至 3 点/秒**；旧自定义回复值首次升级乘 3，原文件备份于 `stamina-regen-backup-v1/`，`stamina-regen-migration-v1.json` 阻止重复放大。灵力、回复延迟和消耗保留。实机性能方法与结果见 [长枪性能与体力回复](docs/长枪性能与体力回复.md)。
 
 0.7.1 将默认格挡改为 **C**、重格挡改为 **Shift+C**，E 在拔刀时仍可打开背包。西洋剑上身恢复 0.1.1 原稿与原有 65° 侧身，取消后来叠加的打击倾身、前摇反向姿态和移动摆动；保留接触时间映射。下身使用长枪的支撑、骨盆跟随与转步逻辑，按实际移动方向踏步，皮肤和盔甲腰口保持连接。原始动作文件和官方 ItemStack 握持链保留。
 
@@ -18,7 +20,7 @@ Minecraft Java **1.21.11 / NeoForge 21.11.45 / Java 21**，当前开发版本 **
 
 ## 安装与开发启动
 
-客户端 `mods/` 使用 `fsrpg-neoforge-0.7.1.jar` 与随附的 `fsvoxel-renderer-neoforge-0.6.0.jar`；升级时备份并移走旧 FSRPG JAR。服务端安装 FSRPG，FSVOXEL 为客户端依赖。两端需要 FSRPG 才能同步战斗、修行和任务数据。
+客户端 `mods/` 使用 `fsrpg-neoforge-0.7.2.jar` 与随附的 `fsvoxel-renderer-neoforge-0.6.0.jar`；升级时备份并移走旧 FSRPG JAR。服务端安装 FSRPG，FSVOXEL 为客户端依赖。两端需要 FSRPG 才能同步战斗、修行和任务数据。
 
 源码使用 Gradle Wrapper 9.5.0、ModDevGradle 2.0.144 和 Java 21 工具链。`Build.cmd` 构建，`Run-Client.cmd` 启动开发客户端；也可执行：
 

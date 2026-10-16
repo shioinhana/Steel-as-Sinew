@@ -128,9 +128,12 @@ final class SpearConstraints {
             }
         }
         float arm(Vector3f shoulder, Vector3f elbow, Vector3f palm, String side) {
-            // The proximal sleeve intentionally joins the chest. The remaining arm and
-            // the complete forearm must stay outside the torso and the real head frame.
-            float cost = contact(shoulder,elbow,palm);
+            return arm(shoulder,elbow,palm,side,contact(shoulder,elbow,palm));
+        }
+        float arm(Vector3f shoulder, Vector3f elbow, Vector3f palm, String side,float contact) {
+            // A candidate's clearance is also used for safety/continuity ranking.
+            // Accept the already sampled value instead of rescanning the same limb.
+            float cost = contact;
             var upper = body.transformDirection(new Vector3f(elbow).sub(shoulder).normalize());
             float inward = (side.equals("right") ? -1 : 1) * upper.x;
             cost += 120 * square(java.lang.Math.max(0, -inward - .12f));
@@ -180,12 +183,34 @@ final class SpearConstraints {
             return crossesBox(inverse.transformPosition(new Vector3f(from)),inverse.transformPosition(new Vector3f(to)),halfX,highY,halfZ,radius);
         }
         private static boolean crossesBox(Vector3f a,Vector3f to,float halfX,float highY,float halfZ,float radius) {
-            var d=new Vector3f(to).sub(a);
+            // This slab test runs for every limb candidate. Read fixed components
+            // directly: Vector3f.get(axis) otherwise dominates the render thread.
             float low=0,high=1;
-            for(int axis=0;axis<3;axis++) {
-                float minimum=axis==1?-radius:-(axis==0?halfX:halfZ)-radius;
-                float maximum=(axis==0?halfX:axis==1?highY:halfZ)+radius;
-                float origin=a.get(axis),delta=d.get(axis);
+            {
+                float minimum=-halfX-radius,maximum=halfX+radius;
+                float origin=a.x,delta=to.x-origin;
+                if(java.lang.Math.abs(delta)<.000001f) {if(origin<minimum||origin>maximum)return false;}
+                else {
+                    float first=(minimum-origin)/delta,last=(maximum-origin)/delta;
+                    if(first>last){float swap=first;first=last;last=swap;}
+                    low=java.lang.Math.max(low,first);high=java.lang.Math.min(high,last);
+                    if(low>high)return false;
+                }
+            }
+            {
+                float minimum=-radius,maximum=highY+radius;
+                float origin=a.y,delta=to.y-origin;
+                if(java.lang.Math.abs(delta)<.000001f) {if(origin<minimum||origin>maximum)return false;}
+                else {
+                    float first=(minimum-origin)/delta,last=(maximum-origin)/delta;
+                    if(first>last){float swap=first;first=last;last=swap;}
+                    low=java.lang.Math.max(low,first);high=java.lang.Math.min(high,last);
+                    if(low>high)return false;
+                }
+            }
+            {
+                float minimum=-halfZ-radius,maximum=halfZ+radius;
+                float origin=a.z,delta=to.z-origin;
                 if(java.lang.Math.abs(delta)<.000001f) {if(origin<minimum||origin>maximum)return false;}
                 else {
                     float first=(minimum-origin)/delta,last=(maximum-origin)/delta;

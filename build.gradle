@@ -31,7 +31,8 @@ sourceSets.smoke.compileClasspath += sourceSets.main.output + sourceSets.main.co
 sourceSets.smoke.runtimeClasspath += sourceSets.main.output + sourceSets.main.runtimeClasspath
 if (project.hasProperty('rpgJarSmoke')) {
     sourceSets { packagedSmoke {} }
-    sourceSets.packagedSmoke.output.dir([builtBy: tasks.named('jar')], tasks.named('jar').flatMap { it.archiveFile })
+    if (project.hasProperty('smokeJar')) sourceSets.packagedSmoke.output.dir(file(project.property('smokeJar')))
+    else sourceSets.packagedSmoke.output.dir([builtBy: tasks.named('jar')], tasks.named('jar').flatMap { it.archiveFile })
     sourceSets.packagedSmoke.output.dir([builtBy: tasks.named('compileSmokeJava')], tasks.named('compileSmokeJava').flatMap { it.destinationDirectory })
     def looseMain = sourceSets.main.output.files
     sourceSets.packagedSmoke.runtimeClasspath = sourceSets.packagedSmoke.output + sourceSets.main.runtimeClasspath.filter { file -> !looseMain.contains(file) }
@@ -73,6 +74,13 @@ neoForge {
                 jvmArgument "-Dfsrpg.spearSolverWorld=${project.property('smokeWorld')}"
                 jvmArgument "-Dfsrpg.smokeEvidence=${project.hasProperty('smokeEvidence') ? file(project.property('smokeEvidence')).absolutePath : file('verification/spear-solver-20261012/game').absolutePath}"
             }
+            if(project.hasProperty('spearPerformanceSmoke')) {
+                if(!project.hasProperty('smokeWorld'))throw new GradleException('spearPerformanceSmoke requires a copied marked test world')
+                jvmArgument '-Dfsrpg.spearPerformanceSmoke=true'
+                jvmArgument "-Dfsrpg.spearPerformanceWorld=${project.property('smokeWorld')}"
+                jvmArgument "-Dfsrpg.smokeEvidence=${file(project.property('smokeEvidence')).absolutePath}"
+                if(project.hasProperty('profileOutput')) jvmArgument "-XX:StartFlightRecording=filename=${file(project.property('profileOutput')).absolutePath},settings=profile,dumponexit=true"
+            }
             if(project.hasProperty('rapierLockSmoke')) {
                 if(!project.hasProperty('smokeWorld'))throw new GradleException('rapierLockSmoke requires a copied marked test world')
                 jvmArgument '-Dfsrpg.rapierLockSmoke=true'
@@ -96,7 +104,7 @@ neoForge {
     }
     mods { fsrpg {
         if (project.hasProperty('rpgJarSmoke')) sourceSet sourceSets.packagedSmoke
-        else { sourceSet sourceSets.main; if (project.hasProperty('rapierLockSmoke') || project.hasProperty('artSmoke') || project.hasProperty('rpgSmoke') || project.hasProperty('poseSmoke') || project.hasProperty('hudSmoke') || project.hasProperty('collectionSmoke') || project.hasProperty('legacySkillSmoke') || project.hasProperty('spearSolverSmoke') || project.hasProperty('actionLimitsSmoke')) sourceSet sourceSets.smoke }
+        else { sourceSet sourceSets.main; if (project.hasProperty('spearPerformanceSmoke') || project.hasProperty('rapierLockSmoke') || project.hasProperty('artSmoke') || project.hasProperty('rpgSmoke') || project.hasProperty('poseSmoke') || project.hasProperty('hudSmoke') || project.hasProperty('collectionSmoke') || project.hasProperty('legacySkillSmoke') || project.hasProperty('spearSolverSmoke') || project.hasProperty('actionLimitsSmoke')) sourceSet sourceSets.smoke }
     } }
 }
 tasks.named('runClient') { dependsOn monitorAgentJar }
@@ -295,3 +303,39 @@ tasks.register('stageRapierConfig',JavaExec) {
     dependsOn testClasses;classpath=sourceSets.test.runtimeClasspath;mainClass='org.fsrpg.config.StageRapierConfig'
     doFirst {args file(project.property('rapierStageDirectory')).absolutePath,file(project.property('rapierStageReport')).absolutePath}
 }
+
+
+tasks.register('staminaRegenTest', JavaExec) {
+    dependsOn testClasses; classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'org.fsrpg.config.StaminaRegenTest'
+    jvmArgs '-Dfile.encoding=UTF-8'
+}
+tasks.named('check') { dependsOn 'staminaRegenTest' }
+tasks.register('stageStaminaRegenConfig', JavaExec) {
+    dependsOn testClasses; classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'org.fsrpg.config.StageStaminaRegenConfig'
+    jvmArgs '-Dfile.encoding=UTF-8'
+    doFirst {
+        if (!project.hasProperty('staminaRegenStageDirectory') || !project.hasProperty('staminaRegenStageReport'))
+            throw new GradleException('stageStaminaRegenConfig requires a staged directory and output report')
+        args file(project.property('staminaRegenStageDirectory')).absolutePath, file(project.property('staminaRegenStageReport')).absolutePath
+    }
+}
+tasks.register('spearPerformanceBenchmark', JavaExec) {
+    dependsOn testClasses; classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'org.fsrpg.client.SpearPerformanceBenchmark'
+    jvmArgs '-Dfile.encoding=UTF-8'
+    args project.hasProperty('benchmarkReport') ? project.property('benchmarkReport').toString() : 'verification/spear-performance-20261016/micro/current.json'
+}
+
+tasks.register('spearCollisionTest', JavaExec) {
+    dependsOn testClasses; classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'org.fsrpg.client.SpearCollisionTest'
+}
+tasks.named('check') { dependsOn 'spearCollisionTest' }
+
+tasks.register('spearRankingBoundsTest', JavaExec) {
+    dependsOn testClasses; classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'org.fsrpg.client.SpearRankingBoundsTest'
+}
+tasks.named('check') { dependsOn 'spearRankingBoundsTest' }

@@ -14,7 +14,7 @@ public final class MonitorAgent {
         instrumentation.addTransformer(new ClassFileTransformer() {
             @Override public byte[] transform(ClassLoader loader, String name, Class<?> type,
                                               ProtectionDomain domain, byte[] bytes) {
-                if ((Boolean.getBoolean("fsrpg.rapierLockSmoke") || Boolean.getBoolean("fsrpg.weaponSmoke") || Boolean.getBoolean("fsrpg.actionLimitsSmoke")) && "net/minecraft/client/MouseHandler".equals(name)) {
+                if ((Boolean.getBoolean("fsrpg.spearPerformanceSmoke") || Boolean.getBoolean("fsrpg.rapierLockSmoke") || Boolean.getBoolean("fsrpg.weaponSmoke") || Boolean.getBoolean("fsrpg.actionLimitsSmoke")) && "net/minecraft/client/MouseHandler".equals(name)) {
                     ClassReader input = new ClassReader(bytes);
                     ClassWriter output = new ClassWriter(ClassWriter.COMPUTE_MAXS);
                     input.accept(new ClassVisitor(Opcodes.ASM9, output) {
