@@ -81,7 +81,7 @@
         },
         "heavyGuard": {
           "$ref": "#/$defs/guard",
-          "description": "可选的重格挡规则；Shift+C。缺省时只支持旧版轻格挡。切换模式不刷新拨挡窗口或连续受击历史。"
+          "description": "可选的重格挡规则；Shift+C。缺省时只支持旧版轻格挡。切换模式不刷新拨挡窗口或连续受击历史。perfectGuardTicks=0的既有重格挡保持不授予完美格挡；启用时采用配置窗口。"
         },
         "techniques": {
           "$ref": "#/$defs/techniques"
@@ -178,13 +178,15 @@
           "$ref": "#/$defs/resource"
         },
         "perfectGuardTicks": {
-          "$ref": "#/$defs/ticks"
+          "$ref": "#/$defs/ticks",
+          "description": "完美格挡窗口：默认轻格挡2tick=0.1秒；0保留该档位禁用完美格挡。持续按住或切换轻重不刷新。"
         },
         "perfectGuardStaminaCost": {
           "$ref": "#/$defs/resource"
         },
         "parryStunTicks": {
-          "$ref": "#/$defs/ticks"
+          "$ref": "#/$defs/ticks",
+          "description": "被完美格挡的攻击者实际僵直，默认4tick=0.2秒。"
         },
         "guardBreakStunTicks": {
           "$ref": "#/$defs/ticks"

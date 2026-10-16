@@ -17,9 +17,9 @@
     "guardArcDegrees": { "$ref": "#/$defs/angle" },
     "guardDamageMultiplier": { "type": "number", "minimum": 0, "maximum": 1 },
     "guardStaminaCost": { "$ref": "#/$defs/resource", "description": "服务端每次成功格挡的实际体力扣除。0.5.3 升级按原配置乘 0.2，仅迁移一次。" },
-    "perfectGuardTicks": { "$ref": "#/$defs/ticks" },
+    "perfectGuardTicks": { "$ref": "#/$defs/ticks", "description": "格挡开始后的完美窗口，默认2tick=0.1秒；elapsed为0或1时可成功，elapsed=2过期。持续按住与轻重模式切换不刷新起点。" },
     "perfectGuardStaminaCost": { "$ref": "#/$defs/resource", "description": "服务端每次成功完美格挡的实际体力扣除。" },
-    "parryStunTicks": { "$ref": "#/$defs/ticks" },
+    "parryStunTicks": { "$ref": "#/$defs/ticks", "description": "被完美格挡的攻击者僵直时间，默认4tick=0.2秒；NPC同时停止实际AI与攻击。" },
     "guardBreakStunTicks": { "$ref": "#/$defs/ticks" },
     "hitStunTicks": { "$ref": "#/$defs/ticks" },
     "clashFacingArcDegrees": { "$ref": "#/$defs/angle" },
@@ -31,6 +31,15 @@
     "dodgeDistance": { "type": "number", "minimum": 0, "maximum": 32 },
     "dodgeCancelsRecovery": { "type": "boolean" },
     "allowAirDodge": { "type": "boolean" },
+    "perfectGuardCounter": {
+      "type": "object", "additionalProperties": false,
+      "description": "与旧右键riposte独立。成功完美格挡后4tick内实际左键可使一招伤害乘1.5；只有成功启动攻击才消费，失败输入保留机会。到期、死亡、换武器与强制中断清理。下一招不继承倍率。缺省兼容4tick/1.5倍。",
+      "required": ["windowTicks", "damageMultiplier"],
+      "properties": {
+        "windowTicks": { "$ref": "#/$defs/ticks", "default": 4 },
+        "damageMultiplier": { "type": "number", "minimum": 1, "maximum": 100, "default": 1.5 }
+      }
+    },
     "rapierTargetLock": {
       "type": "object", "additionalProperties": false,
       "description": "仅拔刀西洋剑启用。距离为双方实体位置之间的三维格数，边界包含；敌对优先，同优先级保持现锁，不自动锁玩家、盟友或宠物。旧配置仅补缺字段并备份。",

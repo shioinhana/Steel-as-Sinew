@@ -11,8 +11,25 @@ public record ArcheryRules(
         int chuanTangFengBlockPierce, double chuanTangFengBlockSlow, int chuanTangFengEntityPierce,
         int rapidDurability, int snipeDurability, double bashRange, double bashDamage,
         double bashKnockback, int bashCooldownTicks, double rapidStaminaCost, double snipeStaminaCost,
+        double shotSpiritCost, double bashStaminaCost, int shotAnimationTicks, int bashAnimationTicks,
+        Double partialShotStaminaMultiplier) {
+    /** Compatible constructor for existing integrations using the original bow fields. */
+    public ArcheryRules(
+        double rapidDrawTicks, double snipeDrawTicks, double rapidArrowSpeed, double snipeArrowSpeed,
+        double minReleasePower, int rapidScoreStep, double rapidReductionPerStep, double rapidReductionCap,
+        int snipeScoreStep, double snipeSpeedPerStep, double snipeSpeedCap,
+        int autoChargeScore, int trajectoryScore, int scopeScore, double scopeMaxMagnification,
+        int ruSuoCharges, double ruSuoReduction, double totalDrawReductionCap, int ruSuoRecoverTicks,
+        int nieShiCooldownTicks, double yanXiaDianSpeedBonus, double chuanTangFengArmorPierce,
+        int chuanTangFengBlockPierce, double chuanTangFengBlockSlow, int chuanTangFengEntityPierce,
+        int rapidDurability, int snipeDurability, double bashRange, double bashDamage,
+        double bashKnockback, int bashCooldownTicks, double rapidStaminaCost, double snipeStaminaCost,
         double shotSpiritCost, double bashStaminaCost, int shotAnimationTicks, int bashAnimationTicks) {
+        this(rapidDrawTicks,snipeDrawTicks,rapidArrowSpeed,snipeArrowSpeed,minReleasePower,rapidScoreStep,rapidReductionPerStep,rapidReductionCap,snipeScoreStep,snipeSpeedPerStep,snipeSpeedCap,autoChargeScore,trajectoryScore,scopeScore,scopeMaxMagnification,ruSuoCharges,ruSuoReduction,totalDrawReductionCap,ruSuoRecoverTicks,nieShiCooldownTicks,yanXiaDianSpeedBonus,chuanTangFengArmorPierce,chuanTangFengBlockPierce,chuanTangFengBlockSlow,chuanTangFengEntityPierce,rapidDurability,snipeDurability,bashRange,bashDamage,bashKnockback,bashCooldownTicks,rapidStaminaCost,snipeStaminaCost,shotSpiritCost,bashStaminaCost,shotAnimationTicks,bashAnimationTicks, .7);
+    }
     public ArcheryRules {
+        if(partialShotStaminaMultiplier==null)partialShotStaminaMultiplier=.7;
+        number(partialShotStaminaMultiplier,"partialShotStaminaMultiplier",0,1);
         number(rapidDrawTicks,"rapidDrawTicks",1,12000); number(snipeDrawTicks,"snipeDrawTicks",1,12000);
         number(rapidArrowSpeed,"rapidArrowSpeed",0.01,128); number(snipeArrowSpeed,"snipeArrowSpeed",0.01,128);
         number(minReleasePower,"minReleasePower",0,1); integer(rapidScoreStep,"rapidScoreStep",1,1000000);
@@ -39,6 +56,6 @@ public record ArcheryRules(
     private static void integer(int value,String name,int min,int max) { number(value,name,min,max); }
     public static ArcheryRules defaults() {
         return new ArcheryRules(10,30,3,3.6,.2,5,.01,.3,3,.01,1,50,100,300,8,
-                5,.2,.5,60,40,.3,.3,3,.2,127,1,3,2.5,4,1.4,7,0,0,0,0,6,7);
+                5,.2,.5,60,40,.3,.3,3,.2,127,1,3,2.5,4,1.4,7,5,15,0,0,6,7);
     }
 }

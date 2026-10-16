@@ -24,7 +24,7 @@ public final class CombatResolver {
             return empty(HitOutcome.CLASH, skill.id());
         }
         attacker.markHit(defender.id());
-        return receiveIncoming(attacker, defender, defenderFacingAngleDegrees, skill.damage(), skill.knockback(),
+        return receiveIncoming(attacker, defender, defenderFacingAngleDegrees, skill.damage() * attacker.attackDamageMultiplier(), skill.knockback(),
                 skill.blockable(), skill.parryable(), false, skill.id());
     }
 
@@ -60,7 +60,7 @@ public final class CombatResolver {
                                             boolean projectile, String skillId) {
         if (defender == null) throw new IllegalArgumentException("defender is required");
         requireAngle(defenderFacingAngleDegrees);
-        SkillDefinition.checkNumber(damage, "incoming damage", 0, 1_000_000);
+        SkillDefinition.checkNumber(damage, "incoming damage", 0, 100_000_000);
         SkillDefinition.checkNumber(knockback, "incoming knockback", 0, 128);
         if (defender.invulnerable()) return empty(HitOutcome.DODGED, skillId);
         CombatRules rules = defender.rules();

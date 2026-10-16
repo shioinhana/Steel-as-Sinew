@@ -56,6 +56,9 @@ public final class RpgConfig {
         if (staminaMigration != null) staminaMigration.apply();
         RapierTargetLockMigration.migrate(directory);
         if (staminaRegenMigration != null) staminaRegenMigration.apply();
+        SpearThrustTimingMigration.migrate(directory);
+        WeaponStaminaBalanceMigration.migrate(directory);
+        PerfectGuardMigration.migrate(directory);
     }
     private JsonElement read(String name) throws IOException {
         Path path = directory.resolve(name);
@@ -204,8 +207,9 @@ public final class RpgConfig {
             boolean optionalStyleExtension = record == WeaponStyleDefinition.class
                     && Set.of("heavyGuard", "techniques", "cancels", "controls").contains(component.getName());
             boolean optionalLegacyGate = record == WeaponStyleDefinition.ComboStage.class && !component.getName().equals("skillId");
-            boolean optionalTargetLock = record == CombatRules.class && component.getName().equals("rapierTargetLock") && !obj.has(component.getName());
-            if (required && !optionalStyleExtension && !optionalLegacyGate && !optionalTargetLock && (!obj.has(component.getName()) || obj.get(component.getName()).isJsonNull()))
+            boolean optionalTargetLock = record == CombatRules.class && Set.of("rapierTargetLock","perfectGuardCounter").contains(component.getName()) && !obj.has(component.getName());
+            boolean optionalPartialShot = record == ArcheryRules.class && component.getName().equals("partialShotStaminaMultiplier") && !obj.has(component.getName());
+            if (required && !optionalStyleExtension && !optionalLegacyGate && !optionalTargetLock && !optionalPartialShot && (!obj.has(component.getName()) || obj.get(component.getName()).isJsonNull()))
                 throw new IllegalArgumentException(record.getSimpleName() + " missing field " + component.getName());
             if (obj.has(component.getName()) && !obj.get(component.getName()).isJsonNull())
                 checkType(obj.get(component.getName()), component.getGenericType(), record.getSimpleName() + "." + component.getName());
@@ -228,7 +232,7 @@ public final class RpgConfig {
             if (!value.isJsonObject()) throw new IllegalArgumentException(path + " must be an object");
             boolean completeStyleRules = clazz == WeaponStyleDefinition.ComboStage.class || clazz == WeaponStyleDefinition.GuardRules.class
                     || clazz == WeaponStyleDefinition.Techniques.class || clazz == WeaponStyleDefinition.CancelRules.class || clazz == org.fsrpg.combat.WeaponControls.class
-                    || clazz == org.fsrpg.combat.RapierTargeting.Rules.class;
+                    || clazz == org.fsrpg.combat.RapierTargeting.Rules.class || clazz == CombatRules.PerfectGuardCounter.class;
             recordFields(value.getAsJsonObject(), clazz, completeStyleRules); return;
         }
         if (!value.isJsonPrimitive()) throw new IllegalArgumentException(path + " must be a scalar");

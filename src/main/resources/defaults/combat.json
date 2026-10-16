@@ -9,9 +9,9 @@
   "guardArcDegrees": 120,
   "guardDamageMultiplier": 0.25,
   "guardStaminaCost": 10.0,
-  "perfectGuardTicks": 4,
+  "perfectGuardTicks": 2,
   "perfectGuardStaminaCost": 10.0,
-  "parryStunTicks": 8,
+  "parryStunTicks": 4,
   "guardBreakStunTicks": 10,
   "hitStunTicks": 2,
   "clashFacingArcDegrees": 120,
@@ -28,5 +28,9 @@
     "range": 10,
     "allowPassive": true,
     "requireLineOfSight": true
+  },
+  "perfectGuardCounter": {
+    "windowTicks": 4,
+    "damageMultiplier": 1.5
   }
 }

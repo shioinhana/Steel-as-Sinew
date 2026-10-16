@@ -146,7 +146,7 @@ public final class ArcheryServer {
     private ActionResult fire(ServerPlayer p,CombatActor actor,ArcheryProgress progress,ArcheryController.Shot shot) {
         ItemStack weapon=bow(p);
         if(!(weapon.getItem() instanceof BowItem bowItem)) return ActionResult.NOT_DRAWN;
-        double stamina=shot.stance()==ArcheryController.Stance.SNIPE?rules.snipeStaminaCost():rules.rapidStaminaCost();
+        double stamina=ArcheryScores.shotStaminaCost(rules,shot.stance()==ArcheryController.Stance.SNIPE,shot.power());
         if(actor.stamina()+1e-9<stamina) return ActionResult.INSUFFICIENT_STAMINA;
         if(actor.spirit()+1e-9<rules.shotSpiritCost()) return ActionResult.INSUFFICIENT_SPIRIT;
         ItemStack ammo=p.getProjectile(weapon);

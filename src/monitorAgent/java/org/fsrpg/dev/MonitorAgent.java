@@ -11,10 +11,36 @@ public final class MonitorAgent {
     public static void premain(String ignored, Instrumentation instrumentation) {
         // This workstation's second physical screen is Windows adapter DISPLAY5.
         String display = System.getProperty("fsrpg.testDisplay", "\\\\.\\DISPLAY5");
+        boolean scriptedReview = Boolean.getBoolean("fsrpg.combatBalanceSmoke") || Boolean.getBoolean("fsrpg.spearPerformanceSmoke")
+                || Boolean.getBoolean("fsrpg.whiteAdventurerSmoke") || Boolean.getBoolean("fsrpg.rapierLockSmoke")
+                || Boolean.getBoolean("fsrpg.weaponSmoke") || Boolean.getBoolean("fsrpg.actionLimitsSmoke");
         instrumentation.addTransformer(new ClassFileTransformer() {
             @Override public byte[] transform(ClassLoader loader, String name, Class<?> type,
                                               ProtectionDomain domain, byte[] bytes) {
-                if ((Boolean.getBoolean("fsrpg.spearPerformanceSmoke") || Boolean.getBoolean("fsrpg.rapierLockSmoke") || Boolean.getBoolean("fsrpg.weaponSmoke") || Boolean.getBoolean("fsrpg.actionLimitsSmoke")) && "net/minecraft/client/MouseHandler".equals(name)) {
+                if (scriptedReview && "net/minecraft/client/KeyboardHandler".equals(name)) {
+                    ClassReader input = new ClassReader(bytes);
+                    ClassWriter output = new ClassWriter(ClassWriter.COMPUTE_MAXS);
+                    input.accept(new ClassVisitor(Opcodes.ASM9, output) {
+                        @Override public MethodVisitor visitMethod(int access, String method, String descriptor,
+                                                                   String signature, String[] exceptions) {
+                            MethodVisitor delegate = super.visitMethod(access, method, descriptor, signature, exceptions);
+                            if (!(method.equals("keyPress") || method.equals("charTyped")) || !descriptor.endsWith(")V")) return delegate;
+                            // Scripted key mappings still run normally; native Escape/debug keys
+                            // must not pause a copied-world test while the user works elsewhere.
+                            return new MethodVisitor(Opcodes.ASM9) {
+                                @Override public void visitEnd() {
+                                    int locals = (access & Opcodes.ACC_STATIC) == 0 ? 1 : 0;
+                                    for (Type argument : Type.getArgumentTypes(descriptor)) locals += argument.getSize();
+                                    delegate.visitCode(); delegate.visitInsn(Opcodes.RETURN);
+                                    delegate.visitMaxs(0, locals); delegate.visitEnd();
+                                }
+                            };
+                        }
+                    }, 0);
+                    System.out.println("FSRPG scripted review: physical keyboard input isolated.");
+                    return output.toByteArray();
+                }
+                if (scriptedReview && "net/minecraft/client/MouseHandler".equals(name)) {
                     ClassReader input = new ClassReader(bytes);
                     ClassWriter output = new ClassWriter(ClassWriter.COMPUTE_MAXS);
                     input.accept(new ClassVisitor(Opcodes.ASM9, output) {

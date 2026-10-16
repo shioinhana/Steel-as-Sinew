@@ -25,6 +25,10 @@ public final class CombatCamera {
     private static boolean dualFacingLocked;
     private static long pressedTick;
     private static final ArrayList<AttackAim.Point> path=new ArrayList<>();
+    private record FieldKey(int width,int height,float fov,double requestedWidth,double requestedHeight,
+                            float qx,float qy,float qz,float qw,float x,float y,float z,float bodyYaw) {}
+    private static FieldKey cachedFieldKey;
+    private static SpearCursorField.Frame cachedField;
     public static float shoulder() {return ClientOptions.SHOULDER.get().floatValue();}
     public static String style() {
         var snapshot = ClientState.snapshot();
@@ -62,7 +66,7 @@ public final class CombatCamera {
         }
         if(mode.equals("rapier")) lockFacing();
     }
-    public static void reset() { mode="";held=false;dualFacingLocked=false;path.clear();cursorX=cursorY=0; }
+    public static void reset() { mode="";held=false;dualFacingLocked=false;path.clear();cursorX=cursorY=0;cachedFieldKey=null;cachedField=null; }
     public static boolean mouse(double dx,double dy) {
         sync();var g=Minecraft.getInstance();
         if(!active() || g.screen!=null || (!mode.equals("dual_blade")&&!mode.equals("spear")&&!mode.equals("rapier"))) return false;
@@ -130,10 +134,13 @@ public final class CombatCamera {
     public static SpearCursorField.Frame spearFrame() {
         var g=Minecraft.getInstance();var camera=g.gameRenderer.getMainCamera();
         float fov=((org.fsrpg.mixin.GameRendererAccess)g.gameRenderer).fsrpg$fov(camera,g.getDeltaTracker().getGameTimeDeltaPartialTick(false),true);
-        return SpearCursorField.frame(g.getWindow().getScreenWidth(),g.getWindow().getScreenHeight(),fov,
-                SpearCursorField.expandedWidth(ClientOptions.SPEAR_RECT_W.get()),
-                SpearCursorField.expandedHeight(ClientOptions.SPEAR_RECT_H.get()),camera.rotation(),
-                vector(camera.position().subtract(g.player.getEyePosition())),g.player.getYRot());
+        var rotation=camera.rotation();var offset=vector(camera.position().subtract(g.player.getEyePosition()));
+        var key=new FieldKey(g.getWindow().getScreenWidth(),g.getWindow().getScreenHeight(),fov,
+                SpearCursorField.expandedWidth(ClientOptions.SPEAR_RECT_W.get()),SpearCursorField.expandedHeight(ClientOptions.SPEAR_RECT_H.get()),
+                rotation.x,rotation.y,rotation.z,rotation.w,offset.x,offset.y,offset.z,g.player.getYRot());
+        if(key.equals(cachedFieldKey))return cachedField;
+        cachedField=SpearCursorField.frame(key.width(),key.height(),fov,key.requestedWidth(),key.requestedHeight(),rotation,offset,key.bodyYaw());
+        cachedFieldKey=key;return cachedField;
     }
     private static org.joml.Vector3f vector(Vec3 value){return new org.joml.Vector3f((float)value.x,(float)value.y,(float)value.z);}
     public static void angles(ViewportEvent.ComputeCameraAngles event) {
@@ -227,7 +234,11 @@ public final class CombatCamera {
         if(spearTarget(target)==null)target=g.level.clip(new ClipContext(pickStart,end,ClipContext.Block.COLLIDER,ClipContext.Fluid.NONE,g.player)).getLocation();
         // Prefer an actual entity under the cursor, never a screen-to-yaw approximation.
         double nearest=start.distanceToSqr(target);
-        for(var entity:g.level.getEntities(g.player,g.player.getBoundingBox().inflate(64),e->e.isPickable())) {
+        var admitted=g.player.getBoundingBox().inflate(64);
+        // Only boxes touching this ray can be picked. Preserve the old admitted
+        // domain while avoiding a 128-block-wide cube query on every render frame.
+        var rayBounds=new net.minecraft.world.phys.AABB(start,end).inflate(.080001);
+        for(var entity:g.level.getEntities(g.player,rayBounds,e->e.isPickable()&&e.getBoundingBox().intersects(admitted))) {
             var hit=entity.getBoundingBox().inflate(.08).clip(start,end);
             if(hit.isPresent()&&spearTarget(hit.get())!=null&&start.distanceToSqr(hit.get())<nearest){target=hit.get();nearest=start.distanceToSqr(target);}
         }

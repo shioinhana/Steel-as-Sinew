@@ -30,6 +30,8 @@ public final class SpearPerformanceBenchmark {
         report.addProperty("sampleHz",60);report.addProperty("scope","Full SpearAimPose.apply, real source rig and production transported history, finite forward-field aim; offline timing does not replace game testing");
         for(String action:List.of("spear_idle","spear_thrust","spear_sweep"))for(boolean movingAim:List.of(false,true)) {
             var elapsed=new ArrayList<Long>();long allocated=0;var digest=MessageDigest.getInstance("SHA-256");
+            boolean legacy=Boolean.getBoolean("fsrpg.realtimeLegacy");long continuationStart=legacy?0:SpearAimPose.realtimeFallbackCalls();
+            int maximumLocalTrials=0,maximumAnalyticBridges=0;
             for(int repetition=0;repetition<repetitions;repetition++) {
                 var playback=new PoseLayers.Playback(model.rig(),action);var history=new SpearMotion.State();
                 for(int frame=0;frame<frames;frame++) {
@@ -44,6 +46,7 @@ public final class SpearPerformanceBenchmark {
                     var limits=new SpearConstraints.Limits(135,120,1.5f,85,18,true).withCarry(ready);
                     long beforeBytes=thread.getThreadAllocatedBytes(Thread.currentThread().threadId()),start=System.nanoTime();
                     var solved=SpearAimPose.apply(model,source,aim,0,1.62f,seed.rear(),seed.chest(),seed.actual(),seed.continuity(),seed.authoredMotion(),limits);
+                    if(!legacy){maximumLocalTrials=Math.max(maximumLocalTrials,SpearAimPose.lastRealtimeTrials());maximumAnalyticBridges=Math.max(maximumAnalyticBridges,SpearAimPose.lastRealtimeBridges());}
                     long duration=System.nanoTime()-start,afterBytes=thread.getThreadAllocatedBytes(Thread.currentThread().threadId());
                     if(repetition>0){elapsed.add(duration);allocated+=afterBytes-beforeBytes;}
                     var world=model.worldMatrices(solved);history.commit(world,tick);
@@ -57,7 +60,10 @@ public final class SpearPerformanceBenchmark {
             var group=new JsonObject();group.addProperty("action",action);group.addProperty("movingAim",movingAim);
             group.addProperty("samples",ordered.length);group.addProperty("meanMs",Arrays.stream(ordered).average().orElseThrow()/1e6);
             group.addProperty("p50Ms",ordered[ordered.length/2]/1e6);group.addProperty("p95Ms",ordered[(int)(ordered.length*.95)]/1e6);
+            group.addProperty("p99Ms",ordered[(int)(ordered.length*.99)]/1e6);
             group.addProperty("maxMs",ordered[ordered.length-1]/1e6);group.addProperty("allocatedBytesPerSolve",allocated/(double)ordered.length);
+            group.addProperty("maximumLocalTrials",maximumLocalTrials);group.addProperty("continuationSolvesIncludingWarmup",legacy?0:SpearAimPose.realtimeFallbackCalls()-continuationStart);
+            group.addProperty("maximumAnalyticBridgeCandidates",maximumAnalyticBridges);
             group.addProperty("finalFrameMatricesSha256",HexFormat.of().formatHex(digest.digest()));groups.add(group);
             System.out.println(group);
         }

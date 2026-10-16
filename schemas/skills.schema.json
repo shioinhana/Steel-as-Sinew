@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://fsrpg.local/schemas/skills.schema.json",
   "title": "FSRPG 技能配置",
-  "description": "config/fsrpg/skills.json。所有时间值以每秒 20 tick 计。修改后 /fsrpg reload；游戏中的前后摇编辑窗口只能修改时间、伤害、范围、击退和资源消耗。服务器另行校验 ID 唯一、武器组存在和同步数据大小；修改时间后，styles.json 的连击切换点也必须仍位于有效攻击结束之后的后摇内。",
+  "description": "config/fsrpg/skills.json。所有时间值以每秒 20 tick 计。0.7.3 长枪点刺 spear_thrust 默认前摇/有效/后摇为1/1/2 tick，总时长0.2秒；旧配置仅迁移这三个字段一次，并保存 spear-thrust-timing-backup-v1/skills.json 和 spear-thrust-timing-migration-v1.json。保留原有后摇取消与冷却规则。修改后 /fsrpg reload；游戏中的前后摇编辑窗口只能修改时间、伤害、范围、击退和资源消耗。服务器另行校验 ID 唯一、武器组存在和同步数据大小；修改时间后，styles.json 的连击切换点也必须仍位于有效攻击结束之后的后摇内。",
   "type": "array",
   "minItems": 1,
   "maxItems": 128,

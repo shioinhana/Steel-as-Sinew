@@ -1,5 +1,5 @@
 """Export the supplied Blockbench assets to native Minecraft 1.21.11 item models."""
-import base64,hashlib,json,math
+import base64,hashlib,json,math,subprocess,sys
 import numpy as np
 from pathlib import Path
 root=Path(__file__).resolve().parents[1]
@@ -62,3 +62,7 @@ for ident,zh,en,file,override in entries:
   p=assets/f'lang/{lang}.json';data=json.loads(p.read_text(encoding='utf-8-sig')) if p.exists() else {};data[f'item.fsrpg.{ident}']=label;save(p,data)
 save(source/'import-manifest.json',{'minecraft':'1.21.11','nativeEulerXYZ':True,'items':manifest,'layoutSource':'综合.bbmodel','notes':'Individual source files are retained. Gold-coin geometry also uses the supplied silver texture as silver_coin. The jingbi-textured source named 金币 is crystal_coin.'})
 print(f'Imported {len(manifest)} native item models, original PNGs and Chinese/English labels')
+# The later user-confirmed silver-badge replacement has its own source/manifest.
+# Rebuilding the older archive must retain that appearance on the same item ID.
+replacement=root/'artwork/imports/white_adventurer/白色冒险者.bbmodel'
+if replacement.is_file():subprocess.run([sys.executable,str(root/'tools/import-white-adventurer.py'),str(replacement)],check=True)

@@ -47,6 +47,7 @@ final class SpearConstraints {
         final Map<String, History> actualHistory = new HashMap<>();
         final float margin, motionBudget,poseWeight,shaftWeight,deepArmWeight,temporalWeight;
         final boolean transported, tucked,carry;
+        boolean realtime;
         Space(Map<String, Matrix4f> world, Limits limits) {
             this(world,limits,null,null,null);
         }

@@ -18,6 +18,14 @@ public final class SpearAimPose {
     private static final float UPPER=37.5f, PALM_LINK=31.25f;
     private static final float CONTINUOUS_PEAK=89, PEAK_TIE=.5f;
     private static final List<String> SIDES=List.of("right","left");
+    private static int lastRealtimeTrials,lastRealtimeProjections,lastRealtimeBridges;
+    static int lastRealtimeTrials(){return lastRealtimeTrials;}
+    static int lastRealtimeProjections(){return lastRealtimeProjections;}
+    static long realtimeFallbackCalls(){return 0;}
+    static int lastRealtimeBridges(){return lastRealtimeBridges;}
+    static int realtimeBridgeBudget(){return 97;}
+    static int realtimeTrialBudget(){return RealtimeSearch.MAX_TRIALS;}
+    static int realtimeProjectionBudget(){return RealtimeSearch.MAX_TRIALS*RealtimeSearch.MAX_CLOSURE_STEPS;}
     private SpearAimPose() {}
     /** Read-only acceptance hook for the exact final rendered complete pole. */
     public static boolean hasClearShaft(Map<String,Matrix4f> world) {
@@ -51,7 +59,412 @@ public final class SpearAimPose {
     static Map<String,Pose> apply(ModelDocument model,Map<String,Pose> pose,AttackAim.Point aim,float bodyYaw,float eyeHeight,
                                  Vector3f gripSeed,Quaternionf chestSeed,Map<String,Matrix4f> previous,
                                  Map<String,Matrix4f> continuity,float authoredMotion,SpearConstraints.Limits limits) {
+        if(limits.tucked())return realtime(model,pose,aim,bodyYaw,eyeHeight,gripSeed,chestSeed,previous,continuity,authoredMotion,limits);
         return applyCore(model,pose,aim,bodyYaw,eyeHeight,gripSeed,chestSeed,previous,continuity,authoredMotion,limits,true,chestHeadingLimit(aim,bodyYaw));
+    }
+    /**
+     * The live cursor is a tracking problem, not a fresh global optimization problem.
+     * Every rendered frame gets exact two-hand IK through a bounded local search.
+     * Anatomical branch transitions use bounded analytic arm/chest bridges, with
+     * exact finite-target closure and hard checks on the actual rendered FK.
+     * The detached generic solver below is never called by this live path.
+     */
+    private static Map<String,Pose> realtime(ModelDocument model,Map<String,Pose> pose,AttackAim.Point aim,float bodyYaw,float eyeHeight,
+            Vector3f gripSeed,Quaternionf chestSeed,Map<String,Matrix4f> previous,Map<String,Matrix4f> continuity,
+            float authoredMotion,SpearConstraints.Limits limits) {
+        if(!pose.containsKey("body"))return pose;
+        var initial=model.worldMatrices(pose);
+        if(!initial.containsKey("right_hand"))return pose;
+        var authored=gripSeed==null?initial.get("right_hand").transformPosition(new Vector3f(0,-6.25f,0)):new Vector3f(gripSeed);
+        double yaw=java.lang.Math.toRadians(AttackAim.wrap(aim.yaw()-bodyYaw));
+        double pitch=java.lang.Math.toRadians(aim.pitch()),range=aim.distance()*100;
+        var target=new Vector3f((float)(-java.lang.Math.sin(yaw)*java.lang.Math.cos(pitch)*range),
+                (float)(eyeHeight*100-java.lang.Math.sin(pitch)*range),(float)(java.lang.Math.cos(yaw)*java.lang.Math.cos(pitch)*range));
+        var sourceBody=pose.get("body").fsQuaternion().normalize();
+        var sourceHead=pose.containsKey("head")?pose.get("head").fsQuaternion().normalize():null;
+        var up=new Quaternionf(sourceBody).transform(new Vector3f(0,1,0));
+        double chestYaw=0,previousYaw=Double.NaN;
+        if(chestSeed!=null) {
+            var relative=new Quaternionf(sourceBody).invert().mul(chestSeed).normalize();
+            chestYaw=wrap(2*java.lang.Math.atan2(relative.y,relative.w));
+        }
+        if(previous!=null) {
+            var relative=new Quaternionf(sourceBody).invert().mul(previous.get("body").getUnnormalizedRotation(new Quaternionf()).normalize());
+            previousYaw=wrap(2*java.lang.Math.atan2(relative.y,relative.w));
+        }
+        float bank=(float)java.lang.Math.toRadians(java.lang.Math.copySign(java.lang.Math.min(limits.verticalBankDegrees(),
+                java.lang.Math.max(0,java.lang.Math.abs(aim.pitch())-20)*.9),aim.pitch()));
+        double headingLimit=chestHeadingLimit(aim,bodyYaw),headingCenter=-yaw;
+        chestYaw=forwardChestYaw(sourceBody,chestYaw,headingLimit,headingCenter);
+        var search=new RealtimeSearch(model,pose,sourceBody,sourceHead,target,authored,previous,continuity,authoredMotion,
+                authoredFidelity(aim,bodyYaw),limits);
+        Vector3f priorRear=previous==null?null:previous.get("right_hand").transformPosition(new Vector3f(0,-6.25f,0));
+        // The carried chest is already a valid anatomical branch. Try its exact
+        // moving grip before steering the soft comfort yaw toward another guard.
+        if(priorRear!=null) {
+            search.chest(chestYaw,bank);
+            search.trial(authored);search.trial(priorRear);search.predict(false);search.predict(true);
+            if(search.acceptable())return search.finish();
+        }
+        // Three coupled comfort updates suffice at the live field's >=4.5 m depth.
+        // Candidate closure below is independent of this soft chest preference.
+        var shaft=new Vector3f(target).sub(authored).normalize();
+        for(int pass=0;pass<3;pass++) {
+            search.chest(chestYaw,bank);
+            float adjustment=underarmChestAdjustment(search.world,shaft,up,chestYaw,previousYaw);
+            double next=forwardChestYaw(sourceBody,chestYaw+adjustment,headingLimit,headingCenter);
+            if(java.lang.Math.abs(wrap(next-chestYaw))<.0001)break;
+            chestYaw=next;
+        }
+        search.chest(chestYaw,bank);
+        search.trial(authored);
+        if(priorRear!=null)search.trial(priorRear);
+        if(priorRear!=null){search.predict(false);search.predict(true);}
+        if(search.acceptable())return search.finish();
+
+        // Keep both sides of the actual finite-target annulus in the local set.
+        // A nearest projection of the authored goal can select another ring even
+        // while a few-centimeter neighbor of last frame remains connected.
+        if(priorRear!=null)for(float degrees:new float[]{3,8,16}) {
+            for(int sign:new int[]{-1,1})search.predict(false,-1,0,sign*degrees);
+            if(search.acceptable())return search.finish();
+        }
+        if(priorRear!=null) {
+            for(int axis=0;axis<2;axis++)for(int sign:new int[]{-1,1})search.predict(false,axis,sign*8,0);
+            for(int sign:new int[]{-1,1})search.predict(false,0,sign*20,0);
+            if(search.acceptable())return search.finish();
+        }
+
+        // Fixed-size local stencil follows the existing anatomical branch. It has
+        // priority over distant guard seeds, preserving short authored thrusts.
+        for(float step:new float[]{2,.5f}) {
+            var origin=search.bestRear==null?new Vector3f(authored):new Vector3f(search.bestRear);
+            for(int axis=0;axis<3;axis++)for(int sign:new int[]{-1,1}) {
+                var direction=new Vector3f();direction.setComponent(axis,sign*step);
+                search.trial(new Vector3f(origin).add(search.world.get("body").transformDirection(direction)));
+            }
+            if(search.acceptable())return search.finish();
+        }
+        search.guardSeeds();
+        if(search.acceptable())return search.finish();
+
+        // A changing target can move the old guard outside the feasible region.
+        // Explore a bounded local set of complete chest+grip branches. finish()
+        // separately checks the actual FK and resolves rare branch transitions.
+        double directYaw=forwardChestYaw(sourceBody,chestYaw+underarmChestAdjustment(search.world,shaft,up,chestYaw,Double.NaN),headingLimit,headingCenter);
+        if(previous!=null)for(float offset:new float[]{0,-3,3,-8,8,-16,16}) {
+            double localYaw=forwardChestYaw(sourceBody,previousYaw+java.lang.Math.toRadians(offset),headingLimit,headingCenter);
+            search.chest(localYaw,bank);
+            search.trial(authored);search.trial(priorRear);search.predict(false);
+            if(search.acceptable())return search.finish();
+        }
+        for(int alternative=0;alternative<6;alternative++) {
+            double candidateYaw=alternative==0?chestYaw:directYaw+java.lang.Math.toRadians(alternative==4?-16:alternative==5?16:0);
+            candidateYaw=forwardChestYaw(sourceBody,candidateYaw,headingLimit,headingCenter);
+            float candidateBank=alternative==0||alternative==2?0:alternative==3?-bank:bank*.4f;
+            search.chest(candidateYaw,candidateBank);
+            search.trial(authored);
+            if(previous!=null)search.trial(previous.get("right_hand").transformPosition(new Vector3f(0,-6.25f,0)));
+            if(previous!=null)search.predict(false);
+            search.guardSeeds();
+            if(search.acceptable())break;
+        }
+        return search.finish();
+    }
+    /** Fixed local budget shared by all chest alternatives, including initialization. */
+    private static final class RealtimeSearch {
+        private static final int MAX_TRIALS=192,MAX_CLOSURE_STEPS=24;
+        final ModelDocument model;final Map<String,Pose> source;
+        final Quaternionf sourceBody,sourceHead;final Vector3f target,authored;
+        final Map<String,Matrix4f> previous,continuity;final float authoredMotion,confidence;
+        final SpearConstraints.Limits limits;
+        Map<String,Pose> pose,bestPose;Map<String,Matrix4f> world,bestWorld;
+        SpearConstraints.Space space,bestSpace;ReachFrame reach;Vector3f bestRear;GripScore bestScore;
+        Arm[] bestArms;int trials,projections;boolean bestHardLegal;
+        int bridgeTrials;
+        double currentYaw=Double.NaN;float currentBank=Float.NaN;
+        RealtimeSearch(ModelDocument model,Map<String,Pose> source,Quaternionf sourceBody,Quaternionf sourceHead,
+                Vector3f target,Vector3f authored,Map<String,Matrix4f> previous,Map<String,Matrix4f> continuity,
+                float authoredMotion,float confidence,SpearConstraints.Limits limits) {
+            this.model=model;this.source=source;this.sourceBody=sourceBody;this.sourceHead=sourceHead;
+            this.target=target;this.authored=authored;this.previous=previous;this.continuity=continuity;
+            this.authoredMotion=authoredMotion;this.confidence=confidence;this.limits=limits;
+        }
+        void chest(double yaw,float bank) {
+            if(yaw==currentYaw&&bank==currentBank)return;
+            currentYaw=yaw;currentBank=bank;
+            pose=new HashMap<>(source);
+            put(pose,"body",new Quaternionf(sourceBody).rotateY((float)yaw).rotateZ(bank));
+            if(sourceHead!=null)head(pose,sourceHead,yaw,bank,previous,limits);
+            world=model.worldMatrices(pose);
+            reach=new ReachFrame(world);
+            space=new SpearConstraints.Space(world,limits,continuity,previous,authored,new Vector3f(target).sub(authored).normalize(),
+                    true,authoredMotion,target,confidence);
+            space.realtime=true;
+        }
+        void trial(Vector3f seed) {
+            if(trials>=MAX_TRIALS)return;
+            trials++;
+            try {
+                var rear=new Vector3f(seed);float oldError=Float.POSITIVE_INFINITY,damping=1;
+                for(int pass=0;pass<MAX_CLOSURE_STEPS;pass++) {
+                    var axis=new Vector3f(target).sub(rear).normalize();
+                    projections++;
+                    var closed=closedRear(world,axis,rear,limits,reach);
+                    float error=closed.distanceSquared(rear);
+                    if(error<1e-8f){rear.set(closed);break;}
+                    if(error>oldError*.99f)damping=.5f;
+                    rear.lerp(closed,damping);oldError=error;
+                }
+                var shaft=new Vector3f(target).sub(rear).normalize();
+                // Closure is an acceptance condition, never a best-effort write.
+                if(closedRear(world,shaft,rear,limits,reach).distanceSquared(rear)>1e-6f)return;
+                rank(rear,shaft);
+            } catch(IllegalArgumentException unreachableTrial) {
+                // A finite-target trial outside the common annuli is discarded.
+            }
+        }
+        void exact(Vector3f rear,Vector3f upper,Vector3f fore) {
+            if(trials>=MAX_TRIALS)return;trials++;
+            float bend=upper.dot(fore);
+            if(bend>java.lang.Math.cos(java.lang.Math.toRadians(9.99))||bend<java.lang.Math.cos(java.lang.Math.toRadians(limits.elbowDegrees()+.001)))return;
+            var shaft=new Vector3f(target).sub(rear).normalize();
+            var front=new Vector3f(rear).fma(limits.gripSpacingCm(),shaft);
+            float distanceSquared=front.distanceSquared(world.get("left_arm").getTranslation(new Vector3f()));
+            float minimum=UPPER*UPPER+PALM_LINK*PALM_LINK+2*UPPER*PALM_LINK*(float)java.lang.Math.cos(java.lang.Math.toRadians(limits.elbowDegrees()));
+            float maximum=UPPER*UPPER+PALM_LINK*PALM_LINK+2*UPPER*PALM_LINK*(float)java.lang.Math.cos(java.lang.Math.toRadians(10));
+            if(distanceSquared<minimum-.001f||distanceSquared>maximum+.001f)return;
+            try {rank(rear,shaft);}catch(IllegalArgumentException unreachableTrial){}
+        }
+        void rank(Vector3f rear,Vector3f shaft) {
+                if(bestScore!=null&&!mayBeatClear(bestScore,space,rear,shaft))return;
+                var arms=new Arm[SIDES.size()];
+                var score=gripScore(world,shaft,rear,authored,space,continuity,previous,limits,arms);
+                boolean hardLegal=score.shaftClear();
+                for(int side=0;side<SIDES.size()&&hardLegal;side++) {
+                    hardLegal=java.lang.Math.abs(arms[side].twist())<=150.01f;
+                }
+                boolean choose=bestScore==null||hardLegal!=bestHardLegal?hardLegal||bestScore==null:
+                        trackedBetter(score,bestScore,space.motionBudget,previous!=null);
+                if(choose) {
+                    bestScore=score;bestRear=rear;bestPose=pose;bestWorld=world;bestSpace=space;bestArms=arms;bestHardLegal=hardLegal;
+                }
+        }
+        void guardSeeds() {
+            var localAxis=space.body.transformDirection(new Vector3f(target).sub(authored).normalize());
+            float[] depths=localAxis.y>.25f?new float[]{16,32}:new float[]{-12,16};
+            float[] sides=localAxis.y>.25f?new float[]{-50,-40}:new float[]{-60,-72};
+            for(float y:new float[]{60,45,72})for(float x:sides)for(float z:depths)
+                trial(world.get("body").transformPosition(new Vector3f(x,y,z)));
+        }
+        void predict(boolean transported) {
+            predict(transported,-1,0,0);
+        }
+        void predict(boolean transported,int axis,float degrees,float foreDegrees) {
+            if(previous==null)return;
+            var upper=previous.get("right_arm").transformDirection(new Vector3f(0,-1,0)).normalize();
+            var fore=previous.get("right_forearm").transformDirection(new Vector3f(0,-1,0)).normalize();
+            if(transported) {
+                var delta=new Matrix4f(world.get("body")).mul(new Matrix4f(previous.get("body")).invert());
+                delta.transformDirection(upper).normalize();delta.transformDirection(fore).normalize();
+            }
+            if(axis>=0) {
+                var direction=axis==0?new Vector3f(fore):new Vector3f(upper).cross(fore);
+                if(direction.lengthSquared()<1e-6f)return;
+                direction.normalize();
+                new Quaternionf().rotationAxis((float)java.lang.Math.toRadians(degrees),direction).transform(upper);
+            }
+            var shoulder=world.get("right_arm").getTranslation(new Vector3f());
+            var elbow=new Vector3f(shoulder).fma(UPPER,upper);
+            var ray=new Vector3f(target).sub(elbow);float distance=ray.length();
+            if(distance<=PALM_LINK+.001f)return;
+            ray.div(distance);
+            var radial=new Vector3f(fore).fma(-fore.dot(ray),ray);
+            if(radial.lengthSquared()<1e-6f)return;
+            if(foreDegrees!=0)new Quaternionf().rotationAxis((float)java.lang.Math.toRadians(foreDegrees),ray).transform(radial);
+            float cosine=PALM_LINK/distance,sine=(float)java.lang.Math.sqrt(1-cosine*cosine);
+            fore.set(ray).mul(cosine).fma(sine,radial.normalize());
+            exact(new Vector3f(elbow).fma(PALM_LINK,fore),upper,fore);
+        }
+        boolean acceptable() {
+            if(bestScore==null||!bestHardLegal||(limits.carry()&&!bestScore.rearTucked()))return false;
+            if(previous!=null&&bestScore.peak()>bestSpace.motionBudget+1)return false;
+            // Deep arm contact is a search preference, never a hard pole/grip constraint.
+            var shaft=new Vector3f(target).sub(bestRear).normalize();
+            for(int side=0;side<SIDES.size();side++) {
+                var shoulder=bestWorld.get(SIDES.get(side)+"_arm").getTranslation(new Vector3f());
+                var palm=side==0?bestRear:new Vector3f(bestRear).fma(limits.gripSpacingCm(),shaft);
+                if(bestArms[side].deepContact(bestSpace,shoulder,palm)>=.1f)return false;
+            }
+            return true;
+        }
+        Map<String,Pose> finish() {
+            lastRealtimeTrials=trials;lastRealtimeProjections=projections;lastRealtimeBridges=bridgeTrials;
+            if(bestPose==null||!bestHardLegal)throw new IllegalArgumentException("No collision-free spear grip in bounded live search");
+            var result=new HashMap<>(bestPose);
+            var shaft=new Vector3f(target).sub(bestRear).normalize();
+            var parent=bestWorld.get("body").getUnnormalizedRotation(new Quaternionf()).normalize();
+            for(int side=0;side<SIDES.size();side++)solve(result,SIDES.get(side),bestArms[side],shaft,parent);
+            if(previous==null)return result;
+            float peak=actualPeak(result);
+            var oldRear=previous.get("right_hand").transformPosition(new Vector3f(0,-6.25f,0));
+            var oldAxis=previous.get("right_hand").transformDirection(new Vector3f(0,0,1)).normalize();
+            float aimStep=(float)java.lang.Math.toDegrees(java.lang.Math.acos(java.lang.Math.clamp(oldAxis.dot(new Vector3f(target).sub(oldRear).normalize()),-1,1)));
+            if(aimStep<20&&peak>34) {
+                var destination=result;
+                var destinationWorld=model.worldMatrices(destination);
+                bridgeSearch: for(float weight:new float[]{.85f,.65f,.4f,.1f,0})for(int arc=0;arc<5;arc++) {
+                    var bridged=bridge(destination,destinationWorld,weight,arc);
+                    if(bridged==null)continue;
+                    float bridgedPeak=actualPeak(bridged);
+                    if(bridgedPeak<peak){result=new HashMap<>(bridged);peak=bridgedPeak;}
+                    if(peak<34)break bridgeSearch;
+                }
+            }
+            if(aimStep<20&&peak>34) {
+                var destination=result;var destinationWorld=model.worldMatrices(destination);
+                chestBridge: for(float chestWeight:new float[]{0,.5f})for(float weight:new float[]{.9f,.6f,.3f})for(int arc=0;arc<3;arc++) {
+                    var bridged=bridge(destination,destinationWorld,weight,arc,chestWeight);
+                    if(bridged==null)continue;
+                    float bridgedPeak=actualPeak(bridged);
+                    if(bridgedPeak<peak){result=new HashMap<>(bridged);peak=bridgedPeak;}
+                    if(peak<34)break chestBridge;
+                }
+            }
+            if(aimStep<20&&peak>34) {
+                var relative=new Quaternionf(sourceBody).invert().mul(model.worldMatrices(result).get("body").getUnnormalizedRotation(new Quaternionf()).normalize());
+                double yaw=wrap(2*java.lang.Math.atan2(relative.y,relative.w));
+                outerChest: for(float offset:new float[]{-12,12}) {
+                    double next=forwardChestYaw(sourceBody,yaw+java.lang.Math.toRadians(offset),java.lang.Math.toRadians(89),java.lang.Math.atan2(target.x,target.z));
+                    chest(next,0);trial(authored);trial(oldRear);predict(false);guardSeeds();
+                    if(!bestHardLegal)continue;
+                    var candidate=new HashMap<>(bestPose);var candidateShaft=new Vector3f(target).sub(bestRear).normalize();
+                    var candidateParent=bestWorld.get("body").getUnnormalizedRotation(new Quaternionf()).normalize();
+                    for(int side=0;side<SIDES.size();side++)solve(candidate,SIDES.get(side),bestArms[side],candidateShaft,candidateParent);
+                    float candidatePeak=actualPeak(candidate);
+                    if(candidatePeak<peak){result=candidate;peak=candidatePeak;}
+                    if(peak<34)break;
+                    var candidateWorld=model.worldMatrices(candidate);
+                    for(float weight:new float[]{.85f,.65f,.4f,.1f,0})for(int arc=0;arc<5;arc++) {
+                        var bridged=bridge(candidate,candidateWorld,weight,arc);
+                        if(bridged==null)continue;
+                        float bridgedPeak=actualPeak(bridged);
+                        if(bridgedPeak<peak){result=new HashMap<>(bridged);peak=bridgedPeak;}
+                        if(peak<34)break outerChest;
+                    }
+                }
+            }
+            if(aimStep<20&&peak>34)for(float weight:new float[]{.9f,.8f,.65f,.5f}) {
+                var bridged=bridge(result,weight);
+                if(bridged==null)continue;
+                float bridgedPeak=actualPeak(bridged);
+                if(bridgedPeak<peak){result=new HashMap<>(bridged);peak=bridgedPeak;}
+                if(peak<34)break;
+            }
+            lastRealtimeTrials=trials;lastRealtimeProjections=projections;lastRealtimeBridges=bridgeTrials;
+            return result;
+        }
+        /** A short anatomical bridge is re-closed on the current finite ray before it can be rendered. */
+        Map<String,Pose> bridge(Map<String,Pose> selected,float weight) {
+            return bridge(selected,model.worldMatrices(selected),weight,0);
+        }
+        Map<String,Pose> bridge(Map<String,Pose> selected,Map<String,Matrix4f> current,float weight,int arc) {
+            return bridge(selected,current,weight,arc,1);
+        }
+        Map<String,Pose> bridge(Map<String,Pose> selected,Map<String,Matrix4f> current,float weight,int arc,float chestWeight) {
+            bridgeTrials++;
+            var goal=current;
+            if(chestWeight<1) {
+                var relative=new Quaternionf(sourceBody).invert().mul(current.get("body").getUnnormalizedRotation(new Quaternionf()).normalize());
+                double yaw=wrap(2*java.lang.Math.atan2(relative.y,relative.w));
+                var roll=new Quaternionf().rotationY((float)-yaw).mul(relative);
+                float bank=(float)wrap(2*java.lang.Math.atan2(roll.z,roll.w));
+                bank*=chestWeight;
+                var oldRelative=new Quaternionf(sourceBody).invert().mul(previous.get("body").getUnnormalizedRotation(new Quaternionf()).normalize());
+                double oldYaw=wrap(2*java.lang.Math.atan2(oldRelative.y,oldRelative.w));
+                yaw+=wrap(oldYaw-yaw)*(1-chestWeight);
+                yaw=forwardChestYaw(sourceBody,yaw,java.lang.Math.toRadians(89),java.lang.Math.atan2(target.x,target.z));
+                selected=new HashMap<>(selected);
+                put(selected,"body",new Quaternionf(sourceBody).rotateY((float)yaw).rotateZ(bank));
+                if(sourceHead!=null)head(selected,sourceHead,yaw,bank,previous,limits);
+                current=model.worldMatrices(selected);
+            }
+            var upper=previous.get("right_arm").getUnnormalizedRotation(new Quaternionf()).normalize()
+                    .slerp(goal.get("right_arm").getUnnormalizedRotation(new Quaternionf()).normalize(),weight).transform(new Vector3f(0,-1,0));
+            var fore=previous.get("right_forearm").getUnnormalizedRotation(new Quaternionf()).normalize()
+                    .slerp(goal.get("right_forearm").getUnnormalizedRotation(new Quaternionf()).normalize(),weight).transform(new Vector3f(0,-1,0));
+            var shoulder=current.get("right_arm").getTranslation(new Vector3f());
+            var elbow=new Vector3f(shoulder).fma(UPPER,upper);
+            var ray=new Vector3f(target).sub(elbow);float distance=ray.length();
+            if(distance<=PALM_LINK+.001f)return null;
+            ray.div(distance);var radial=new Vector3f(fore).fma(-fore.dot(ray),ray);
+            if(radial.lengthSquared()<1e-6f)return null;
+            radial.normalize();var tangent=new Vector3f(ray).cross(radial);
+            float cosine=PALM_LINK/distance,sine=(float)java.lang.Math.sqrt(1-cosine*cosine);
+            float poleDistance=(float)java.lang.Math.sqrt(distance*distance-PALM_LINK*PALM_LINK);
+            float guideRatio=limits.gripSpacingCm()/poleDistance,guideRadius=PALM_LINK*(1-guideRatio);
+            var fromGuide=new Vector3f(elbow).fma(guideRatio*distance,ray).sub(current.get("left_arm").getTranslation(new Vector3f()));
+            float minimum=UPPER*UPPER+PALM_LINK*PALM_LINK+2*UPPER*PALM_LINK*(float)java.lang.Math.cos(java.lang.Math.toRadians(limits.elbowDegrees()));
+            float maximum=UPPER*UPPER+PALM_LINK*PALM_LINK+2*UPPER*PALM_LINK*(float)java.lang.Math.cos(java.lang.Math.toRadians(10));
+            var circleTurns=SpearCircleBands.candidates(cosine*upper.dot(ray),sine*upper.dot(radial),sine*upper.dot(tangent),
+                    java.lang.Math.cos(java.lang.Math.toRadians(limits.elbowDegrees())),java.lang.Math.cos(java.lang.Math.toRadians(10)),
+                    fromGuide.lengthSquared()+guideRadius*guideRadius+2*guideRadius*cosine*fromGuide.dot(ray),
+                    2*guideRadius*sine*fromGuide.dot(radial),2*guideRadius*sine*fromGuide.dot(tangent),minimum+.002f,maximum-.002f);
+            if(arc>=circleTurns.length){return null;}
+            double circleTurn=circleTurns[arc];
+            fore.set(ray).mul(cosine).fma(sine*(float)java.lang.Math.cos(circleTurn),radial).fma(sine*(float)java.lang.Math.sin(circleTurn),tangent);
+            float bend=upper.dot(fore);
+            if(bend>java.lang.Math.cos(java.lang.Math.toRadians(9.99))||bend<java.lang.Math.cos(java.lang.Math.toRadians(limits.elbowDegrees()+.001))){return null;}
+            var rear=new Vector3f(elbow).fma(PALM_LINK,fore);var shaft=new Vector3f(target).sub(rear).normalize();
+            var front=new Vector3f(rear).fma(limits.gripSpacingCm(),shaft);
+            float frontDistance=front.distanceSquared(current.get("left_arm").getTranslation(new Vector3f()));
+            if(frontDistance<minimum-.001f||frontDistance>maximum+.001f){return null;}
+            var candidateSpace=new SpearConstraints.Space(current,limits,continuity,previous,authored,shaft,true,authoredMotion,target,confidence);
+            if(!candidateSpace.shaftClear(rear,shaft)){return null;}
+            if(!candidateSpace.shaftInFront(shaft)){return null;}
+            candidateSpace.realtime=true;
+            var arms=new Arm[SIDES.size()];
+            try {
+                gripScore(current,shaft,rear,authored,candidateSpace,continuity,previous,limits,arms);
+                arms[0]=armCandidate("right",shoulder,rear,shaft,fore,candidateSpace,continuity,limits);
+                var result=new HashMap<>(selected);var parent=current.get("body").getUnnormalizedRotation(new Quaternionf()).normalize();
+                for(int side=0;side<SIDES.size();side++)solve(result,SIDES.get(side),arms[side],shaft,parent);
+                return result;
+            }catch(IllegalArgumentException unreachableBridge){return null;}
+        }
+        /** Measure exactly the FK pose that will be rendered, rather than re-solving its elbows for a score. */
+        float actualPeak(Map<String,Pose> posed) {
+            var rendered=model.worldMatrices(posed);
+            var rear=rendered.get("right_hand").transformPosition(new Vector3f(0,-6.25f,0));
+            var axis=rendered.get("right_hand").transformDirection(new Vector3f(0,0,1)).normalize();
+            var collision=new SpearConstraints.Space(rendered,limits);
+            if(!collision.shaftClear(rear,axis)||!collision.shaftInFront(axis))return Float.POSITIVE_INFINITY;
+            var front=rendered.get("left_hand").transformPosition(new Vector3f(0,-6.25f,0));
+            if(front.distance(new Vector3f(rear).fma(limits.gripSpacingCm(),axis))>.03f)return Float.POSITIVE_INFINITY;
+            for(String side:SIDES) {
+                var wrist=posed.get(side+"_hand").fsQuaternion().normalize();
+                float twist=(float)java.lang.Math.abs(java.lang.Math.IEEEremainder(java.lang.Math.toDegrees(2*java.lang.Math.atan2(wrist.y,wrist.w)),360));
+                var hinge=posed.get(side+"_forearm").fsQuaternion().normalize();
+                float bend=(float)java.lang.Math.IEEEremainder(java.lang.Math.toDegrees(2*java.lang.Math.atan2(hinge.x,hinge.w)),360);
+                if(twist>150.03f||bend<9.97f||bend>limits.elbowDegrees()+.03f){return Float.POSITIVE_INFINITY;}
+            }
+            float peak=0;
+            for(String bone:List.of("body","head","right_arm","right_forearm","right_hand","left_arm","left_forearm","left_hand")) {
+                peak=java.lang.Math.max(peak,rotationStep(rendered.get(bone).getUnnormalizedRotation(new Quaternionf()).normalize(),
+                        previous.get(bone).getUnnormalizedRotation(new Quaternionf()).normalize()));
+            }
+            return peak;
+        }
+        private static boolean trackedBetter(GripScore candidate,GripScore best,float budget,boolean history) {
+            if(history) {
+                // Compare contact/pose cost inside the current motion allowance; a
+                // larger anatomical step must first improve actual frame continuity.
+                boolean first=candidate.peak()<=budget+1,second=best.peak()<=budget+1;
+                if(first!=second)return first;
+                if(!first&&java.lang.Math.abs(candidate.peak()-best.peak())>2)return candidate.peak()<best.peak();
+            }
+            return betterGrip(candidate,best,history,0);
+        }
     }
     private static Map<String,Pose> applyCore(ModelDocument model,Map<String,Pose> pose,AttackAim.Point aim,float bodyYaw,float eyeHeight,
                                  Vector3f gripSeed,Quaternionf chestSeed,Map<String,Matrix4f> previous,
@@ -430,8 +843,8 @@ public final class SpearAimPose {
                     .mul(previous.get("head").getUnnormalizedRotation(new Quaternionf()).normalize());
             var oldSight=oldLocal.transform(new Vector3f(0,0,1));
             prior=(float)java.lang.Math.atan2(oldSight.x,oldSight.z);
-            // Unwrap around the previous neck branch before limiting; ±180-degree
-            // atan2 wrapping must not switch the head between the two ±85-degree stops.
+            // Unwrap around the previous neck branch before limiting; 卤180-degree
+            // atan2 wrapping must not switch the head between the two 卤85-degree stops.
             yaw=prior+(float)wrap(yaw-prior);
         }
         float clamped=java.lang.Math.clamp(yaw,-limit,limit);
@@ -446,15 +859,27 @@ public final class SpearAimPose {
     }
     /** Nearest common grip in both arm annuli, with no angle-dependent coordinate-frame sign. */
     private static Vector3f closedRear(Map<String,Matrix4f> world,Vector3f shaft,Vector3f authored,SpearConstraints.Limits limits) {
-        var right=world.get("right_arm").getTranslation(new Vector3f());
-        var left=world.get("left_arm").getTranslation(new Vector3f());
-        var separation=new Vector3f(left).sub(right);
+        return closedRear(world,shaft,authored,limits,new ReachFrame(world));
+    }
+    private static final class ReachFrame {
+        final Vector3f right,separation;
+        ReachFrame(Map<String,Matrix4f> world) {
+            right=world.get("right_arm").getTranslation(new Vector3f());
+            separation=world.get("left_arm").getTranslation(new Vector3f()).sub(right);
+        }
+    }
+    private static Vector3f closedRear(Map<String,Matrix4f> world,Vector3f shaft,Vector3f authored,SpearConstraints.Limits limits,ReachFrame frame) {
+        var right=frame.right;var separation=frame.separation;
         float shoulderAlong=separation.dot(shaft),difference=limits.gripSpacingCm()-shoulderAlong;
         // Blend the longitudinal grip bound across the whole shoulder projection.
         // A binary 30 cm threshold jumped the rear palm by up to 27 cm when a
         // leaning/slim shoulder crossed it, despite almost unchanged aim.
-        var range=longitudinalRange(world,shaft,limits);
-        float minimum=range[0],maximum=range[1];
+        float forward=java.lang.Math.clamp(shoulderAlong/54,0,1);
+        forward=forward*forward*(3-2*forward);
+        float low=java.lang.Math.max(limits.tucked()?-32f:-36.5f+40.5f*forward,-UPPER*.8660254f+.01f);
+        float leftReach=limits.tucked()?(float)java.lang.Math.sqrt(UPPER*UPPER+PALM_LINK*PALM_LINK+2*UPPER*PALM_LINK*java.lang.Math.cos(java.lang.Math.toRadians(10))):0;
+        float minimum=limits.tucked()?java.lang.Math.max(low,-leftReach-difference):java.lang.Math.max(low,low-difference);
+        float maximum=limits.tucked()?java.lang.Math.min(36.5f,leftReach-difference):java.lang.Math.min(36.5f,36.5f-difference);
         if(minimum>maximum)throw new IllegalArgumentException("Spear chest cannot reach both transverse grips");
         var delta=new Vector3f(authored).sub(right);
         float a=java.lang.Math.clamp(delta.dot(shaft),minimum,maximum);
@@ -512,7 +937,7 @@ public final class SpearAimPose {
             leftLow=(float)java.lang.Math.sqrt(java.lang.Math.max(0,minDistanceSquared-other*other));
             leftHigh=(float)java.lang.Math.sqrt(java.lang.Math.max(0,maxDistanceSquared-other*other));
         }
-        // twist=atan2(±b*sqrt(1-c*c),a). For a<0, |twist|<=150
+        // twist=atan2(卤b*sqrt(1-c*c),a). For a<0, |twist|<=150
         // requires b*b*(1-c*c)>=a*a/3, yielding these two radial roots.
         // Small inward margins keep float projection tolerances inside the limit.
         if(a<0) {
@@ -528,44 +953,54 @@ public final class SpearAimPose {
             leftHigh=java.lang.Math.min(leftHigh,(float)java.lang.Math.sqrt(java.lang.Math.max(0,center+span))-.003f);
         }
         if(rightLow>rightHigh || leftLow>leftHigh)return null;
+        // Work in the two-dimensional plane perpendicular to the shaft. The
+        // nearest point in two annuli is either the goal, a radial projection on
+        // one boundary, or one of their eight circle intersections. Enumerating
+        // scalar coordinates avoids thirteen temporary vectors/lists per closure.
         float shoulderAlong=separation.dot(shaft);
-        var center=new Vector3f(separation).sub(new Vector3f(shaft).mul(shoulderAlong));
-        var desired=new Vector3f(delta).sub(new Vector3f(shaft).mul(delta.dot(shaft)));
-        // A goal already inside both annuli is the unique zero-distance candidate.
-        // Return the same reconstructed point before building all circle intersections.
-        float desiredFirst=desired.length(),desiredSecond=desired.distance(center);
-        if(desiredFirst>=rightLow-.001f&&desiredFirst<=rightHigh+.001f&&desiredSecond>=leftLow-.001f&&desiredSecond<=leftHigh+.001f)
-            return new Vector3f(right).add(new Vector3f(shaft).mul(a)).add(desired);
-        var candidates=new java.util.ArrayList<Vector3f>();candidates.add(new Vector3f(desired));
-        var down=radialPole(world.get("body"),shaft,"right");
-        for(float radius:new float[]{rightLow,rightHigh})candidates.add(circleProjection(desired,new Vector3f(),radius,down));
-        for(float radius:new float[]{leftLow,leftHigh})candidates.add(circleProjection(desired,center,radius,down));
-        float width=center.length();
-        if(width>.0001f) {
-            Vector3f across=new Vector3f(center).div(width),normal=new Vector3f(shaft).cross(across).normalize();
-            for(float rightRadius:new float[]{rightLow,rightHigh})for(float leftRadius:new float[]{leftLow,leftHigh}) {
-                double x=(width*(double)width+rightRadius*(double)rightRadius-leftRadius*(double)leftRadius)/(2*width);
-                double square=rightRadius*(double)rightRadius-x*x;
-                if(square<-.001)continue;
-                float y=(float)java.lang.Math.sqrt(java.lang.Math.max(0,square));
-                candidates.add(new Vector3f(across).mul((float)x).add(new Vector3f(normal).mul(y)));
-                candidates.add(new Vector3f(across).mul((float)x).sub(new Vector3f(normal).mul(y)));
+        float cx=separation.x-shaft.x*shoulderAlong,cy=separation.y-shaft.y*shoulderAlong,cz=separation.z-shaft.z*shoulderAlong;
+        float width=(float)java.lang.Math.sqrt(cx*cx+cy*cy+cz*cz);
+        float desiredAlong=delta.dot(shaft);
+        float dx=delta.x-shaft.x*desiredAlong,dy=delta.y-shaft.y*desiredAlong,dz=delta.z-shaft.z*desiredAlong;
+        float ex,ey,ez;
+        if(width>.0001f){ex=cx/width;ey=cy/width;ez=cz/width;}
+        else {
+            float length=(float)java.lang.Math.sqrt(dx*dx+dy*dy+dz*dz);
+            if(length>.0001f){ex=dx/length;ey=dy/length;ez=dz/length;}
+            else {var pole=radialPole(world.get("body"),shaft,"right");ex=pole.x;ey=pole.y;ez=pole.z;}
+        }
+        float nx=shaft.y*ez-shaft.z*ey,ny=shaft.z*ex-shaft.x*ez,nz=shaft.x*ey-shaft.y*ex;
+        float desiredX=dx*ex+dy*ey+dz*ez,desiredY=dx*nx+dy*ny+dz*nz;
+        float bestX=0,bestY=0,error=Float.POSITIVE_INFINITY;
+        for(int index=0;index<13;index++) {
+            float x,y;
+            if(index==0){x=desiredX;y=desiredY;}
+            else if(index<5) {
+                boolean second=index>=3;
+                float centerX=second?width:0;
+                float radius=second?(index==3?leftLow:leftHigh):(index==1?rightLow:rightHigh);
+                float vx=desiredX-centerX,vy=desiredY,length=(float)java.lang.Math.sqrt(vx*vx+vy*vy);
+                if(length<.0001f) {x=centerX+radius;y=0;}
+                else {x=centerX+vx/length*radius;y=vy/length*radius;}
+            } else {
+                if(width<=.0001f)continue;
+                int pair=(index-5)/2;
+                float rightRadius=(pair&2)==0?rightLow:rightHigh,leftRadius=(pair&1)==0?leftLow:leftHigh;
+                x=(width*width+rightRadius*rightRadius-leftRadius*leftRadius)/(2*width);
+                float square=rightRadius*rightRadius-x*x;
+                if(square<-.001f)continue;
+                y=(float)java.lang.Math.sqrt(java.lang.Math.max(0,square));
+                if((index&1)==0)y=-y;
             }
+            float first=(float)java.lang.Math.sqrt(x*x+y*y),second=(float)java.lang.Math.sqrt((x-width)*(x-width)+y*y);
+            if(first<rightLow-.001f||first>rightHigh+.001f||second<leftLow-.001f||second>leftHigh+.001f)continue;
+            float candidateError=(x-desiredX)*(x-desiredX)+(y-desiredY)*(y-desiredY);
+            if(index==0&&candidateError<1e-10f){bestX=x;bestY=y;error=0;break;}
+            if(candidateError<error){error=candidateError;bestX=x;bestY=y;}
+            if(error<1e-10f)break;
         }
-        Vector3f best=null;float error=Float.POSITIVE_INFINITY;
-        for(var candidate:candidates) {
-            float first=candidate.length(),second=candidate.distance(center);
-            if(first<rightLow-.001f || first>rightHigh+.001f || second<leftLow-.001f || second>leftHigh+.001f)continue;
-            float distance=candidate.distanceSquared(desired);
-            if(distance<error){best=candidate;error=distance;}
-        }
-        if(best==null)return null;
-        return new Vector3f(right).add(new Vector3f(shaft).mul(a)).add(best);
-    }
-    private static Vector3f circleProjection(Vector3f desired,Vector3f center,float radius,Vector3f down) {
-        var direction=new Vector3f(desired).sub(center);
-        if(direction.lengthSquared()<.0001f)direction.set(down);else direction.normalize();
-        return direction.mul(radius).add(center);
+        if(!Float.isFinite(error))return null;
+        return new Vector3f(right.x+shaft.x*a+ex*bestX+nx*bestY,right.y+shaft.y*a+ey*bestX+ny*bestY,right.z+shaft.z*a+ez*bestX+nz*bestY);
     }
     /** A candidate's collision geometry stays fixed throughout its ranking and acceptance. */
     private static final class Arm {
@@ -620,6 +1055,13 @@ public final class SpearAimPose {
         var alternative=side.equals("right")?second:first;
         var a=armCandidate(side,shoulder,palm,shaft,preferred,space,previous,limits);
         var b=armCandidate(side,shoulder,palm,shaft,alternative,space,previous,limits);
+        if(space.realtime&&space.actualHistory.containsKey(side)) {
+            boolean legalA=java.lang.Math.abs(a.twist())<=150.01f,legalB=java.lang.Math.abs(b.twist())<=150.01f;
+            if(legalA!=legalB)return legalA?a:b;
+            boolean continuousA=a.peakStep()<34,continuousB=b.peakStep()<34;
+            if(continuousA!=continuousB)return continuousA?a:b;
+            if(java.lang.Math.abs(a.peakStep()-b.peakStep())>.5f)return a.peakStep()<b.peakStep()?a:b;
+        }
         if(space.tucked&&side.equals("right")) {
             var history=space.actualHistory.get(side);
             if(history!=null) {

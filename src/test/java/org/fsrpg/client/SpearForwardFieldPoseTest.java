@@ -365,6 +365,7 @@ public final class SpearForwardFieldPoseTest {
         report.addProperty("independentGeometry", "Chest signed heading and forward half-plane; world-link signed elbow bend; wrist pronation measured from forearm/palm transverse axes; real grip spacing, pole line, finite target and physical link lengths");
         report.addProperty("limitation", "Focused offline sampling does not replace required DISPLAY5 real-client acceptance");
         report.addProperty("poses", poses); report.addProperty("checks", checks); report.addProperty("failures", failures);
+        if(!Boolean.getBoolean("fsrpg.realtimeLegacy"))report.addProperty("continuationOuterSolves",SpearAimPose.realtimeFallbackCalls());
         report.addProperty("loadedSolverBytecodeSha256", sha(SpearAimPose.class));
         report.addProperty("loadedMotionBytecodeSha256", sha(SpearMotion.class));
         report.addProperty("loadedMotionStateBytecodeSha256", sha(SpearMotion.State.class));

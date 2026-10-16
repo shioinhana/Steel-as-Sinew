@@ -21,6 +21,9 @@ public final class CombatActor {
     private int phaseRemaining;
     private int skillElapsed;
     private long guardStarted;
+    private long counterUntil;
+    private double attackDamageMultiplier = 1;
+    private boolean leftIntent, queuedLeftIntent;
     private int dodgeElapsed;
     private CombatRules dodgeRules;
     private long dodgeReadyAt;
@@ -61,6 +64,12 @@ public final class CombatActor {
     public ActionResult aimedSkill(SkillDefinition skill, AttackAim aim) {
         inputAim=aim; try { return requestAttack(skill); } finally { inputAim=null; }
     }
+    /** A validated physical left click; named skills and right-hand routing do not invent this intent. */
+    public ActionResult aimedLeftSkill(SkillDefinition skill, AttackAim aim) {
+        boolean previous = leftIntent;
+        inputAim = aim; leftIntent = true;
+        try { return requestAttack(skill); } finally { inputAim = null; leftIntent = previous; }
+    }
     private boolean dual() { return style!=null && style.controls().dual(); }
     private int queuedStage;
     private WeaponStyleDefinition queuedStyle;
@@ -70,6 +79,7 @@ public final class CombatActor {
     private long lastGuardContactTick;
     private int guardContacts;
     private boolean heavyGuard;
+    private boolean guardHeld;
     private long riposteUntil, repriseUntil;
     private final Map<String, Long> skillReadyAt = new HashMap<>();
     private final Set<UUID> swingVictims = new HashSet<>();
@@ -91,6 +101,8 @@ public final class CombatActor {
     public double stamina() { return stamina; }
     public double spirit() { return spirit; }
     public WeaponStyleDefinition style() { return style; }
+    public int counterRemainingTicks() { return drawn ? (int)Math.max(0, counterUntil - tick) : 0; }
+    public double attackDamageMultiplier() { return skill == null ? 1 : attackDamageMultiplier; }
 
     /** Applied at acceptance, after the legacy same-hand gate and before any minimum interval clamp. */
     public void setLegacyDualIntervalAdjustment(IntUnaryOperator adjustment) {
@@ -104,7 +116,7 @@ public final class CombatActor {
         if (!sameStyle && phase != CombatPhase.SHEATHED && phase != CombatPhase.READY) return ActionResult.BUSY;
         if (style != null && !style.techniques().equals(replacement.techniques())) clearTechniques();
         style = replacement;
-        if (!sameStyle) { resetCombo(); clearTechniques(); heavyGuard = false; resetDualHandsAndStreaks(); }
+        if (!sameStyle) { resetCombo(); clearTechniques(); clearCounter(); heavyGuard = guardHeld = false; resetDualHandsAndStreaks(); }
         return ActionResult.ACCEPTED;
     }
 
@@ -123,10 +135,12 @@ public final class CombatActor {
         return new TechniqueSnapshot("", "", 0);
     }
     public void perfectGuardSucceeded() {
+        counterUntil = tick + rules.perfectGuardCounter().windowTicks();
         if (style != null && !heavyGuard && !style.techniques().riposteSkill().isEmpty())
             riposteUntil = tick + style.techniques().riposteWindowTicks();
     }
     private void clearTechniques() { riposteUntil = repriseUntil = 0; }
+    private void clearCounter() { counterUntil = 0; attackDamageMultiplier = 1; }
 
     public List<SkillStart> drainStartedSkills() {
         List<SkillStart> result = List.copyOf(startedSkills);
@@ -147,6 +161,7 @@ public final class CombatActor {
     public void setRules(CombatRules replacement) {
         if (replacement == null) throw new IllegalArgumentException("rules are required");
         rules = replacement;
+        clearCounter();
         stamina = Math.min(stamina, rules.maxStamina());
         spirit = Math.min(spirit, rules.maxSpirit());
     }
@@ -208,12 +223,14 @@ public final class CombatActor {
     /** Equipment removal/death is a forced interrupt, including an active hit window. */
     public void forceSheathed() {
         clearAttack();
+        clearCounter();
         resetDualHandsAndStreaks();
         clearTechniques();
         startedSkills.clear();
         inputAim = null;
         pendingHitStun = 0;
         heavyGuard = false;
+        guardHeld = false;
         dodgeElapsed = 0;
         phaseRemaining = 0;
         drawn = false;
@@ -279,6 +296,7 @@ public final class CombatActor {
         if (stamina + 1e-9 < requested.staminaCost()) return ActionResult.INSUFFICIENT_STAMINA;
         if (spirit + 1e-9 < requested.spiritCost()) return ActionResult.INSUFFICIENT_SPIRIT;
         SkillDefinition timed = legacyDualTiming(requested);
+        boolean counter = leftIntent && counterRemainingTicks() > 0;
         consumeStamina(requested.staminaCost());
         consumeSpirit(requested.spiritCost());
         // Any accepted attack commits the opening; a rejected/buffered input never spends it.
@@ -286,6 +304,8 @@ public final class CombatActor {
         heavyGuard = false;
         resetCombo();
         skill = timed; attackAim=inputAim;
+        attackDamageMultiplier = counter ? rules.perfectGuardCounter().damageMultiplier() : 1;
+        if (counter) counterUntil = 0;
         chargeArmed=chargeHeld=chargeParryEnabled=chargeParried=chargeLungePending=false; chargeElapsed=0;
         if(style!=null && style.controls().legacyDual()) {
             var controls=style.controls(); int destination=controls.destination(requested.id());
@@ -334,6 +354,12 @@ public final class CombatActor {
 
     /** Same-button follow-ups queue one next stage; no timing gate rejects an early/late click. */
     public ComboInputResult requestStyledAttack(SkillInput input, Map<String, SkillDefinition> skills) {
+        boolean previous = leftIntent;
+        leftIntent = input == SkillInput.LEFT;
+        try { return styledAttack(input, skills); } finally { leftIntent = previous; }
+    }
+
+    private ComboInputResult styledAttack(SkillInput input, Map<String, SkillDefinition> skills) {
         if (style == null || !style.enabled()) return comboResult(ComboInputStatus.REJECTED, ActionResult.STYLE_DISABLED, 0, "");
         if (input == null || skills == null) throw new IllegalArgumentException("input and skill catalog are required");
         style.validateSkills(skills);
@@ -386,7 +412,7 @@ public final class CombatActor {
         if (queuedSkill != null && queuedSkill.id().equals(requested.id()))
             return comboResult(ComboInputStatus.ALREADY_QUEUED,ActionResult.ACCEPTED,stage,requested.id());
         // Only the latest distinct attack intent is retained, so mashing cannot queue a whole combo.
-        queuedSkill=requested;queuedStage=stage;queuedStyle=owner;queuedAim=inputAim;
+        queuedSkill=requested;queuedStage=stage;queuedStyle=owner;queuedAim=inputAim;queuedLeftIntent=leftIntent;
         return comboResult(ComboInputStatus.BUFFERED,ActionResult.ACCEPTED,stage,requested.id());
     }
 
@@ -398,9 +424,11 @@ public final class CombatActor {
 
     private ActionResult advanceCombo() {
         SkillDefinition next=queuedSkill; int stage=queuedStage; var owner=queuedStyle;
+        boolean nextLeft = queuedLeftIntent;
         queuedSkill=null;queuedStyle=null;queuedStage=0;
         inputAim=queuedAim; queuedAim=null;
-        var result=requestNext(next,stage,owner); inputAim=null;
+        boolean previous = leftIntent; leftIntent = nextLeft;
+        var result=requestNext(next,stage,owner); inputAim=null; leftIntent=previous;
         return result.rejection();
     }
 
@@ -414,18 +442,23 @@ public final class CombatActor {
     }
     public ActionResult setGuarding(boolean guarding, boolean heavy) {
         if (!guarding) {
+            guardHeld = false;
             if (phase == CombatPhase.GUARDING) phase = drawn ? CombatPhase.READY : CombatPhase.SHEATHED;
             heavyGuard = false;
             return ActionResult.ACCEPTED;
         }
         if (!drawn) return ActionResult.NOT_DRAWN;
         if (heavy && (style == null || style.heavyGuard() == null)) return ActionResult.UNSUPPORTED_INPUT;
-        if (phase == CombatPhase.GUARDING) { heavyGuard = heavy; return ActionResult.ACCEPTED; }
+        if (phase == CombatPhase.GUARDING) { guardHeld = true; heavyGuard = heavy; return ActionResult.ACCEPTED; }
+        // A stale automatic renewal can arrive after a counter attack was accepted. Track the
+        // actual release edge on the server, so network latency cannot cancel the enhanced swing.
+        if (guardHeld && skill != null && attackDamageMultiplier > 1) return ActionResult.ACCEPTED;
         boolean cancel = phase == CombatPhase.WINDUP && cancels().windupGuard()
                 || phase == CombatPhase.RECOVERY && cancels().recoveryGuard();
         if (phase != CombatPhase.READY && !cancel || pendingHitStun > 0) return ActionResult.BUSY;
         clearAttack(); phaseRemaining=0;
         phase = CombatPhase.GUARDING;
+        guardHeld = true;
         heavyGuard = heavy;
         guardStarted = tick;
         return ActionResult.ACCEPTED;
@@ -465,6 +498,7 @@ public final class CombatActor {
         if (!consumeStamina(rules.dodgeStaminaCost())) return ActionResult.INSUFFICIENT_STAMINA;
         clearAttack();
         clearTechniques();
+        clearCounter();
         heavyGuard = false;
         dodgeRules = rules;
         dodgeElapsed = 0;
@@ -487,6 +521,7 @@ public final class CombatActor {
         int remaining = phase == CombatPhase.STUNNED ? phaseRemaining : 0;
         clearAttack();
         clearTechniques();
+        clearCounter();
         heavyGuard = false;
         pendingHitStun = 0;
         phase = CombatPhase.STUNNED;
@@ -497,6 +532,9 @@ public final class CombatActor {
     public void queueHitStun(int ticks) {
         SkillDefinition.checkTicks(ticks, "hit stun ticks", true);
         clearTechniques();
+        // Preserve this tick's already committed outgoing strike for deterministic trades.
+        // The next authoritative stun clears its multiplier with the rest of the attack.
+        counterUntil = 0;
         pendingHitStun = Math.max(pendingHitStun, ticks);
     }
 
@@ -569,6 +607,7 @@ public final class CombatActor {
 
     void finishClash() {
         clearAttack();
+        clearCounter();
         phase = drawn ? CombatPhase.READY : CombatPhase.SHEATHED;
         phaseRemaining = 0;
     }
@@ -590,13 +629,14 @@ public final class CombatActor {
         }
     }
 
-    private void resetCombo() { comboStyle = null; comboStage = -1; queuedSkill = null; queuedStyle=null; queuedStage=0; queuedAim=null; }
+    private void resetCombo() { comboStyle = null; comboStage = -1; queuedSkill = null; queuedStyle=null; queuedStage=0; queuedAim=null; queuedLeftIntent=false; }
     private void clearAttack() {
         if(skill!=null && dual()) lastDualEnd=tick;
         skill = null; attackAim=null; skillElapsed = 0; swingVictims.clear(); resetCombo();
+        attackDamageMultiplier = 1;
         chargeArmed=chargeHeld=chargeParryEnabled=chargeParried=chargeLungePending=false; chargeElapsed=0;
     }
     private void finishDraw() { drawn = true; phase = CombatPhase.READY; phaseRemaining = 0; }
     private void resetDualHandsAndStreaks() { leftRest=rightRest=-1; leftSwingStreak=rightSwingStreak=0; }
-    private void finishSheath() { drawn = false; phase = CombatPhase.SHEATHED; phaseRemaining = 0; clearTechniques(); heavyGuard = false; resetDualHandsAndStreaks(); }
+    private void finishSheath() { drawn = false; phase = CombatPhase.SHEATHED; phaseRemaining = 0; clearTechniques(); clearCounter(); heavyGuard = guardHeld = false; resetDualHandsAndStreaks(); }
 }

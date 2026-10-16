@@ -20,6 +20,11 @@ public final class ArcheryScores {
         if(p.branch250()==ArcheryProgress.Branch250.YAN_XIA_DIAN) speed*=1+r.yanXiaDianSpeedBonus();
         return speed;
     }
+    /** A partial release always receives one flat discount, independent of draw fraction. */
+    public static double shotStaminaCost(ArcheryRules rules,boolean snipe,double power) {
+        if(!Double.isFinite(power)||power<0||power>1)throw new IllegalArgumentException("Invalid bow draw power");
+        return (snipe?rules.snipeStaminaCost():rules.rapidStaminaCost())*(power<1?rules.partialShotStaminaMultiplier():1);
+    }
     public static double scopeMagnification(ArcheryRules r,ArcheryProgress p,double charge) {
         if(p.score()<r.scopeScore()) return 1;
         double maximum=r.snipeArrowSpeed()*(1+r.snipeSpeedCap())*(1+r.yanXiaDianSpeedBonus());

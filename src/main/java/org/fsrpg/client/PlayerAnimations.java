@@ -31,6 +31,7 @@ public final class PlayerAnimations {
     private static final PoseLayers.RenderClock renderClock = new PoseLayers.RenderClock();
     private static Object level;
     private static long appliedModels, weaponBatches, transitionFrames, renderSamples;
+    private static long renderFrameId, frameRequests, frameCacheHits, spearSolveCalls, spearSolveNanos, maxSpearSolveNanos, lastSpearSolveNanos;
     private static double lastSampleTick;
     private static final class Binding {
         RpgAnimationPayload state;
@@ -67,8 +68,7 @@ public final class PlayerAnimations {
         boolean aimTransitionPending;
         float lastLowerWeight = 1, transitionLowerWeight = 1;
         Frame sampled;
-        float sampledYaw, sampledWalkSpeed;
-        PlayerModelType sampledSkin;
+        long sampledRenderFrame = -1;
         Binding(RpgAnimationPayload state, AnimationAssets.Loaded asset, double renderTick, double elapsed, double phaseTick) {
             this.state = state; this.asset = asset;
             inspection = new IdleInspection(state.entityId().getMostSignificantBits() ^ state.entityId().getLeastSignificantBits() ^ System.nanoTime());
@@ -104,7 +104,7 @@ public final class PlayerAnimations {
     /** Read-only presentation time shared by skin, armor, held items and inspection deadlines. */
     public static double presentationTick() { world(); return now(); }
     static void renderClock(RenderFrameEvent.Pre event) {
-        world();
+        world(); renderFrameId++;
         var game = Minecraft.getInstance();
         // getGameTime() is synchronized by the server and can move backward by a tick.
         // The native timer delta preserves pause/tick-rate semantics without that correction.
@@ -124,6 +124,14 @@ public final class PlayerAnimations {
     public static long weaponBatches() { return weaponBatches; }
     public static long transitionFrames() { return transitionFrames; }
     public static long renderSamples() { return renderSamples; }
+    public static long renderFrameId() { return renderFrameId; }
+    public static long frameRequests() { return frameRequests; }
+    public static long frameCacheHits() { return frameCacheHits; }
+    public static long spearSolveCalls() { return spearSolveCalls; }
+    public static long spearSolveNanos() { return spearSolveNanos; }
+    public static long maxSpearSolveNanos() { return maxSpearSolveNanos; }
+    public static long lastSpearSolveNanos() { return lastSpearSolveNanos; }
+    public static long spearContinuationCalls() { return SpearAimPose.realtimeFallbackCalls(); }
     public static double lastSampleTick() { return lastSampleTick; }
     static void weaponSubmitted(int count) { weaponBatches += count; }
     public static boolean active(UUID entity) { world(); return bindings.containsKey(entity); }
@@ -235,6 +243,7 @@ public final class PlayerAnimations {
         }
     }
     public static Frame frame(AvatarRenderState state) {
+        frameRequests++;
         Frame preview = previews.get(state); if (preview != null) return preview;
         world(); var game = Minecraft.getInstance(); if (game.level == null) return null;
         var entity = game.level.getEntity(state.id);
@@ -251,9 +260,9 @@ public final class PlayerAnimations {
             bindings.put(entity.getUUID(), binding);
         }
         // Skin, four armor models and held items share one visual sample within the rendered frame.
-        if (binding.sampled != null && binding.sampled.sampledTick() == renderTick
-                && binding.sampledYaw == state.yRot && binding.sampledWalkSpeed == state.walkAnimationSpeed
-                && binding.sampledSkin == state.skin.model()) return binding.sampled;
+        if (binding.sampled != null && binding.sampledRenderFrame == renderFrameId) {
+            frameCacheHits++; return binding.sampled;
+        }
         RpgAnimationPayload server = binding.state;
         double delta = Math.max(0, renderTick - binding.phaseReceived);
         double authoritativeElapsed = PoseLayers.attackElapsed(server.phase(), server.phaseRemaining(), server.windupTicks(), server.activeTicks(), server.recoveryTicks());
@@ -292,11 +301,11 @@ public final class PlayerAnimations {
             binding.legacyBase = pose;
             pose=retargetSkin(state,pose);
             renderSamples++; lastSampleTick=renderTick;
+            binding.sampledRenderFrame=renderFrameId;
             binding.sampled=new Frame(binding.asset.full(),null,pose,binding.asset.full().worldMatrices(pose),
                     1,Locomotion.movementTarget(state.walkAnimationSpeed),renderTick,clip.layer(),
                     LegacyMotion.knee(pose,"right"),LegacyMotion.knee(pose,"left"),
                     new PresentationMotion.Balance(0,0,0),null);
-            binding.sampledYaw=state.yRot;binding.sampledWalkSpeed=state.walkAnimationSpeed;binding.sampledSkin=state.skin.model();
             return binding.sampled;
         }
         if (sword) {
@@ -514,11 +523,15 @@ public final class PlayerAnimations {
             float authoredSpacing = SpearGrip.authored(sourceWorld);
             float gripSpacing = server.phase().equals("READY") ? SpearGrip.clamp(authoredSpacing)
                     : SpearGrip.solve(authoredSpacing, (float)(aim.distance() * 100), spearSeed.authoredMotion());
+            long solveStarted=System.nanoTime();
             pose=SpearAimPose.apply(binding.asset.full(),pose,aim,bodyYaw,living.getEyeHeight(),spearSeed.rear(),spearSeed.chest(),
                     spearSeed.actual(),spearSeed.continuity(),spearSeed.authoredMotion(),new SpearConstraints.Limits(ClientOptions.SPEAR_ELBOW_LIMIT.get().floatValue(),
                             ClientOptions.SPEAR_WRIST_LIMIT.get().floatValue(),ClientOptions.SPEAR_CLEARANCE.get().floatValue(),
                             ClientOptions.SPEAR_NECK_LIMIT.get().floatValue(),ClientOptions.SPEAR_VERTICAL_BANK.get().floatValue(),true)
                             .withCarry(carrying).withGrip(gripSpacing));
+            lastSpearSolveNanos=System.nanoTime()-solveStarted;
+            spearSolveNanos+=lastSpearSolveNanos;spearSolveCalls++;
+            maxSpearSolveNanos=Math.max(maxSpearSolveNanos,lastSpearSolveNanos);
         }
         var finalWorld = binding.asset.full().worldMatrices(pose);
         if (spearSourceRear != null) {
@@ -531,11 +544,11 @@ public final class PlayerAnimations {
             binding.lastSpearWorld = finalWorld;
         }
         renderSamples++; lastSampleTick = renderTick;
+        binding.sampledRenderFrame=renderFrameId;
         binding.sampled = new Frame(binding.asset.full(), binding.asset.weapon(), pose, finalWorld,
                 lowerWeight, sample.movingWeight(), renderTick, sample.layer(),
                 supportedLower == null ? 0 : supportedLower.right().knee(),
                 supportedLower == null ? 0 : supportedLower.left().knee(), hipBalance, supportedLower);
-        binding.sampledYaw = state.yRot; binding.sampledWalkSpeed = state.walkAnimationSpeed; binding.sampledSkin = state.skin.model();
         return binding.sampled;
     }
     /** A detached editor state may use real skin/armor/items without mutating live actor playback. */

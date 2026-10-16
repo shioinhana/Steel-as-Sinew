@@ -153,7 +153,8 @@ public final class ClientHooks {
         if (shouldGuard != guarding || shouldHeavy != heavyGuarding) {
             guarding = shouldGuard; heavyGuarding = shouldHeavy; guardRetryClock = 0; send("guard", guardArgument);
         }
-        else if (shouldGuard && java.util.Set.of("READY","WINDUP","RECOVERY").contains(ClientState.text(ClientState.snapshot(), "phase", ""))) {
+        else if (shouldGuard && ClientState.number(ClientState.snapshot(), "attackDamageMultiplier", 1) <= 1
+                && java.util.Set.of("READY","WINDUP","RECOVERY").contains(ClientState.text(ClientState.snapshot(), "phase", ""))) {
             if (++guardRetryClock >= 4) { guardRetryClock = 0; send("guard", guardArgument); }
         } else guardRetryClock = 0;
         boolean nextBow=inGame && ClientState.drawn() && bow && RIGHT.isDown();
@@ -230,8 +231,15 @@ public final class ClientHooks {
                 + "  灵力 " + Math.round(ClientState.number(state, "spirit", 0));
         gui.fill(6, 6, Math.min(gui.guiWidth() - 6, 15 + game.font.width(line)), 22, 0xb815202e);
         gui.drawString(game.font, line, 10, 10, 0xffe4edff);
+        long counterElapsed = game.level == null ? 0 : Math.max(0, game.level.getGameTime() - snapshotClientTick);
+        double counterRemaining = ClientState.number(state, "counterRemainingTicks", 0) - counterElapsed;
+        if (equipped && ClientState.drawn() && counterRemaining > 0) {
+            String info = "左键 · 完美格挡反击 ×1.5  " + String.format(java.util.Locale.ROOT, "%.1fs", counterRemaining / 20);
+            gui.fill(6, 44, Math.min(gui.guiWidth() - 6, 15 + game.font.width(info)), 60, 0xc0173439);
+            gui.drawString(game.font, info, 10, 48, 0xff9ff1d3);
+        }
         var openingValue = state.get("technique");
-        if (equipped && ClientState.drawn() && openingValue != null && openingValue.isJsonObject()) {
+        if (equipped && ClientState.drawn() && counterRemaining <= 0 && openingValue != null && openingValue.isJsonObject()) {
             var opening = openingValue.getAsJsonObject();
             long elapsed = game.level == null ? 0 : Math.max(0, game.level.getGameTime() - snapshotClientTick);
             double remaining = ClientState.number(opening, "remainingTicks", 0) - elapsed;

@@ -30,6 +30,7 @@ import net.neoforged.neoforge.event.entity.living.*;
 import net.neoforged.neoforge.event.entity.player.*;
 import net.neoforged.neoforge.event.server.*;
 import net.neoforged.neoforge.event.tick.ServerTickEvent;
+import net.neoforged.neoforge.event.tick.EntityTickEvent;
 import net.neoforged.neoforge.network.PacketDistributor;
 import org.fsrpg.combat.*;
 import org.fsrpg.config.*;
@@ -62,6 +63,8 @@ public final class RpgServer {
     private final Map<UUID,Long> rapierHasteUntil=new HashMap<>();
     private final Map<UUID,String> bowEquipment=new HashMap<>();
     private final Map<UUID, CombatActor> actors = new HashMap<>();
+    private record EnemyStun(LivingEntity entity, long untilGameTick) {}
+    private final Map<UUID, EnemyStun> enemyStuns = new HashMap<>();
     private final Map<UUID, WeaponDrawController> drawControllers = new HashMap<>();
     private final Map<UUID, Resources> resources = new HashMap<>();
     private final Map<UUID, Vec3> dodgeDirections = new HashMap<>();
@@ -78,7 +81,7 @@ public final class RpgServer {
     private long ticks;
     private long savedRevision = -1;
     private record Resources(double stamina, double spirit, String weaponStyle) {}
-    private record PendingHit(ServerPlayer attacker, LivingEntity victim, org.fsrpg.combat.HitResult result) {}
+    private record PendingHit(ServerPlayer attacker, LivingEntity victim, org.fsrpg.combat.HitResult result, double damageMultiplier) {}
 
     public static RpgServer instance() { return instance; }
     public ProgressionService progression(){return progression;}
@@ -129,6 +132,7 @@ public final class RpgServer {
         bus.addListener((ServerStoppingEvent event) -> { if (instance != null) instance.save(); });
         bus.addListener((ServerStoppedEvent event) -> instance = null);
         bus.addListener((ServerTickEvent.Post event) -> { if (instance != null) instance.tick(); });
+        bus.addListener((EntityTickEvent.Pre event) -> { if (instance != null) instance.enemyTick(event); });
         bus.addListener((PlayerEvent.PlayerLoggedInEvent event) -> { if (instance != null && event.getEntity() instanceof ServerPlayer p) { instance.actor(p); instance.quests.ensurePlayer(p.getUUID()); instance.recoverCollection(p); instance.reconcileWeapon(p); instance.send(p, "", null); instance.broadcastAnimation(p, true); } });
         bus.addListener((PlayerEvent.StartTracking event) -> {
             if (instance != null && event.getEntity() instanceof ServerPlayer viewer && event.getTarget() instanceof ServerPlayer target)
@@ -137,6 +141,10 @@ public final class RpgServer {
         bus.addListener((PlayerEvent.PlayerLoggedOutEvent event) -> { if (instance != null && event.getEntity() instanceof ServerPlayer p) instance.logout(p); });
         bus.addListener((PlayerEvent.PlayerRespawnEvent event) -> { if (instance != null && event.getEntity() instanceof ServerPlayer p) instance.resetActor(p); });
         bus.addListener((LivingDeathEvent event) -> {
+            if (instance != null) {
+                instance.enemyStuns.remove(event.getEntity().getUUID());
+                if (event.getEntity() instanceof ServerPlayer dead) instance.actor(dead).forceSheathed();
+            }
             if(instance!=null)instance.archery.onDeath(event);
             if (instance != null && event.getSource().getEntity() instanceof ServerPlayer p) {
                 String entity = BuiltInRegistries.ENTITY_TYPE.getKey(event.getEntity().getType()).toString();
@@ -285,7 +293,7 @@ public final class RpgServer {
                         if(!java.util.Set.of("left","sweep").contains(button)) throw new IllegalArgumentException("invalid spear gesture");
                         if(button.equals("left")&&aim.points().size()!=1) throw new IllegalArgumentException("thrust requires one point");
                         var skill=config.current().skills().get(button.equals("sweep")?controls.sweepSkill():a.style().leftCombo().getFirst().skillId());
-                        accepted(a.aimedSkill(skill,aim));
+                        accepted(button.equals("left") ? a.aimedLeftSkill(skill,aim) : a.aimedSkill(skill,aim));
                     }
                     startedSkills(p);
                 }
@@ -528,6 +536,8 @@ public final class RpgServer {
     }
     private void tick() {
         ticks++;
+        enemyStuns.entrySet().removeIf(entry -> !entry.getValue().entity().isAlive() || entry.getValue().entity().isRemoved()
+                || entry.getValue().entity().level().getGameTime() >= entry.getValue().untilGameTick());
         var players = List.copyOf(server.getPlayerList().getPlayers());
         // Validate every actor before taking a shared collision-phase snapshot.
         for (ServerPlayer p : players) {
@@ -564,13 +574,14 @@ public final class RpgServer {
                     if (!p.hasLineOfSight(target)) continue;
                     if(a.style()!=null && a.style().controls().spear() && !spearContact(p,target,a)) continue;
                     CombatActor defender = target instanceof ServerPlayer q ? actor(q) : new CombatActor(target.getUUID(), config.current().combat());
+                    double attackMultiplier = a.attackDamageMultiplier();
                     var result = CombatResolver.resolveHit(a, defender, attackDistance(p, target), attackFacing(p, target), facing(target, p));
-                    if (result.contacted()) {pendingHits.add(new PendingHit(p, target, result));if(a.style()!=null&&a.style().presentationStyleId().equals("rapier"))break;}
+                    if (result.contacted()) {pendingHits.add(new PendingHit(p, target, result, attackMultiplier));if(a.style()!=null&&a.style().presentationStyleId().equals("rapier"))break;}
                 }
             }
         }
         // Collect both outgoing intents before applying health changes, including lethal trades.
-        for (PendingHit hit : pendingHits) applyHit(hit.attacker(), hit.victim(), hit.result());
+        for (PendingHit hit : pendingHits) applyHit(hit.attacker(), hit.victim(), hit.result(), hit.damageMultiplier());
         // Advance everyone together after all hits: the last dodge/attack frame has the same
         // meaning for every player regardless of player-list order.
         for (ServerPlayer p : players) {
@@ -599,7 +610,7 @@ public final class RpgServer {
         SkillDefinition skill = actor(p).currentSkill();
         return mainItem(p).equals(swingItems.get(p.getUUID())) && (actor(p).style()==null || !actor(p).style().controls().dual() || BuiltInRegistries.ITEM.getKey(p.getOffhandItem().getItem()).toString().equals(swingOffhands.get(p.getUUID()))) && (skill == null || weaponMatches(p, skill));
     }
-    private void applyHit(ServerPlayer attacker, LivingEntity target, org.fsrpg.combat.HitResult result) {
+    private void applyHit(ServerPlayer attacker, LivingEntity target, org.fsrpg.combat.HitResult result, double attackMultiplier) {
         effects(attacker, target, result);
         if (!result.dealsDamage()) return;
         double multiplier = config.current().weapons().damageMultiplier(damageItems.getOrDefault(attacker.getUUID(), mainItem(attacker)));
@@ -609,7 +620,7 @@ public final class RpgServer {
         if(actor.currentSkill()!=null&&actor.currentSkill().id().equals("sword_thrust")&&actor.chargedParried()) {
             var rules=config.current().skillTrees().rules().rapier();damage*=rules.thrustMultiplier()>0?rules.parriedMultiplier()/rules.thrustMultiplier():1;
         }
-        damage+=bonus.damageBonus();
+        damage+=bonus.damageBonus() * attackMultiplier;
         resolvingDamage = true;
         try {
             if(actor.currentSkill()!=null&&actor.currentSkill().id().equals("sword_thrust")&&target.invulnerableTime>10)target.invulnerableTime=0;
@@ -627,6 +638,11 @@ public final class RpgServer {
     }
     private void incoming(LivingIncomingDamageEvent event) {
         if(event.getEntity().level().isClientSide())return;
+        Entity sourceEntity = event.getSource().getEntity();
+        // Vanilla melee must obey the same interruption as RPG swings. Already released arrows
+        // retain their flight; pausing their owner must not erase unrelated projectile impacts.
+        if (!resolvingDamage && sourceEntity != null && sourceEntity == event.getSource().getDirectEntity()
+                && perfectGuardStunRemaining(sourceEntity) > 0) { event.setCanceled(true); return; }
         archery.onOutgoing(event);
         if (resolvingDamage || !(event.getEntity() instanceof ServerPlayer p) || event.getSource().getDirectEntity() == null) return;
         reconcileAndSync(p);
@@ -670,14 +686,49 @@ public final class RpgServer {
     }
     private void effects(Entity attacker, LivingEntity victim, org.fsrpg.combat.HitResult result) {
         if (!(victim.level() instanceof net.minecraft.server.level.ServerLevel level)) return;
+        if (result.outcome() == HitOutcome.PARRIED && attacker instanceof LivingEntity living
+                && !(living instanceof ServerPlayer)) {
+            int duration = victim instanceof ServerPlayer defender ? actor(defender).guardRules().parryStunTicks() : config.current().combat().parryStunTicks();
+            if (duration > 0 && living.isAlive()) {
+                enemyStuns.put(living.getUUID(), new EnemyStun(living, living.level().getGameTime() + duration));
+                stopStunnedEnemy(living);
+            }
+        }
         boolean metal = result.outcome() == HitOutcome.CLASH || result.outcome() == HitOutcome.PARRIED || result.outcome() == HitOutcome.BLOCKED;
         if (metal) {
             level.playSound(null, victim.blockPosition(), SoundEvents.SHIELD_BLOCK.value(), SoundSource.PLAYERS, 0.8f, result.outcome() == HitOutcome.PARRIED ? 1.5f : 1.0f);
             level.sendParticles(ParticleTypes.CRIT, victim.getX(), victim.getY() + 1, victim.getZ(), 8, 0.25, 0.25, 0.25, 0.1);
             if (result.outcome() == HitOutcome.PARRIED && victim instanceof ServerPlayer p) {
-                p.displayClientMessage(Component.literal("§b拨挡成功 · 右键还击"), true);
+                p.displayClientMessage(Component.literal("§b完美格挡 · 0.2秒内左键反击 ×1.5"), true);
                 send(p, "", null);
             }
+        }
+    }
+    /** Read-only server time, also used by the copied-world verification harness. */
+    public int perfectGuardStunRemaining(Entity entity) {
+        if (entity instanceof ServerPlayer player) {
+            CombatActor actor = actors.get(player.getUUID());
+            return actor != null && actor.phase() == CombatPhase.STUNNED ? actor.snapshot().phaseTicksRemaining() : 0;
+        }
+        EnemyStun stun = enemyStuns.get(entity.getUUID());
+        if (stun == null) return 0;
+        if (stun.entity() != entity || !entity.isAlive() || entity.isRemoved()
+                || entity.level().getGameTime() >= stun.untilGameTick()) {
+            enemyStuns.remove(entity.getUUID()); return 0;
+        }
+        return (int)Math.min(Integer.MAX_VALUE, stun.untilGameTick() - entity.level().getGameTime());
+    }
+    private static void stopStunnedEnemy(LivingEntity enemy) {
+        if (enemy instanceof Mob mob) { mob.getNavigation().stop(); mob.setXxa(0); mob.setZza(0); }
+        enemy.setDeltaMovement(0, 0, 0); enemy.hurtMarked = true;
+    }
+    private void enemyTick(EntityTickEvent.Pre event) {
+        Entity entity = event.getEntity();
+        if (entity.level().isClientSide() || entity instanceof ServerPlayer || !(entity instanceof LivingEntity enemy)) return;
+        if (perfectGuardStunRemaining(entity) > 0) {
+            stopStunnedEnemy(enemy);
+            // Prevent goals, Brain, movement and attack timers, without ever persisting a noAI flag.
+            event.setCanceled(true);
         }
     }
     private void claim(ServerPlayer p, String id) throws IOException {
@@ -948,6 +999,8 @@ public final class RpgServer {
         snapshot.add("combo", RpgConfig.JSON.toJsonTree(actor(p).comboSnapshot()));
         snapshot.addProperty("guardMode", actor(p).heavyGuard() ? "HEAVY" : "LIGHT");
         snapshot.add("technique", RpgConfig.JSON.toJsonTree(actor(p).techniqueSnapshot()));
+        snapshot.addProperty("counterRemainingTicks", actor(p).counterRemainingTicks());
+        snapshot.addProperty("attackDamageMultiplier", actor(p).attackDamageMultiplier());
         snapshot.addProperty("legacySkills",true);
         snapshot.add("charge",RpgConfig.JSON.toJsonTree(actor(p).chargeSnapshot()));
         snapshot.add("targetLock",RpgConfig.JSON.toJsonTree(rapierTargets.snapshot(p, actor(p))));

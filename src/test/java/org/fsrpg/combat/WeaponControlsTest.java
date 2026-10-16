@@ -28,9 +28,10 @@ public final class WeaponControlsTest {
         var d=definitions();
         fixedHands(d); repeatedClicks(d); dualCancelsAndBuffer(d); legacySkills(d);
         var a=actor(d,"spear");var one=AttackAim.at(0,5);var two=new AttackAim(List.of(new AttackAim.Point(-25,8),new AttackAim.Point(30,-8)));
-        a.aimedSkill(d.skills().get("spear_thrust"),one);for(int i=0;i<5;i++)a.tick();a.aimedSkill(d.skills().get("spear_sweep"),two);
+        var thrust=d.skills().get("spear_thrust");
+        a.aimedSkill(thrust,one);ticks(a,thrust.windupTicks());a.aimedSkill(d.skills().get("spear_sweep"),two);
         check(a.attackAim().equals(one),"buffer does not retarget current active spear");
-        for(int i=0;i<4;i++)a.tick();check(a.attackAim().equals(two)&&a.currentSkill().id().equals("spear_sweep"),"queued path starts after all active frames");
+        ticks(a,thrust.activeTicks());check(a.attackAim().equals(two)&&a.currentSkill().id().equals("spear_sweep"),"queued path starts after all active frames");
         check(a.setGuarding(true)==ActionResult.ACCEPTED&&a.attackAim()==null,"cancel clears pending aim");
         var wrapped=new AttackAim(List.of(new AttackAim.Point(175,0),new AttackAim.Point(-175,10)));
         check(Math.abs(Math.abs(wrapped.sample(.5).yaw())-180)<.001,"yaw interpolation crosses seam by shortest arc");

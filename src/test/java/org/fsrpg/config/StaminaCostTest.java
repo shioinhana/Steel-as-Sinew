@@ -21,8 +21,12 @@ public final class StaminaCostTest {
     }
 
     private static void templateCosts() throws Exception {
-        for (String name : FILES.subList(0, 4))
-            compareCosts(resource("/stamina-before-0.5.3/" + name), resource("/defaults/" + name), name);
+        for (String name : FILES.subList(0, 4)) {
+            JsonElement before = resource("/stamina-before-0.5.3/" + name);
+            if (name.equals("skills.json")) currentSpearTiming(before);
+            currentTemplateRules(before,name);
+            compareCosts(before, resource("/defaults/" + name), name);
+        }
         CombatRules bundled = RpgConfig.JSON.fromJson(resource("/defaults/combat.json"), CombatRules.class);
         equal(bundled, CombatRules.defaults(), "pure server fallback matches reduced default config");
     }
@@ -129,6 +133,7 @@ public final class StaminaCostTest {
     private static void oldLegacyUpgrade() throws Exception {
         Path directory = Files.createTempDirectory("fsrpg-stamina-old-legacy-");
         try {
+            skipLaterBalanceUpgrades(directory);
             for (String name : List.of("skills.json", "styles.json", "weapons.json")) write(directory, name, resource("/defaults/legacy-0.4/" + name));
             JsonArray before = read(directory, "skills.json").getAsJsonArray();
             var result = new RpgConfig(directory).reload();
@@ -163,9 +168,50 @@ public final class StaminaCostTest {
 
     private static Path oldDirectory() throws Exception {
         Path directory = Files.createTempDirectory("fsrpg-stamina-upgrade-");
-        for (String name : FILES) write(directory, name, resource((FILES.indexOf(name) < 4 ? "/stamina-before-0.5.3/" : "/defaults/") + name));
+        for (String name : FILES) {
+            JsonElement value = resource((FILES.indexOf(name) < 4 ? "/stamina-before-0.5.3/" : "/defaults/") + name);
+            if (name.equals("skills.json")) currentSpearTiming(value);
+            write(directory, name, value);
+        }
         Files.writeString(directory.resolve("legacy-skill-migration-v1.json"), "{}");
+        skipLaterBalanceUpgrades(directory);
         return directory;
+    }
+    // Keep the cost retry fixture on this release's cadence. Restoring an old file after an unrelated
+    // timing marker completed is an explicit later edit; that marker must not retune it on reload.
+    // SpearThrustTimingTest separately proves the timing upgrade, backup and interrupted retry.
+    private static void currentSpearTiming(JsonElement skills) {
+        for (var value : skills.getAsJsonArray()) {
+            JsonObject skill = value.getAsJsonObject();
+            if (!"spear_thrust".equals(skill.get("id").getAsString())) continue;
+            skill.addProperty("windupTicks", 1); skill.addProperty("activeTicks", 1); skill.addProperty("recoveryTicks", 2);
+        }
+    }
+    // This class isolates the historical 0.5.3 divide-by-five upgrade. Current
+    // fixed costs and guard rules have independent server/debit/migration suites.
+    private static void skipLaterBalanceUpgrades(Path directory)throws Exception {
+        Files.writeString(directory.resolve(WeaponStaminaBalanceMigration.MARKER),"{}");
+        Files.writeString(directory.resolve(PerfectGuardMigration.MARKER),"{}");
+    }
+    private static void currentTemplateRules(JsonElement before,String name) {
+        if(name.equals("combat.json")) {
+            var o=before.getAsJsonObject();o.addProperty("perfectGuardTicks",2);o.addProperty("parryStunTicks",4);
+            o.add("perfectGuardCounter",RpgConfig.JSON.toJsonTree(CombatRules.PerfectGuardCounter.defaults()));
+        } else if(name.equals("styles.json")) {
+            for(var entry:before.getAsJsonArray())for(String field:List.of("guard","heavyGuard")) {
+                var o=entry.getAsJsonObject();if(!o.has(field)||!o.get(field).isJsonObject())continue;
+                var guard=o.getAsJsonObject(field);if(guard.get("perfectGuardTicks").getAsInt()>0)guard.addProperty("perfectGuardTicks",2);
+                guard.addProperty("parryStunTicks",4);
+            }
+        } else if(name.equals("archery.json")) {
+            var o=before.getAsJsonObject();o.addProperty("rapidStaminaCost",25);o.addProperty("snipeStaminaCost",75);o.addProperty("partialShotStaminaMultiplier",.7);
+        } else if(name.equals("skills.json")) {
+            for(var entry:before.getAsJsonArray()) {
+                var o=entry.getAsJsonObject();String weapon=o.get("weapon").getAsString(),id=o.get("id").getAsString();
+                int cost=weapon.equals("sword")||weapon.equals("rapier")?5:weapon.equals("dual_blade")?8:id.equals("spear_thrust")?10:id.equals("bow_rapid_release")?5:id.equals("bow_snipe_release")?15:-1;
+                if(cost>=0)o.addProperty("staminaCost",cost*5);
+            }
+        }
     }
     private static boolean containsId(JsonArray entries, String id) { for (var value : entries) if (id.equals(value.getAsJsonObject().get("id").getAsString())) return true; return false; }
     private static CombatActor ready(CombatRules rules) { CombatActor actor = new CombatActor(UUID.randomUUID(), rules); actor.toggleDrawn(); for (int i = 0; i < rules.drawTicks(); i++) actor.tick(); return actor; }

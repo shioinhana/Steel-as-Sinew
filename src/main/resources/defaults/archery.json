@@ -30,10 +30,11 @@
   "bashDamage": 4.0,
   "bashKnockback": 1.4,
   "bashCooldownTicks": 7,
-  "rapidStaminaCost": 0.00,
-  "snipeStaminaCost": 0.00,
+  "rapidStaminaCost": 5,
+  "snipeStaminaCost": 15,
   "shotSpiritCost": 0.0,
-  "bashStaminaCost": 0.00,
+  "bashStaminaCost": 0.0,
   "shotAnimationTicks": 6,
-  "bashAnimationTicks": 7
+  "bashAnimationTicks": 7,
+  "partialShotStaminaMultiplier": 0.7
 }
