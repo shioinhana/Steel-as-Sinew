@@ -4,6 +4,11 @@
   "staminaRegenPerSecond": 5.0,
   "spiritRegenPerSecond": 1.0,
   "resourceRegenDelayTicks": 20,
+  "staminaCombatRules": {
+    "combatTicks": 60,
+    "regenMultiplier": 0.5,
+    "missCostMultiplier": 0.5
+  },
   "drawTicks": 8,
   "sheathTicks": 8,
   "guardArcDegrees": 120,

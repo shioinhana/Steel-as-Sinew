@@ -75,9 +75,9 @@ public final class CombatTest {
         actor.tick();
         equal(actor.requestAttack(costly), ActionResult.COOLDOWN, "cooldown survives action completion");
         tick(actor, 2);
-        near(actor.stamina(), 80, "regen waits configured delay");
+        near(actor.stamina(), 90.15, "emitted miss costs half and recovery keeps running");
         actor.tick();
-        near(actor.stamina(), 80.05, "regen per-second divided by 20 Hz");
+        near(actor.stamina(), 90.2, "idle regen per-second divided by 20 Hz");
         actor.tick();
         equal(actor.requestAttack(costly), ActionResult.ACCEPTED, "cooldown expires at timestamp");
         actor.setResources(90, 80);
@@ -227,7 +227,7 @@ public final class CombatTest {
         equal(actor.requestDodge(true), ActionResult.BUSY, "dodge cannot cancel active frames");
         actor.tick();
         equal(actor.requestDodge(true), ActionResult.ACCEPTED, "configured dodge cancels recovery");
-        near(actor.stamina(), 50, "attack plus dodge costs 20 plus 30");
+        near(actor.stamina(), 60, "emitted empty attack costs ten and dodge costs thirty");
         check(actor.invulnerable(), "dodge initial invulnerability");
         equal(CombatResolver.receiveIncoming(null, actor, 0, 8, 0.5, true, true, false).outcome(),
                 HitOutcome.DODGED, "incoming attack blocked by dodge i-frames");
@@ -282,7 +282,7 @@ public final class CombatTest {
             equal(actor.drainStartedSkills().size(),0,"buffer does not trigger quest progress");
             int active=0;
             for(int t=0;t<current.windupTicks()+current.activeTicks();t++) {
-                if(actor.phase()==CombatPhase.ACTIVE)active++;
+                if(actor.phase()==CombatPhase.ACTIVE) { active++; actor.markAttackContact(actor.snapshot().swingSequence()); }
                 actor.tick();
             }
             equal(active,current.activeTicks(),"every active collision frame completes before chaining");

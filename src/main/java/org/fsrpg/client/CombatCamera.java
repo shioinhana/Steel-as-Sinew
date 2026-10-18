@@ -23,7 +23,8 @@ public final class CombatCamera {
     private static double cursorX,cursorY;
     private static boolean held;
     private static boolean dualFacingLocked;
-    private static long pressedTick;
+    private static long nextSpearInput,spearInput,lastSpearSentTick;
+    private static boolean spearBlockedUntilRelease,spearAimDirty;
     private static final ArrayList<AttackAim.Point> path=new ArrayList<>();
     private record FieldKey(int width,int height,float fov,double requestedWidth,double requestedHeight,
                             float qx,float qy,float qz,float qw,float x,float y,float z,float bodyYaw) {}
@@ -51,12 +52,12 @@ public final class CombatCamera {
     }
     private static void sync() {
         var g=Minecraft.getInstance();String next=active()?style():"";
-        if(!next.equals(mode)) { mode=next; held=false;dualFacingLocked=false;path.clear();cursorX=cursorY=0;
+        if(!next.equals(mode)) { releaseSpear(true); mode=next;dualFacingLocked=false;path.clear();cursorX=cursorY=0;
             if(g.player!=null){yaw=g.player.getYRot();pitch=g.player.getXRot();
                 if(mode.equals("spear")){pitch=(float)Math.clamp(pitch,-SpearAimField.CAMERA_PITCH_DEGREES,SpearAimField.CAMERA_PITCH_DEGREES);face(yaw,pitch);}} }
         else if(mode.equals("spear") && (Math.abs(Mth.wrapDegrees(g.player.getYRot()-yaw))>.1 || Math.abs(g.player.getXRot()-pitch)>.1)) {
             // A server teleport/correction owns player rotation. Do not write the old camera angle back.
-            yaw=g.player.getYRot();pitch=g.player.getXRot();held=false;path.clear();cursorX=cursorY=0;
+            releaseSpear(true);yaw=g.player.getYRot();pitch=g.player.getXRot();path.clear();cursorX=cursorY=0;
         }
         if(mode.equals("spear")) {
             // Vanilla strafing rotates the body away from the cursor/server basis.
@@ -66,7 +67,7 @@ public final class CombatCamera {
         }
         if(mode.equals("rapier")) lockFacing();
     }
-    public static void reset() { mode="";held=false;dualFacingLocked=false;path.clear();cursorX=cursorY=0;cachedFieldKey=null;cachedField=null; }
+    public static void reset() { mode="";held=false;spearInput=0;spearBlockedUntilRelease=spearAimDirty=false;dualFacingLocked=false;path.clear();cursorX=cursorY=0;cachedFieldKey=null;cachedField=null; }
     public static boolean mouse(double dx,double dy) {
         sync();var g=Minecraft.getInstance();
         if(!active() || g.screen!=null || (!mode.equals("dual_blade")&&!mode.equals("spear")&&!mode.equals("rapier"))) return false;
@@ -174,49 +175,59 @@ public final class CombatCamera {
             request.add("aim",RpgConfig.JSON.toJsonTree(AttackAim.at(p.getYRot(),0)));
             ClientHooks.send("aimAttack",request.toString());
         } else if(mode.equals("spear")) {
-            var point=aimPoint();if(!SpearAimField.contains(point,p.getYRot()))return;
-            var request=new JsonObject();request.addProperty("button","left");
-            request.add("aim",RpgConfig.JSON.toJsonTree(new AttackAim(java.util.List.of(point))));
-            ClientHooks.send("aimAttack",request.toString());
+            // A complete physical click can occur between two client ticks.
+            if(!held&&!spearBlockedUntilRelease){gesture(true);gesture(false);}
         } else ClientHooks.send("attack",button);
     }
     public static boolean gestureHeld() { return held; }
     public static void tick(boolean down) {
         sync();var g=Minecraft.getInstance();
-        if(!active() || !mode.equals("spear") || g.screen!=null || !g.isWindowActive()) {held=false;path.clear();return;}
+        if(!active() || !mode.equals("spear") || g.screen!=null || !g.isWindowActive()) {releaseSpear(true);return;}
         gesture(down);
     }
     /** Gesture processing is shared by physical input and the integrated-client review. */
     public static void gesture(boolean down) {
         sync();var g=Minecraft.getInstance();
-        if(!active() || !mode.equals("spear") || g.screen!=null) {held=false;path.clear();return;}
-        if(down&&!held) {held=true;path.clear();pressedTick=g.level.getGameTime();samplePath();}
-        if(down) samplePath();
-        if(!down&&held) {
-            samplePath();held=false;
-            if(path.isEmpty())return;
-            double length=0;for(int i=1;i<path.size();i++)length+=Math.hypot(AttackAim.wrap(path.get(i).yaw()-path.get(i-1).yaw()),path.get(i).pitch()-path.get(i-1).pitch());
-            boolean sweep=g.level.getGameTime()-pressedTick>=ClientOptions.SPEAR_HOLD.get() && length>=ClientOptions.SPEAR_DRAG.get();
-            var points=sweep?java.util.List.copyOf(path):java.util.List.of(path.getLast());
-            if(length<=240) {
-                var request=new JsonObject();request.addProperty("button",sweep?"sweep":"left");request.add("aim",RpgConfig.JSON.toJsonTree(new AttackAim(points)));
-                ClientHooks.send("aimAttack",request.toString());
-            }
-            path.clear();
+        if(!active() || !mode.equals("spear") || g.screen!=null) {releaseSpear(true);return;}
+        if(!down)spearBlockedUntilRelease=false;
+        if(down&&!held&&!spearBlockedUntilRelease) {
+            var point=aimPoint();if(!SpearAimField.contains(point,g.player.getYRot()))return;
+            held=true;path.clear();path.add(point);spearInput=++nextSpearInput;
+            sendSpear("spearPress");
         }
+        if(down&&held) {
+            samplePath();
+            if(spearAimDirty||path.size()>1||g.level.getGameTime()-lastSpearSentTick>=4)sendSpear("spearMove");
+        }
+        if(!down&&held) {samplePath();releaseSpear(false);}
+    }
+    private static void sendSpear(String action) {
+        if(spearInput==0)return;
+        var request=new JsonObject();request.addProperty("input",spearInput);
+        if(!path.isEmpty())request.add("aim",RpgConfig.JSON.toJsonTree(new AttackAim(java.util.List.copyOf(path))));
+        ClientHooks.send(action,request.toString());
+        spearAimDirty=false;
+        var level=Minecraft.getInstance().level;if(level!=null)lastSpearSentTick=level.getGameTime();
+        if(!path.isEmpty()){var point=path.getLast();path.clear();path.add(point);}
+    }
+    private static void releaseSpear(boolean interrupted) {
+        if(held){sendSpear("spearRelease");if(interrupted)spearBlockedUntilRelease=true;}
+        held=false;spearInput=0;spearAimDirty=false;path.clear();
     }
     private static void samplePath() {
         var point=aimPoint();
-        // Turning at an outer edge starts a new legal arc; old world directions must
-        // never leave the current body field in the packet sent on gesture release.
+        // A body turn starts a legal forward arc; no bridge may cross the torso.
         var p=Minecraft.getInstance().player;
-        path.removeIf(old->!SpearAimField.contains(old,p.getYRot()));
+        if(path.removeIf(old->!SpearAimField.contains(old,p.getYRot())))spearAimDirty=true;
         if(!SpearAimField.contains(point,p.getYRot()))return;
-        if(path.isEmpty()) {path.add(point);return;}
+        if(path.isEmpty()) {path.add(point);spearAimDirty=true;return;}
         var previous=path.getLast();
-        if(Math.hypot(AttackAim.wrap(point.yaw()-previous.yaw()),point.pitch()-previous.pitch())<1)return;
-        if(path.size()>=32) {for(int i=path.size()-2;i>0;i-=2)path.remove(i);}
-        path.add(point);
+        if(Math.hypot(AttackAim.wrap(point.yaw()-previous.yaw()),point.pitch()-previous.pitch())<.1)return;
+        // Flush before either packet bound. A fast back-and-forth drag can exceed 240 degrees in fewer than 32 points.
+        double length=Math.hypot(AttackAim.wrap(point.yaw()-previous.yaw()),point.pitch()-previous.pitch());
+        for(int i=1;i<path.size();i++)length+=Math.hypot(AttackAim.wrap(path.get(i).yaw()-path.get(i-1).yaw()),path.get(i).pitch()-path.get(i-1).pitch());
+        if(path.size()>=32||length>240)sendSpear("spearMove");
+        path.add(point);spearAimDirty=true;
     }
     public static AttackAim.Point aimPoint() {
         var g=Minecraft.getInstance();var camera=g.gameRenderer.getMainCamera();
@@ -258,7 +269,7 @@ public final class CombatCamera {
             gui.fill(left,top,left+1,bottom,color);gui.fill(right,top,right+1,bottom,color);
             int x=cx+(int)(cursorX*gui.guiWidth()/g.getWindow().getScreenWidth()),y=cy+(int)(cursorY*gui.guiHeight()/g.getWindow().getScreenHeight());
             gui.fill(x-5,y,x+6,y+1,0xffffdf83);gui.fill(x,y-5,x+1,y+6,0xffffdf83);
-            gui.drawString(g.font,held?"松开扫击 · 拖动记录轨迹":"点按刺击 · 按住拖动扫击",10,66,0xffe6edff);
+            gui.drawString(g.font,held?"保持刺出 · 移动枪尖扫击 · 松开收回":"长枪收回 · 点按刺出 · 长按保持",10,66,0xffe6edff);
         } else if(mode.equals("rapier")) {
             var target=lockedTarget();var lock=ClientState.object(ClientState.snapshot(),"targetLock");
             String info=target==null?"索敌范围 "+HudReadout.number(ClientState.number(lock,"range",10))+" 格 · 优先敌对生物"

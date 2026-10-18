@@ -2,7 +2,7 @@ package org.fsrpg.combat;
 
 import java.util.UUID;
 
-/** Pure authoritative resource coverage: level arithmetic, clamping and tick delay. */
+/** Pure authoritative resource coverage: level arithmetic, clamping and recovery tiers. */
 public final class StaminaLevelTest {
     private static int checks;
     public static void main(String[] args) {
@@ -37,8 +37,9 @@ public final class StaminaLevelTest {
         actor.setPlayerLevel(100); actor.setResources(0, 40); ticks(actor, 20);
         near(19, actor.stamina(), "20 server ticks regenerate exactly one level rate"); near(41, actor.spirit(), "spirit rate is independent");
         check(actor.consumeStamina(5), "spend accepted"); double spent = actor.stamina();
-        ticks(actor, 19); near(spent, actor.stamina(), "spend preserves 20 tick delay");
-        actor.setPlayerLevel(4); actor.tick(); near(spent + 8.0 / 20, actor.stamina(), "level updates rate without resetting delay");
+        ticks(actor, 19); near(spent + 19 * 19.0 / 40, actor.stamina(), "recent combat immediately regenerates half of the level rate");
+        double beforeLevelChange = actor.stamina();
+        actor.setPlayerLevel(4); actor.tick(); near(beforeLevelChange + 8.0 / 40, actor.stamina(), "level updates the half rate without resetting combat time");
         actor.setResources(actor.maxStamina() - .001, 100); actor.tick(); near(actor.maxStamina(), actor.stamina(), "regen clips fractional maximum");
 
         var custom = new StaminaLevelScaling(2, 3, 4, 1.1, 5);

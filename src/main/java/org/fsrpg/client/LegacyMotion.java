@@ -73,7 +73,6 @@ final class LegacyMotion {
             return prefix+name;
         }
         if(entity.isCrouching())return prefix+"crouch_idle";
-        if(kind(model).equals("dual_blade"))return "dual_idle_"+(payload.leftSide()+1)+(payload.rightSide()+1);
         return prefix+"static_idle";
     }
     static Map<String,Pose> sample(ModelDocument model, RpgAnimationPayload payload, double seconds,
@@ -106,7 +105,7 @@ final class LegacyMotion {
         return Map.copyOf(pose);
     }
     static Map<String,Pose> local(ModelDocument model,Clip clip,double seconds) {
-        return model.rig().sampleLocal(java.util.List.of(clip),seconds,Map.of());
+        return LegacyPlayback.sample(model,clip,seconds);
     }
     private static void rotate(Map<String,Pose> pose,String id,double x,double y,double z) {
         Pose original=pose.get(id);if(original==null)return;

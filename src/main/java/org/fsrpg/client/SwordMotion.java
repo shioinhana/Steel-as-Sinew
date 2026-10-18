@@ -42,10 +42,10 @@ public final class SwordMotion {
         Clip idle = rig.clips().get("legacy_rapier_static_idle");
         if (idle == null) idle = rig.clips().get("rapier_idle");
         if (idle == null) throw new IllegalArgumentException("Original sword idle is missing");
-        Map<String, Pose> pose = new HashMap<>(rig.sampleLocal(List.of(idle), clockSeconds, Map.of()));
+        Map<String, Pose> pose = new HashMap<>(LegacyPlayback.sample(model, idle, clockSeconds));
         String name = source(action);
         if (!name.equals("static_idle") && !name.equals("idle_upper")) {
-            Map<String, Pose> stroke = rig.sampleLocal(List.of(action), seconds, Map.of());
+            Map<String, Pose> stroke = LegacyPlayback.sample(model, action, seconds);
             Set<String> upper = PoseLayers.masks(rig).get("upper");
             for (String id : action.tracks().keySet())
                 if (upper.contains(id) || id.equals("root") || id.equals("hip")) pose.put(id, stroke.get(id));

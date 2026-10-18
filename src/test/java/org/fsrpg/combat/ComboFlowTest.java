@@ -55,7 +55,7 @@ public final class ComboFlowTest {
                 equal(second,actor.currentSkill().id(),"one follow-up selects the next authored clip");
                 equal(0,actor.snapshot().skillElapsedTicks(),"full next windup");
                 equal(1,actor.drainStartedSkills().size(),"one cost/quest start event");
-                near(before-d.skills().get(second).staminaCost(),actor.stamina(),"one exact follow-up cost");
+                near(before-d.skills().get(second).staminaCost()+(at<contact?initial.staminaCost()*.5:0),actor.stamina(),"one exact follow-up reservation after emitted miss settlement");
                 ticks(actor,actor.currentSkill().durationTicks()+20);
                 equal(sequence+1,actor.snapshot().swingSequence(),"no unintended third attack after one early click");
             }
@@ -107,7 +107,7 @@ public final class ComboFlowTest {
         for(int i=0;i<20;i++)check(actor.requestStyledAttack(SkillInput.LEFT,d.skills()).accepted(),"mashing accepts only a single pending intent");
         ticks(actor,7);
         equal(1L,actor.snapshot().swingSequence(),"unaffordable buffered attack never starts");
-        near(0,actor.stamina(),"no partial charge for insufficient resource");
+        near(2.5,actor.stamina(),"failed follow-up keeps the prior miss refund and charges nothing extra");
         equal("INSUFFICIENT_STAMINA",actor.comboSnapshot().lastRejection(),"execution-time rejection is visible");
         check(actor.drainStartedSkills().isEmpty(),"rejection cannot count a skill start");
         actor.restoreResources(5,0);
@@ -145,6 +145,7 @@ public final class ComboFlowTest {
             actor.drainStartedSkills();ticks(actor,at);
             if(actor.phase()!=CombatPhase.RECOVERY)actor.requestStyledAttack(SkillInput.LEFT,catalog);
             var victim=UUID.randomUUID();boolean committed=actor.claimVictim(victim);
+            if(committed)actor.markAttackContact(actor.snapshot().swingSequence());
             long sequence=actor.snapshot().swingSequence();double cost=actor.stamina();int cooldown=actor.cooldownRemaining(expensive.id());
             equal(ActionResult.ACCEPTED,actor.requestPrecisionGuard(false),"validated precision defense has priority in every attack phase "+at);
             equal(CombatPhase.GUARDING,actor.phase(),"precision request enters actual guarding");

@@ -27,7 +27,7 @@ public final class CombatActor {
     private int dodgeElapsed;
     private CombatRules dodgeRules;
     private long dodgeReadyAt;
-    private long staminaRegenAt;
+    private long staminaCombatUntil;
     private long spiritRegenAt;
     private double stamina;
     private int playerLevel;
@@ -88,6 +88,15 @@ public final class CombatActor {
     private long riposteUntil, repriseUntil;
     private final Map<String, Long> skillReadyAt = new HashMap<>();
     private final Set<UUID> swingVictims = new HashSet<>();
+    private static final class AttackReservation {
+        final double missRefund;
+        boolean contact;
+        AttackReservation(double amount, double missCostMultiplier) { this.missRefund = amount * (1 - missCostMultiplier); }
+    }
+    private final Map<Long, AttackReservation> attackReservations = new HashMap<>();
+    private long nextStaminaReservation, attackStaminaReservation;
+    private boolean attackEmitted;
+    private boolean spearAttackHeld;
 
     public CombatActor(UUID id, CombatRules rules) {
         if (id == null || rules == null) throw new IllegalArgumentException("id and rules are required");
@@ -108,6 +117,14 @@ public final class CombatActor {
     public int playerLevel() { return playerLevel; }
     public double maxStamina() { return maxStamina; }
     public double staminaRegenPerSecond() { return staminaRegenPerSecond; }
+    /** Recent real combat halves stamina recovery; attack preparation and a miss leave it unchanged. */
+    public boolean staminaCombatState() { return tick < staminaCombatUntil; }
+    public double currentStaminaRegenPerSecond() {
+        return staminaRegenPerSecond * (staminaCombatState() ? rules.staminaCombatRules().regenMultiplier() : 1);
+    }
+    public void markCombatActivity() {
+        staminaCombatUntil = Math.max(staminaCombatUntil, tick + rules.staminaCombatRules().combatTicks());
+    }
     /** Experience-level changes never refill resources; a lower cap only clips the current amount. */
     public void setPlayerLevel(int level) {
         StaminaLevelScaling.checkLevel(level);
@@ -212,10 +229,70 @@ public final class CombatActor {
     }
 
     public boolean consumeStamina(double amount) {
+        if (!debitStamina(amount)) return false;
+        if (amount > 0) markCombatActivity();
+        return true;
+    }
+
+    private boolean debitStamina(double amount) {
         SkillDefinition.checkNumber(amount, "stamina cost", 0, 1_000_000);
         if (stamina + 1e-9 < amount) return false;
         stamina = Math.max(0, stamina - amount);
-        if (amount > 0) staminaRegenAt = tick + rules.resourceRegenDelayTicks();
+        return true;
+    }
+
+    /** Reserve the full cost of an emitted projectile without suppressing recovery. Zero means unaffordable. */
+    public long reserveAttackStamina(double amount) {
+        if (!debitStamina(amount)) return 0;
+        long reservation = ++nextStaminaReservation;
+        attackReservations.put(reservation, new AttackReservation(amount, rules.staminaCombatRules().missCostMultiplier()));
+        return reservation;
+    }
+
+    /** A real hit, block, parry or clash keeps the full reserved cost and starts half-rate recovery. */
+    public boolean markReservedAttackContact(long reservation) {
+        var pending = attackReservations.get(reservation);
+        if (pending == null) return false;
+        pending.contact = true;
+        markCombatActivity();
+        return true;
+    }
+
+    /** Settle once after the attack/projectile can no longer contact anything; an empty attack costs half. */
+    public double settleReservedAttackStamina(long reservation) {
+        var pending = attackReservations.remove(reservation);
+        if (pending == null || pending.contact) return 0;
+        double refund = pending.missRefund;
+        stamina = Math.min(maxStamina, stamina + refund);
+        return refund;
+    }
+
+    /** The server must mark contact before a parry/clash clears this particular swing. */
+    public boolean markAttackContact(long sequence) {
+        return sequence == swingSequence && attackEmitted && attackStaminaReservation != 0
+                && markReservedAttackContact(attackStaminaReservation);
+    }
+
+    private void settleAttackStamina() {
+        if (attackStaminaReservation == 0) return;
+        // Cancelling an uncommitted windup retains its original full cost. Only an emitted miss is discounted.
+        if (attackEmitted) settleReservedAttackStamina(attackStaminaReservation);
+        else attackReservations.remove(attackStaminaReservation);
+        attackStaminaReservation = 0;
+        attackEmitted = false;
+    }
+
+    public boolean spearAttackHeld() { return spearAttackHeld; }
+
+    /** The adapter owns input leases and aim validation; one hold retains the same paid swing and victims. */
+    public boolean setSpearAttackHeld(boolean held, AttackAim aim) {
+        if (skill == null || !skill.weapon().equals("spear")
+                || phase != CombatPhase.WINDUP && phase != CombatPhase.ACTIVE) {
+            spearAttackHeld = false;
+            return false;
+        }
+        spearAttackHeld = held;
+        if (aim != null) attackAim = aim;
         return true;
     }
 
@@ -328,12 +405,14 @@ public final class CombatActor {
         if (spirit + 1e-9 < requested.spiritCost()) return ActionResult.INSUFFICIENT_SPIRIT;
         SkillDefinition timed = legacyDualTiming(requested);
         boolean counter = leftIntent && counterRemainingTicks() > 0;
-        consumeStamina(requested.staminaCost());
+        settleAttackStamina();
+        attackStaminaReservation = reserveAttackStamina(requested.staminaCost());
         consumeSpirit(requested.spiritCost());
         // Any accepted attack commits the opening; a rejected/buffered input never spends it.
         clearTechniques();
         heavyGuard = false;
         resetCombo();
+        spearAttackHeld = false;
         skill = timed; attackAim=inputAim;
         attackDamageMultiplier = counter ? rules.perfectGuardCounter().damageMultiplier() : 1;
         if (counter) counterUntil = 0;
@@ -520,6 +599,7 @@ public final class CombatActor {
     }
 
     public void recordGuardContact() {
+        markCombatActivity();
         var guard = guardRules();
         if (guardContacts == 0 || tick - lastGuardContactTick >= guard.repeatHitWindowTicks()) guardContacts = 1;
         else guardContacts++;
@@ -576,6 +656,7 @@ public final class CombatActor {
     /** Apply ordinary hit reaction on the next server tick so simultaneous opposite swings can both land. */
     public void queueHitStun(int ticks) {
         SkillDefinition.checkTicks(ticks, "hit stun ticks", true);
+        markCombatActivity();
         clearTechniques();
         // Preserve this tick's already committed outgoing strike for deterministic trades.
         // The next authoritative stun clears its multiplier with the rest of the attack.
@@ -600,8 +681,11 @@ public final class CombatActor {
                         chargeElapsed++;
                         if(chargeHeld) { skillElapsed=Math.min(skill.windupTicks()-1,skillElapsed+1); updateAttackPhase(); break; }
                     }
-                    skillElapsed++;
+                    if (spearAttackHeld && phase == CombatPhase.ACTIVE)
+                        skillElapsed = Math.min(skillElapsed + 1, skill.windupTicks() + skill.activeTicks() - 1);
+                    else skillElapsed++;
                     if(chargeArmed && phase==CombatPhase.WINDUP && skillElapsed>=skill.windupTicks()) commitCharge();
+                    if (skillElapsed >= skill.windupTicks() + skill.activeTicks()) settleAttackStamina();
                     if (queuedSkill != null && skillElapsed >= skill.windupTicks() + skill.activeTicks()
                             && (cancels().recoveryAttack() || skillElapsed >= skill.durationTicks())) {
                         // Every active collision tick has completed. Bypass recovery before it clears the combo.
@@ -624,7 +708,7 @@ public final class CombatActor {
                 default -> { }
             }
         }
-        if (tick >= staminaRegenAt) stamina = Math.min(maxStamina, stamina + staminaRegenPerSecond / 20.0);
+        stamina = Math.min(maxStamina, stamina + currentStaminaRegenPerSecond() / 20.0);
         if (tick >= spiritRegenAt) spirit = Math.min(rules.maxSpirit(), spirit + rules.spiritRegenPerSecond() / 20.0);
         if(style!=null && style.controls().legacyDual() && phase==CombatPhase.READY && tick-lastDualEnd>=40) leftRest=rightRest=-1;
         skillReadyAt.entrySet().removeIf(entry -> entry.getValue() <= tick);
@@ -663,9 +747,11 @@ public final class CombatActor {
             phase = CombatPhase.WINDUP;
             phaseRemaining = skill.windupTicks() - skillElapsed;
         } else if (skillElapsed < skill.windupTicks() + skill.activeTicks()) {
+            attackEmitted = true;
             phase = CombatPhase.ACTIVE;
             phaseRemaining = skill.windupTicks() + skill.activeTicks() - skillElapsed;
         } else if (skillElapsed < skill.durationTicks()) {
+            settleAttackStamina();
             phase = CombatPhase.RECOVERY;
             phaseRemaining = skill.durationTicks() - skillElapsed;
         } else {
@@ -684,6 +770,8 @@ public final class CombatActor {
 
     private void resetCombo() { comboStyle = null; comboStage = -1; queuedSkill = null; queuedStyle=null; queuedStage=0; queuedAim=null; queuedLeftIntent=false; resumeComboStyle=null; resumeComboStage=-1; resumeComboUntil=0; }
     private void clearAttack() {
+        settleAttackStamina();
+        spearAttackHeld = false;
         if(skill!=null && dual()) lastDualEnd=tick;
         skill = null; attackAim=null; skillElapsed = 0; swingVictims.clear(); resetCombo();
         attackDamageMultiplier = 1;

@@ -30,19 +30,36 @@ import org.fsrpg.mixin.ArcheryArrowInvoker;
 public final class ArcheryServer {
     public interface Sink {
         default void changed(ServerPlayer player) {}
+        default void defenseContact(ServerPlayer player) {}
         default void skillUsed(UUID player,String skillId) {}
         default void hostileKilled(UUID player) {}
         default void kill(UUID player) { hostileKilled(player); }
         default double damageBonus(UUID player) { return 0; }
     }
     private static final String TAG="fsrpgArchery",OWNER="fsrpgArcheryOwner",PIERCE="fsrpgArcheryPierce",SHIELD="fsrpgArcheryShieldPierce",
-            BLOCKS="fsrpgArcheryBlocks",SLOW="fsrpgArcheryBlockSlow",CAPTURED="fsrpgArcheryCaptured";
+            BLOCKS="fsrpgArcheryBlocks",SLOW="fsrpgArcheryBlockSlow",CAPTURED="fsrpgArcheryCaptured",SETTLED="fsrpgArcheryStaminaSettled";
     private final Map<UUID,ArcheryController> controllers=new HashMap<>();
     private final Set<UUID> manualHeld=new HashSet<>();
+    /** The original actor owns the escrow even if a parry changes the arrow's Minecraft owner. */
+    private static final class PendingArrow {
+        final AbstractArrow arrow;
+        final ServerPlayer owner;
+        final CombatActor actor;
+        final long reservation;
+        boolean contacted;
+        PendingArrow(AbstractArrow arrow,ServerPlayer owner,CombatActor actor,long reservation) {
+            this.arrow=arrow;this.owner=owner;this.actor=actor;this.reservation=reservation;
+        }
+    }
+    private record PendingBash(CombatActor actor,long reservation) {}
+    private final Map<UUID,PendingArrow> pendingArrows=new HashMap<>();
+    private final Map<UUID,PendingBash> pendingBashes=new HashMap<>();
     private final Sink sink;
     private ArcheryRules rules;
     public ArcheryServer(ArcheryRules rules,Sink sink) { this.rules=Objects.requireNonNull(rules); this.sink=Objects.requireNonNull(sink); }
-    public void setRules(ArcheryRules rules) { this.rules=Objects.requireNonNull(rules); }
+    public void setRules(ArcheryRules rules) {
+        Objects.requireNonNull(rules);settleAllProjectiles();this.rules=rules;
+    }
     public ArcheryRules rules() { return rules; }
     private ArcheryController controller(UUID player) { return controllers.computeIfAbsent(player,id->new ArcheryController(rules)); }
     public static boolean holdingBow(Player player) { return player.getMainHandItem().getItem() instanceof BowItem||player.getOffhandItem().getItem() instanceof BowItem; }
@@ -105,18 +122,26 @@ public final class ArcheryServer {
         var c=controller(p.getUUID()); c.cancelCharge(); manualHeld.remove(p.getUUID());
         if(a.stamina()+1e-9<rules.bashStaminaCost()) { sink.changed(p); return ActionResult.INSUFFICIENT_STAMINA; }
         if(!c.bash(p.level().getGameTime(),rules)) { sink.changed(p); return ActionResult.COOLDOWN; }
-        a.consumeStamina(rules.bashStaminaCost());
+        long reservation=a.reserveAttackStamina(rules.bashStaminaCost());
+        if(reservation==0) {sink.changed(p);return ActionResult.INSUFFICIENT_STAMINA;}
         Vec3 direction=p.getLookAngle().multiply(1,0,1);
         if(direction.lengthSqr()<1e-8) direction=Vec3.directionFromRotation(0,p.getYRot());
         direction=direction.normalize();
         float damage=(float)Math.min(1000000,rules.bashDamage()+progress.damageBonus());
-        for(LivingEntity target:p.level().getEntitiesOfClass(LivingEntity.class,p.getBoundingBox().inflate(rules.bashRange()),e->e!=p&&e.isAlive()&&!e.isSpectator())) {
-            Vec3 flat=target.position().subtract(p.position()).multiply(1,0,1);
-            if(flat.lengthSqr()<1e-8||flat.lengthSqr()>rules.bashRange()*rules.bashRange()||flat.normalize().dot(direction)<.4) continue;
-            if(!p.hasLineOfSight(target)||target instanceof Player other&&!p.canHarmPlayer(other)) continue;
-            if(target.hurtServer(p.level(),p.damageSources().playerAttack(p),damage)) {
-                Vec3 away=flat.normalize(); target.knockback(rules.bashKnockback(),-away.x,-away.z); target.hurtMarked=true;
+        pendingBashes.put(p.getUUID(),new PendingBash(a,reservation));
+        try {
+            for(LivingEntity target:p.level().getEntitiesOfClass(LivingEntity.class,p.getBoundingBox().inflate(rules.bashRange()),e->e!=p&&e.isAlive()&&!e.isSpectator())) {
+                Vec3 flat=target.position().subtract(p.position()).multiply(1,0,1);
+                if(flat.lengthSqr()<1e-8||flat.lengthSqr()>rules.bashRange()*rules.bashRange()||flat.normalize().dot(direction)<.4) continue;
+                if(!p.hasLineOfSight(target)||target instanceof Player other&&!p.canHarmPlayer(other)) continue;
+                if(target.hurtServer(p.level(),p.damageSources().playerAttack(p),damage)) {
+                    a.markReservedAttackContact(reservation);
+                    Vec3 away=flat.normalize(); target.knockback(rules.bashKnockback(),-away.x,-away.z); target.hurtMarked=true;
+                }
             }
+        } finally {
+            pendingBashes.remove(p.getUUID());
+            a.settleReservedAttackStamina(reservation);
         }
         p.level().playSound(null,p.getX(),p.getY(),p.getZ(),SoundEvents.PLAYER_ATTACK_SWEEP,SoundSource.PLAYERS,.9f,.8f);
         p.level().sendParticles(ParticleTypes.SWEEP_ATTACK,p.getX()+direction.x,p.getY()+1.1,p.getZ()+direction.z,4,.4,.3,.4,0);
@@ -125,6 +150,7 @@ public final class ArcheryServer {
     public void cancelCharge(ServerPlayer p) { controller(p.getUUID()).cancelCharge(); manualHeld.remove(p.getUUID()); }
     /** Keep persistent charge/capture cooldown on logout; clear only the equipped/animation state. */
     public void remove(UUID player) {
+        for(var pending:List.copyOf(pendingArrows.values())) if(pending.actor.id().equals(player))settleProjectile(pending.arrow);
         var c=controllers.get(player); if(c!=null) c.detach(); manualHeld.remove(player);
     }
     public void tick(ServerPlayer p,CombatActor a,ArcheryProgress progress) {
@@ -171,9 +197,12 @@ public final class ArcheryServer {
             tag.putBoolean(SHIELD,true);
             tag.putDouble(SLOW,rules.chuanTangFengBlockSlow());
         }
-        if(!p.level().addFreshEntity(arrow)) return ActionResult.BUSY;
+        if(!p.level().addFreshEntity(arrow)||arrow.isRemoved()) return ActionResult.BUSY;
+        long reservation=actor.reserveAttackStamina(stamina);
+        if(reservation==0) {arrow.discard();return ActionResult.INSUFFICIENT_STAMINA;}
+        pendingArrows.put(arrow.getUUID(),new PendingArrow(arrow,p,actor,reservation));
         if(count>0) { ammo.shrink(count); if(ammo.isEmpty()) p.getInventory().removeItem(ammo); }
-        actor.consumeStamina(stamina); actor.consumeSpirit(rules.shotSpiritCost());
+        actor.consumeSpirit(rules.shotSpiritCost());
         if(shot.stance()==ArcheryController.Stance.SNIPE) {
             int damage=weapon.getDamageValue()+shot.durability();
             if(weapon.isDamageableItem()&&damage>=weapon.getMaxDamage()) { weapon.shrink(1); p.level().playSound(null,p.getX(),p.getY(),p.getZ(),SoundEvents.ITEM_BREAK.value(),SoundSource.PLAYERS,.8f,1); }
@@ -188,6 +217,36 @@ public final class ArcheryServer {
     public ArcheryController.Snapshot snapshot(ServerPlayer p,ArcheryProgress progress) { return controller(p.getUUID()).snapshot(p.level().getGameTime(),rules,progress); }
     public JsonObject snapshotJson(ServerPlayer p,ArcheryProgress progress) { return RpgConfig.JSON.toJsonTree(snapshot(p,progress)).getAsJsonObject(); }
     public boolean active(ServerPlayer p) { return controller(p.getUUID()).active(); }
+    /** Called after a real hit/block/parry, never for the player's dodge immunity. */
+    public boolean markProjectileContact(Projectile projectile) {
+        if(projectile.level().isClientSide())return false;
+        var pending=pendingArrows.get(projectile.getUUID());
+        if(pending==null||pending.arrow!=projectile||!pending.actor.markReservedAttackContact(pending.reservation))return false;
+        boolean first=!pending.contacted;pending.contacted=true;
+        if(first&&!pending.owner.isRemoved())sink.changed(pending.owner);
+        return true;
+    }
+    /** A blocking player can cancel hurtServer; the adapter reports that synchronous bash contact explicitly. */
+    public boolean markBashContact(UUID attacker) {
+        var pending=pendingBashes.get(attacker);
+        return pending!=null&&pending.actor().markReservedAttackContact(pending.reservation());
+    }
+    private void settleProjectile(AbstractArrow arrow) {
+        var pending=pendingArrows.remove(arrow.getUUID());
+        if(pending==null)return;
+        // Remove before callbacks: an impact followed by discard/unload must settle exactly once.
+        double refund=pending.actor.settleReservedAttackStamina(pending.reservation);
+        arrow.getPersistentData().putBoolean(SETTLED,true);
+        if(refund>0&&!pending.owner.isRemoved())sink.changed(pending.owner);
+    }
+    public void onEntityLeave(Entity entity) {
+        if(!entity.level().isClientSide()&&entity instanceof AbstractArrow arrow)settleProjectile(arrow);
+    }
+    /** Invoke before persisting actors at shutdown; reconfigure and logout use the same settlement path. */
+    public void settleAllProjectiles() {
+        for(var pending:List.copyOf(pendingArrows.values()))settleProjectile(pending.arrow);
+    }
+    public int pendingProjectileCount() { return pendingArrows.size(); }
     public void onDeath(LivingDeathEvent event) {
         if(event.getEntity() instanceof Player||!(event.getEntity() instanceof net.minecraft.world.entity.monster.Enemy||event.getEntity().getType().getCategory()==MobCategory.MONSTER)) return;
         if(!(event.getSource().getDirectEntity() instanceof AbstractArrow arrow)||!isArcheryArrow(arrow)||!(event.getSource().getEntity() instanceof ServerPlayer killer)) return;
@@ -199,8 +258,15 @@ public final class ArcheryServer {
             if(Double.isFinite(fraction)&&fraction>0) event.setNewDamage((float)Math.min(1000000,event.getNewDamage()+event.getOriginalDamage()*Math.min(10,fraction)));
         }
     }
+    public void onDamagePost(LivingDamageEvent.Post event) {
+        if(event.getOriginalDamage()>0&&event.getSource().getDirectEntity() instanceof Projectile projectile)
+            markProjectileContact(projectile);
+    }
     /** Legacy body attack bonus is added before vanilla armor, rather than to projectile velocity. */
     public void onOutgoing(LivingIncomingDamageEvent event) {
+        // This event is posted after vanilla invulnerability checks. Player dodge/parry decisions run in RpgServer.
+        if(!event.isCanceled()&&event.getAmount()>0&&!(event.getEntity() instanceof ServerPlayer)
+                &&event.getSource().getDirectEntity() instanceof Projectile projectile)markProjectileContact(projectile);
         if(event.getSource().getDirectEntity() instanceof AbstractArrow arrow&&isArcheryArrow(arrow)
                 &&event.getSource().getEntity() instanceof ServerPlayer player) {
             double bonus=sink.damageBonus(player.getUUID());
@@ -209,6 +275,8 @@ public final class ArcheryServer {
     }
     public void onShieldBlock(LivingShieldBlockEvent event) {
         if(event.getDamageSource().getDirectEntity() instanceof AbstractArrow arrow&&isArcheryArrow(arrow)&&arrow.getPersistentData().getBooleanOr(SHIELD,false)) event.setBlocked(false);
+        if(event.getBlocked()&&event.getBlockedDamage()>0&&event.getDamageSource().getDirectEntity() instanceof Projectile projectile)
+            markProjectileContact(projectile);
     }
     /** Returns true when the caller should skip its ordinary guard/stun handling. */
     public boolean onIncoming(LivingIncomingDamageEvent event,ArcheryProgress progress) {
@@ -216,6 +284,9 @@ public final class ArcheryServer {
         event.setCanceled(true);
         if(projectile instanceof AbstractArrow arrow&&!arrow.getPersistentData().getBooleanOr(CAPTURED,false)
                 &&controller(p.getUUID()).claimCapturedArrow(p.level().getGameTime(),rules)) {
+            // Physically catching an arrow is a defense contact; uncaught immunity alone is still a miss.
+            markProjectileContact(arrow);
+            sink.defenseContact(p);
             arrow.getPersistentData().putBoolean(CAPTURED,true);
             ItemStack captured=arrow.getPickupItemStackOrigin().copyWithCount(1);
             if(captured.isEmpty())captured=new ItemStack(Items.ARROW);
@@ -229,9 +300,10 @@ public final class ArcheryServer {
     }
     /** Block penetration retains the old three impacts and per-block speed reduction. */
     public boolean onProjectileImpact(ProjectileImpactEvent event) {
-        if(!(event.getProjectile() instanceof AbstractArrow arrow)||!isArcheryArrow(arrow)||!(event.getRayTraceResult() instanceof BlockHitResult)) return false;
+        if(event.isCanceled()||!(event.getProjectile() instanceof AbstractArrow arrow)||arrow.level().isClientSide()
+                ||!isArcheryArrow(arrow)||!(event.getRayTraceResult() instanceof BlockHitResult)) return false;
         var tag=arrow.getPersistentData(); int remaining=tag.getIntOr(BLOCKS,0);
-        if(remaining<=0) return false;
+        if(remaining<=0) {settleProjectile(arrow);return false;}
         Vec3 velocity=arrow.getDeltaMovement();
         double slow=Math.max(0,Math.min(1,tag.getDoubleOr(SLOW,0)));
         tag.putInt(BLOCKS,remaining-1); arrow.setDeltaMovement(velocity.scale(1-slow));

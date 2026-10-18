@@ -27,7 +27,7 @@ public final class StaminaRegenTest {
             equal(CombatRules.defaults(), rules, "fallback matches seeded rules");
             near(5, rules.staminaRegenPerSecond(), "current fresh seed starts at five");
             near(1, rules.spiritRegenPerSecond(), "spirit regeneration unchanged");
-            equal(20, rules.resourceRegenDelayTicks(), "regeneration delay unchanged");
+            equal(20, rules.resourceRegenDelayTicks(), "historical spirit regeneration delay unchanged");
             equal(resource("combat.json"), read(directory), "fresh combat bytes represent exact bundled defaults");
             check(!Files.exists(directory.resolve(StaminaRegenMigration.BACKUP).resolve("combat.json")), "fresh seed has no invented original combat backup");
             CombatActor actor = new CombatActor(UUID.randomUUID(), rules);
@@ -38,9 +38,9 @@ public final class StaminaRegenTest {
             actor.consumeStamina(5);
             double drained = actor.stamina();
             for (int tick = 1; tick < rules.resourceRegenDelayTicks(); tick++) actor.tick();
-            near(drained, actor.stamina(), "spending retains existing recovery delay");
+            near(drained + 19 * .125, actor.stamina(), "combat stamina recovers at half rate throughout the old delay period");
             actor.tick();
-            near(drained + .25, actor.stamina(), "first eligible tick restores 5/20 stamina");
+            near(drained + 2.5, actor.stamina(), "twenty combat ticks restore half the five-point rate");
             actor.setResources(49.95, 100);
             actor.tick();
             near(50, actor.stamina(), "faster recovery still respects current maximum");

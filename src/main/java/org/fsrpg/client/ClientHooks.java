@@ -164,7 +164,10 @@ public final class ClientHooks {
                         game.player.getYRot(),game.player.getXRot(),game.player.onGround(),game.player.horizontalCollision));
         }
         if(rapier&&action.equals("dodge")&&argument.isBlank())argument=CombatCamera.dodgeIntent();
-        if (action.equals("attack") || action.equals("aimAttack") || action.equals("dodge") || action.equals("draw") || action.equals("guard") || action.equals("guardMode"))
+        if(action.startsWith("spear")&&game.player!=null&&game.getConnection()!=null)
+            game.getConnection().send(new net.minecraft.network.protocol.game.ServerboundMovePlayerPacket.Rot(
+                    game.player.getYRot(),game.player.getXRot(),game.player.onGround(),game.player.horizontalCollision));
+        if (action.equals("attack") || action.equals("aimAttack") || action.startsWith("spear") || action.equals("dodge") || action.equals("draw") || action.equals("guard") || action.equals("guardMode"))
             PlayerAnimations.interruptInspection();
         if (Minecraft.getInstance().getConnection() != null)
             ClientPacketDistributor.sendToServer(new RpgActionPayload(action, argument));

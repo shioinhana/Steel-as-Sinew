@@ -8,8 +8,11 @@ import net.minecraft.resources.Identifier;
 
 /** Server-authoritative visual intent, also sent to other players tracking the actor. */
 public record RpgAnimationPayload(UUID entityId, String style, String model, String action, String phase,
-        int phaseRemaining, int windupTicks, int activeTicks, int recoveryTicks, long sequence, boolean drawn, int leftSide, int rightSide, org.fsrpg.combat.AttackAim aim)
+        int phaseRemaining, int windupTicks, int activeTicks, int recoveryTicks, long sequence, boolean drawn, int leftSide, int rightSide, org.fsrpg.combat.AttackAim aim, boolean spearHeld)
         implements CustomPacketPayload {
+    public RpgAnimationPayload(UUID entityId,String style,String model,String action,String phase,int phaseRemaining,int windupTicks,int activeTicks,int recoveryTicks,long sequence,boolean drawn,int leftSide,int rightSide,org.fsrpg.combat.AttackAim aim) {
+        this(entityId,style,model,action,phase,phaseRemaining,windupTicks,activeTicks,recoveryTicks,sequence,drawn,leftSide,rightSide,aim,false);
+    }
     public RpgAnimationPayload(UUID entityId,String style,String model,String action,String phase,int phaseRemaining,int windupTicks,int activeTicks,int recoveryTicks,long sequence,boolean drawn) {
         this(entityId,style,model,action,phase,phaseRemaining,windupTicks,activeTicks,recoveryTicks,sequence,drawn,-1,-1,null);
     }
@@ -22,8 +25,9 @@ public record RpgAnimationPayload(UUID entityId, String style, String model, Str
             buf.writeVarLong(value.sequence); buf.writeBoolean(value.drawn);
             buf.writeInt(value.leftSide);buf.writeInt(value.rightSide);
             buf.writeUtf(value.aim==null?"":org.fsrpg.config.RpgConfig.JSON.toJson(value.aim),4096);
+            buf.writeBoolean(value.spearHeld);
         }, buf -> new RpgAnimationPayload(buf.readUUID(), buf.readUtf(128), buf.readUtf(256), buf.readUtf(128),
-                buf.readUtf(32), buf.readVarInt(), buf.readVarInt(), buf.readVarInt(), buf.readVarInt(), buf.readVarLong(), buf.readBoolean(),buf.readInt(),buf.readInt(),readAim(buf.readUtf(4096))));
+                buf.readUtf(32), buf.readVarInt(), buf.readVarInt(), buf.readVarInt(), buf.readVarInt(), buf.readVarLong(), buf.readBoolean(),buf.readInt(),buf.readInt(),readAim(buf.readUtf(4096)),buf.readBoolean()));
     private static org.fsrpg.combat.AttackAim readAim(String value) { return value.isEmpty()?null:org.fsrpg.config.RpgConfig.JSON.fromJson(value,org.fsrpg.combat.AttackAim.class); }
     @Override public Type<? extends CustomPacketPayload> type() { return TYPE; }
 }

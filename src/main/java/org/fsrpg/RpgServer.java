@@ -18,6 +18,7 @@ import net.minecraft.server.permissions.Permissions;
 import net.minecraft.sounds.SoundEvents;
 import net.minecraft.sounds.SoundSource;
 import net.minecraft.world.entity.*;
+import net.minecraft.world.entity.projectile.Projectile;
 import net.minecraft.world.entity.projectile.arrow.AbstractArrow;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.storage.LevelResource;
@@ -73,6 +74,12 @@ public final class RpgServer {
     private final CreatureMeleeServer creatureMelee;
     private static final class GuardPress {boolean held;long serial;}
     private final Map<UUID,GuardPress> guardPresses=new HashMap<>();
+    private final Map<UUID,SpearHoldState> spearHolds=new HashMap<>();
+    private final Map<UUID,Long> spearInputs=new HashMap<>();
+    private final Map<UUID,Vec3> spearOrigins=new HashMap<>();
+    private record SpearRay(Vec3 origin,Vec3 tip,double padding) {}
+    private final Map<UUID,List<SpearRay>> spearRays=new HashMap<>();
+    private final Map<UUID,AABB> spearBounds=new HashMap<>();
     private final Map<UUID, WeaponDrawController> drawControllers = new HashMap<>();
     private final Map<UUID, Resources> resources = new HashMap<>();
     private final Map<UUID, Vec3> dodgeDirections = new HashMap<>();
@@ -127,6 +134,7 @@ public final class RpgServer {
         archeryFile=data.resolve("archery.json");
         archery=new ArcheryServer(definitions.archery(),new ArcheryServer.Sink(){
             @Override public void changed(ServerPlayer player){send(player,"",null);broadcastAnimation(player,true);}
+            @Override public void defenseContact(ServerPlayer player){actor(player).markCombatActivity();}
             @Override public void skillUsed(UUID player,String skill){quests.useSkill(player,skill);}
             @Override public void kill(UUID player){progression.recordArcheryKill(player,MinecraftProgression.epochDay());}
             @Override public double damageBonus(UUID player){return progression.effects(player).damageBonus();}
@@ -139,7 +147,15 @@ public final class RpgServer {
             try { instance = new RpgServer(event.getServer()); }
             catch (Exception failure) { throw new IllegalStateException("FSRPG configuration/progress could not load. Existing files were preserved.", failure); }
         });
-        bus.addListener((ServerStoppingEvent event) -> { if (instance != null) instance.save(); });
+        bus.addListener((ServerStoppingEvent event) -> { if (instance != null) {
+            instance.archery.settleAllProjectiles();
+            instance.actors.values().forEach(CombatActor::forceSheathed);
+            instance.save();
+        } });
+        bus.addListener((net.neoforged.neoforge.event.entity.EntityLeaveLevelEvent event) -> {
+            if(instance!=null&&!event.getLevel().isClientSide())instance.archery.onEntityLeave(event.getEntity());
+        });
+        bus.addListener((LivingDamageEvent.Post event) -> {if(instance!=null)instance.archery.onDamagePost(event);});
         bus.addListener((ServerStoppedEvent event) -> instance = null);
         bus.addListener((ServerTickEvent.Post event) -> { if (instance != null) instance.tick(); });
         bus.addListener((EntityTickEvent.Pre event) -> { if (instance != null) instance.enemyTick(event); });
@@ -197,7 +213,11 @@ public final class RpgServer {
         });
         bus.addListener((LivingIncomingDamageEvent event) -> { if (instance != null) instance.incoming(event); });
         bus.addListener((LivingDamageEvent.Pre event)->{if(instance!=null)instance.archery.onDamagePre(event);});
-        bus.addListener((LivingShieldBlockEvent event)->{if(instance!=null)instance.archery.onShieldBlock(event);});
+        bus.addListener((LivingShieldBlockEvent event)->{if(instance!=null){
+            instance.archery.onShieldBlock(event);
+            if(event.getBlocked()&&event.getBlockedDamage()>0&&event.getEntity() instanceof ServerPlayer player)
+                instance.actor(player).markCombatActivity();
+        }});
         bus.addListener((LivingDamageEvent.Post event)->{if(instance!=null&&event.getEntity() instanceof ServerPlayer player)
             instance.training.damage(player,event.getSource().getEntity(),event.getNewDamage());});
         bus.addListener((net.neoforged.neoforge.event.level.SleepFinishedTimeEvent event)->{
@@ -233,9 +253,10 @@ public final class RpgServer {
         return current;
     }
     private void resetActor(ServerPlayer p) {
+        archery.remove(p.getUUID());cancelSpear(p);
         guardPresses.remove(p.getUUID());
         CombatActor previous = actors.remove(p.getUUID());
-        if (previous != null) resources.put(p.getUUID(), persisted(previous));
+        if (previous != null) { previous.forceSheathed(); resources.put(p.getUUID(), persisted(previous)); }
         dodgeDirections.remove(p.getUUID()); swingItems.remove(p.getUUID());
         pendingStyles.remove(p.getUUID());
         drawControllers.remove(p.getUUID());
@@ -244,9 +265,10 @@ public final class RpgServer {
         actor(p); reconcileWeapon(p); send(p, "", null); broadcastAnimation(p, true);
     }
     private void logout(ServerPlayer p) {
+        archery.remove(p.getUUID());cancelSpear(p);
         guardPresses.remove(p.getUUID());
         CombatActor a = actors.remove(p.getUUID());
-        if (a != null) resources.put(p.getUUID(), persisted(a));
+        if (a != null) { a.forceSheathed(); resources.put(p.getUUID(), persisted(a)); }
         dodgeDirections.remove(p.getUUID()); swingItems.remove(p.getUUID());
         pendingStyles.remove(p.getUUID());
         drawControllers.remove(p.getUUID());
@@ -293,6 +315,7 @@ public final class RpgServer {
                     moveCharge(p);startedSkills(p);
                 }
                 case "rapierCancel" -> a.cancelChargedPreparation();
+                case "spearPress", "spearMove", "spearRelease" -> {spearIntent(p,a,action,argument);startedSkills(p);}
                 case "aimAttack" -> {
                     if(!hasWeapon(p)) throw new IllegalStateException("当前物品不匹配所选武器档位");
                     JsonObject request=JsonParser.parseString(argument).getAsJsonObject();
@@ -413,7 +436,105 @@ public final class RpgServer {
         }
         refreshTargetLock(p, false);
         broadcastAnimation(p, false);
-        send(p, message, editResult);
+        if(!action.equals("spearMove")||!message.isEmpty())send(p, message, editResult);
+    }
+    private void spearIntent(ServerPlayer p,CombatActor actor,String action,String argument) {
+        JsonObject request=JsonParser.parseString(argument).getAsJsonObject();
+        long input=request.get("input").getAsBigDecimal().longValueExact();
+        if(input<1)throw new IllegalArgumentException("invalid spear input sequence");
+        SpearHoldState state=spearHolds.get(p.getUUID());
+        if(action.equals("spearRelease")) {
+            if(state==null||!Objects.equals(spearInputs.get(p.getUUID()),input))return;
+            if(request.has("aim")) {
+                AttackAim finalAim=RpgConfig.JSON.fromJson(request.get("aim"),AttackAim.class);
+                if(finalAim!=null)state.update(p.level().getGameTime(),state.sequence(),finalAim,p.getYRot());
+            }
+            state.release(p.level().getGameTime(),state.sequence());
+            actor.setSpearAttackHeld(false,state.point()==null?null:new AttackAim(List.of(state.point())));
+            broadcastAnimation(p,true);return;
+        }
+        if(!hasWeapon(p)||actor.style()==null||!actor.style().controls().spear())throw new IllegalStateException("请先持长枪");
+        AttackAim aim=RpgConfig.JSON.fromJson(request.get("aim"),AttackAim.class);
+        if(aim==null)throw new IllegalArgumentException("missing spear aim");
+        for(var point:aim.points())if(!SpearAimField.contains(point,p.getYRot()))throw new IllegalArgumentException("aim outside forward field");
+        if(action.equals("spearPress")) {
+            if(state!=null&&state.held(p.level().getGameTime()))return;
+            if(aim.points().size()!=1)throw new IllegalArgumentException("spear press needs one direction");
+            // This lease must belong to a newly paid swing. General sword buffering
+            // would otherwise attach a second press to the old ACTIVE swing and hold it forever.
+            if(actor.currentSkill()!=null)return;
+            SkillDefinition thrust=config.current().skills().get(actor.style().leftCombo().getFirst().skillId());
+            accepted(actor.aimedLeftSkill(thrust,aim));
+            state=new SpearHoldState();
+            if(!state.begin(p.level().getGameTime(),actor.snapshot().swingSequence(),aim.points().getFirst(),p.getYRot()))
+                throw new IllegalStateException("spear press rejected");
+            spearHolds.put(p.getUUID(),state);spearInputs.put(p.getUUID(),input);spearOrigins.put(p.getUUID(),p.getEyePosition());
+        } else {
+            if(state==null||!Objects.equals(spearInputs.get(p.getUUID()),input)||!actor.spearAttackHeld())return;
+            if(!state.update(p.level().getGameTime(),actor.snapshot().swingSequence(),aim,p.getYRot()))return;
+        }
+        actor.setSpearAttackHeld(true,new AttackAim(List.of(state.point())));
+        broadcastAnimation(p,true);
+    }
+    private void cancelSpear(ServerPlayer p) {
+        var state=spearHolds.remove(p.getUUID());if(state!=null)state.cancel();
+        var actor=actors.get(p.getUUID());if(actor!=null)actor.setSpearAttackHeld(false,null);
+        spearInputs.remove(p.getUUID());spearOrigins.remove(p.getUUID());spearRays.remove(p.getUUID());spearBounds.remove(p.getUUID());
+    }
+    /** Build geometry once per actor and collision tick; clashes and every target share the same cover. */
+    private void prepareSpearRays(ServerPlayer p,CombatActor actor) {
+        spearRays.remove(p.getUUID());
+        spearBounds.remove(p.getUUID());
+        var state=spearHolds.get(p.getUUID());
+        if(state!=null&&(actor.currentSkill()==null||actor.snapshot().swingSequence()!=state.sequence()
+                ||actor.style()==null||!actor.style().controls().spear()||!p.isAlive())){cancelSpear(p);state=null;}
+        if(state!=null) {
+            if(state.expired(p.level().getGameTime())||state.point()==null) {
+                cancelSpear(p);state=null;
+            } else if(!SpearAimField.contains(state.point(),p.getYRot())) {
+                // Vanilla root rotation can arrive one tick before the next legal cursor packet.
+                // Preserve the lease, pause contacts and keep the visual pole in front while waiting.
+                var safeAim=new AttackAim(List.of(SpearAimField.constrain(state.point(),p.getYRot())));
+                boolean changed=!safeAim.equals(actor.attackAim());
+                actor.setSpearAttackHeld(state.held(p.level().getGameTime()),safeAim);
+                state.drainSegments(p.getYRot());spearOrigins.put(p.getUUID(),p.getEyePosition());
+                if(changed)broadcastAnimation(p,true);
+                return;
+            } else actor.setSpearAttackHeld(state.held(p.level().getGameTime()),new AttackAim(List.of(state.point())));
+        }
+        var skill=actor.activeSkill();var aim=actor.attackAim();
+        if(skill==null||aim==null||actor.style()==null||!actor.style().controls().spear())return;
+        Vec3 origin=p.getEyePosition(),previous=spearOrigins.put(p.getUUID(),origin);
+        if(previous==null||previous.distanceToSqr(origin)>4)previous=origin;
+        List<AttackAim> paths;
+        if(state!=null)paths=state.drainSegments(p.getYRot());
+        else {
+            double end=(actor.snapshot().skillElapsedTicks()-skill.windupTicks()+1.0)/skill.activeTicks();
+            double begin=Math.max(0,end-1.0/skill.activeTicks());
+            var points=new ArrayList<AttackAim.Point>();points.add(aim.sample(begin));
+            for(int i=1;i<aim.points().size()-1;i++){double t=i/(double)(aim.points().size()-1);if(t>begin&&t<end)points.add(aim.points().get(i));}
+            points.add(aim.sample(end));
+            paths=List.of(new AttackAim(points));
+        }
+        paths=paths.stream().filter(path->path.points().stream().allMatch(point->SpearAimField.contains(point,p.getYRot()))).toList();
+        if(paths.isEmpty())return;
+        double radius=actor.style().controls().spearRadius();
+        var motion=SweptSpearContact.coverMotion(paths,skill.reach(),radius,previous.distanceTo(origin),4096);
+        var cover=motion.angular();int origins=motion.originIntervals();double padding=cover.padding()+motion.translationMargin();
+        var rays=new ArrayList<SpearRay>(motion.rayCount());
+        double minX=Double.POSITIVE_INFINITY,minY=minX,minZ=minX,maxX=Double.NEGATIVE_INFINITY,maxY=maxX,maxZ=maxX;
+        var directions=new ArrayList<Vec3>(cover.points().size());
+        for(var point:cover.points())directions.add(Vec3.directionFromRotation((float)point.pitch(),(float)point.yaw()).scale(skill.reach()));
+        for(int step=0;step<=origins;step++) {
+            Vec3 start=origins==0?origin:previous.lerp(origin,step/(double)origins);
+            for(var direction:directions) {
+                Vec3 tip=start.add(direction);rays.add(new SpearRay(start,tip,padding));
+                minX=Math.min(minX,Math.min(start.x,tip.x)-padding);minY=Math.min(minY,Math.min(start.y,tip.y)-padding);minZ=Math.min(minZ,Math.min(start.z,tip.z)-padding);
+                maxX=Math.max(maxX,Math.max(start.x,tip.x)+padding);maxY=Math.max(maxY,Math.max(start.y,tip.y)+padding);maxZ=Math.max(maxZ,Math.max(start.z,tip.z)+padding);
+            }
+        }
+        spearRays.put(p.getUUID(),List.copyOf(rays));
+        spearBounds.put(p.getUUID(),new AABB(minX,minY,minZ,maxX,maxY,maxZ));
     }
     private static void accepted(ActionResult result) { if (result != ActionResult.ACCEPTED) throw new IllegalStateException(result.toString()); }
     private static Vec3 rapierDodgeDirection(CombatActor actor, String argument) {
@@ -574,10 +695,11 @@ public final class RpgServer {
             CombatActor a = actor(p);
             if (reconcileWeapon(p)) { send(p, "", null); broadcastAnimation(p, true); }
             refreshTargetLock(p, false);
-            if (!p.isAlive()) { broadcastAnimation(p, false); continue; }
+            if (!p.isAlive()) { cancelSpear(p); broadcastAnimation(p, false); continue; }
             training.tick(p,a);archery.tick(p,a,archeryProgress(p));
             if (a.currentSkill() != null && !validSwing(p)) a.stun(1);
             if (a.phase() == CombatPhase.GUARDING && !hasWeapon(p)) a.setGuarding(false);
+            prepareSpearRays(p,a);
         }
         // Resolve clashes first, so iteration order cannot let a third target receive an already-clashed swing.
         for (int i = 0; i < players.size(); i++) for (int j = i + 1; j < players.size(); j++) {
@@ -597,15 +719,19 @@ public final class RpgServer {
             if (!p.isAlive()) continue;
             SkillDefinition skill = a.activeSkill();
             if (skill != null) {
-                var targets=p.level().getEntitiesOfClass(LivingEntity.class,p.getBoundingBox().inflate(skill.reach()),t->t!=p&&t.isAlive());
+                boolean spear=a.style()!=null&&a.style().controls().spear();
+                var bounds=spear?spearBounds.getOrDefault(p.getUUID(),p.getBoundingBox().inflate(skill.reach())):p.getBoundingBox().inflate(skill.reach());
+                var targets=p.level().getEntitiesOfClass(LivingEntity.class,bounds,t->t!=p&&t.isAlive());
                 if(a.style()!=null&&a.style().presentationStyleId().equals("rapier"))targets.sort(Comparator.comparingDouble(t->attackDistance(p,t)));
                 for (LivingEntity target : targets) {
+                    if(a.hasHit(target.getUUID()))continue;
                     if (target instanceof ServerPlayer q && !p.canHarmPlayer(q)) continue;
-                    if (!p.hasLineOfSight(target)) continue;
-                    if(a.style()!=null && a.style().controls().spear() && !spearContact(p,target,a)) continue;
+                    if (spear?!spearContact(p,target,a):!p.hasLineOfSight(target)) continue;
                     CombatActor defender = target instanceof ServerPlayer q ? actor(q) : new CombatActor(target.getUUID(), config.current().combat());
                     double attackMultiplier = a.attackDamageMultiplier();
-                    var result = CombatResolver.resolveHit(a, defender, attackDistance(p, target), attackFacing(p, target), facing(target, p));
+                    double distance=attackDistance(p,target);
+                    if(spear)distance=Math.min(distance,skill.reach()); // The swept contact already proved a legal past/current origin within reach.
+                    var result = CombatResolver.resolveHit(a, defender, distance, attackFacing(p, target), facing(target, p));
                     if (result.contacted()) {pendingHits.add(new PendingHit(p, target, result, attackMultiplier));if(a.style()!=null&&a.style().presentationStyleId().equals("rapier"))break;}
                 }
             }
@@ -678,7 +804,11 @@ public final class RpgServer {
         reconcileAndSync(p);
         training.incoming(p,event.getSource().getEntity());
         if(archery.onIncoming(event,archeryProgress(p)))return;
-        if(actor(p).receiveChargedParry()==1){event.setCanceled(true);send(p,"拨挡成功，松开右键还击",null);broadcastAnimation(p,true);return;}
+        if(actor(p).receiveChargedParry()==1){
+            actor(p).markCombatActivity();
+            recordArcheryContact(event.getSource().getEntity(),event.getSource().getDirectEntity());
+            event.setCanceled(true);send(p,"拨挡成功，松开右键还击",null);broadcastAnimation(p,true);return;
+        }
         Entity source = event.getSource().getEntity();
         Entity direct = event.getSource().getDirectEntity();
         CombatActor attacker = source instanceof ServerPlayer q ? actor(q) : null;
@@ -687,6 +817,7 @@ public final class RpgServer {
         Boolean precise=creatureMelee.claimGuardAuthorization(source,direct,p,press==null?0:press.serial,press!=null&&press.held);
         var result = precise==null?CombatResolver.receiveIncoming(attacker, actor(p), angle, Math.min(1_000_000, event.getAmount()), 0, true, true, direct instanceof AbstractArrow)
                 :CombatResolver.receiveTelegraphed(attacker,actor(p),angle,Math.min(1_000_000,event.getAmount()),0,true,true,false,precise);
+        if(result.outcome()!=HitOutcome.DODGED)recordArcheryContact(source,direct);
         if (result.dealsDamage()) event.setAmount((float) result.damage()); else event.setCanceled(true);
         if (result.outcome() != HitOutcome.HIT) effects(source, p, result);
     }
@@ -707,6 +838,7 @@ public final class RpgServer {
         if (shooter != null && (shooter.isRemoved() || shooter.level() != arrow.level())) shooter = null;
         var result = CombatResolver.receiveIncoming(shooter instanceof ServerPlayer q ? actor(q) : null, defender, incomingAngle, 1, 0, true, true, true);
         if (!result.reflectProjectile()) return;
+        archery.markProjectileContact(arrow);
         event.setCanceled(true);
         double speed = Math.max(1, incomingVelocity.length());
         Vec3 direction = shooter != null ? shooter.getBoundingBox().getCenter().subtract(hit.getLocation()).normalize() : incomingVelocity.scale(-1).normalize();
@@ -716,6 +848,10 @@ public final class RpgServer {
         arrow.setPos(hit.getLocation().add(direction.scale(arrow.getBbWidth() + 0.1)));
         arrow.hurtMarked = true;
         effects(shooter, p, result);
+    }
+    private void recordArcheryContact(Entity source,Entity direct) {
+        if(direct instanceof Projectile projectile)archery.markProjectileContact(projectile);
+        else if(source instanceof ServerPlayer player)archery.markBashContact(player.getUUID());
     }
     private void effects(Entity attacker, LivingEntity victim, org.fsrpg.combat.HitResult result) {
         if (!(victim.level() instanceof net.minecraft.server.level.ServerLevel level)) return;
@@ -973,12 +1109,12 @@ public final class RpgServer {
         }
         return new RpgAnimationPayload(player.getUUID(), styleId, model, action, phase, remaining,
                 windup,active,recovery,
-                animationSequences.getOrDefault(player.getUUID(), 0L), visible,actor.leftSide(),actor.rightSide(),actor.attackAim());
+                animationSequences.getOrDefault(player.getUUID(), 0L), visible,actor.leftSide(),actor.rightSide(),actor.attackAim(),actor.spearAttackHeld());
     }
     private void broadcastAnimation(ServerPlayer player, boolean heartbeat) {
         CombatActor actor = actor(player);
         RpgAnimationPayload payload = animationPayload(player);
-        String state = payload.style() + "|" + payload.model() + "|" + payload.action() + "|" + payload.phase() + "|" + payload.drawn() + "|" + actor.snapshot().swingSequence()
+        String state = payload.style() + "|" + payload.model() + "|" + payload.action() + "|" + payload.phase() + "|" + payload.drawn() + "|" + payload.spearHeld() + "|" + actor.snapshot().swingSequence()
                 +(ArcheryServer.bowStyle(actor)?"|"+archery.snapshot(player,archeryProgress(player)).sequence():"");
         boolean changed = !state.equals(animationStates.get(player.getUUID()));
         if (changed) {
@@ -996,15 +1132,10 @@ public final class RpgServer {
         return facing(p,target);
     }
     private boolean spearContact(ServerPlayer p,LivingEntity target,CombatActor actor) {
-        var skill=actor.activeSkill();var aim=actor.attackAim();if(aim==null||skill==null)return false;
-        double end=(actor.snapshot().skillElapsedTicks()-skill.windupTicks()+1.0)/skill.activeTicks();
-        double begin=Math.max(0,end-1.0/skill.activeTicks());
-        var origin=p.getEyePosition();var box=target.getBoundingBox().inflate(actor.style().controls().spearRadius());
-        // Cover each active tick's traversed subarc without turning the sweep into an omnidirectional cone.
-        for(int i=0;i<=16;i++) {
-            var point=aim.sample(begin+(end-begin)*i/16);
-            var direction=Vec3.directionFromRotation((float)point.pitch(),(float)point.yaw());
-            var tip=origin.add(direction.scale(skill.reach()));var contact=box.clip(origin,tip);
+        if(actor.activeSkill()==null)return false;
+        for(var ray:spearRays.getOrDefault(p.getUUID(),List.of())) {
+            var origin=ray.origin();var box=target.getBoundingBox().inflate(ray.padding());
+            var contact=box.contains(origin)?Optional.of(origin):box.clip(origin,ray.tip());
             if(contact.isPresent()) {
                 var wall=p.level().clip(new net.minecraft.world.level.ClipContext(origin,contact.get(),net.minecraft.world.level.ClipContext.Block.COLLIDER,net.minecraft.world.level.ClipContext.Fluid.NONE,p));
                 if(wall.getType()==net.minecraft.world.phys.HitResult.Type.MISS || wall.getLocation().distanceToSqr(origin)+.001>=contact.get().distanceToSqr(origin))return true;
@@ -1029,6 +1160,8 @@ public final class RpgServer {
         JsonObject snapshot = RpgConfig.JSON.toJsonTree(actor(p).snapshot()).getAsJsonObject();
         snapshot.addProperty("playerLevel",actor(p).playerLevel());
         snapshot.addProperty("staminaRegenPerSecond",actor(p).staminaRegenPerSecond());
+        snapshot.addProperty("currentStaminaRegenPerSecond",actor(p).currentStaminaRegenPerSecond());
+        snapshot.addProperty("staminaCombatState",actor(p).staminaCombatState());
         snapshot.addProperty("skill", actor(p).snapshot().skillId());
         snapshot.addProperty("canEdit", canEdit(p)); snapshot.addProperty("message", message);
         snapshot.add("skills", RpgConfig.JSON.toJsonTree(config.current().skills().values()));

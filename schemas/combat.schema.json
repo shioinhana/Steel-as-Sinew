@@ -9,9 +9,19 @@
   "properties": {
     "maxStamina": { "type": "number", "minimum": 1, "maximum": 1000000, "default": 50, "description": "0级基础体力上限，默认50。正等级x的实际上限为基础值+x^0.8+3ln(x)，保留小数；系数由staminaLevelScaling配置。" },
     "maxSpirit": { "type": "number", "minimum": 1, "maximum": 1000000 },
-    "staminaRegenPerSecond": { "$ref": "#/$defs/resource", "default": 5, "description": "0级基础体力回复点数/秒，默认5。正等级x的实际回复为floor(基础值+sqrt(x)+ln(x))，仅回复向下取整；沿用现有回复延迟。0.7.4仅迁移一次基础值并备份。" },
+    "staminaRegenPerSecond": { "$ref": "#/$defs/resource", "default": 5, "description": "0级静止体力回复点数/秒，默认5。正等级x的静止回复为floor(基础值+sqrt(x)+ln(x))，仅回复向下取整；战斗时按staminaCombatRules.regenMultiplier缩放，不再暂停回复。" },
     "spiritRegenPerSecond": { "$ref": "#/$defs/resource" },
-    "resourceRegenDelayTicks": { "$ref": "#/$defs/ticks" },
+    "resourceRegenDelayTicks": { "$ref": "#/$defs/ticks", "description": "仅灵力在消耗后的回复延迟；体力使用staminaCombatRules。" },
+    "staminaCombatRules": {
+      "type": "object", "additionalProperties": false,
+      "description": "体力两级回复。命中、格挡、被格挡、受击、弹反、拼刀和闪避开始近期战斗状态；已发出且未接触的攻击仅保留成本乘missCostMultiplier，其它返还，不触发或延长战斗状态。接受时预扣全额，按接受时的成本结算一次；前摇中断未发出保留原全额成本。",
+      "required": ["combatTicks", "regenMultiplier", "missCostMultiplier"],
+      "properties": {
+        "combatTicks": { "$ref": "#/$defs/ticks", "default": 60, "description": "最后一次实际战斗行为后的持续时间，默认60tick=3秒。" },
+        "regenMultiplier": { "type": "number", "minimum": 0, "maximum": 1, "default": 0.5 },
+        "missCostMultiplier": { "type": "number", "minimum": 0, "maximum": 1, "default": 0.5 }
+      }
+    },
     "drawTicks": { "$ref": "#/$defs/ticks" },
     "sheathTicks": { "$ref": "#/$defs/ticks" },
     "guardArcDegrees": { "$ref": "#/$defs/angle" },

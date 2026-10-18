@@ -226,6 +226,11 @@ public final class StaminaCostTest {
                         after.getAsJsonObject().get("rapierTargetLock"), path + " adds exact default targeting rules");
                 afterFields.remove("rapierTargetLock");
             }
+            if (path.endsWith("combat.json") && !before.getAsJsonObject().has("staminaCombatRules")) {
+                equal(RpgConfig.JSON.toJsonTree(StaminaCombatRules.defaults()),
+                        after.getAsJsonObject().get("staminaCombatRules"), path + " adds exact current stamina combat rules");
+                afterFields.remove("staminaCombatRules");
+            }
             equal(before.getAsJsonObject().keySet(), afterFields, path + " preserves all original fields");
             for (var field : before.getAsJsonObject().entrySet()) {
                 if (field.getKey().equals("staminaCost") || field.getKey().endsWith("StaminaCost")) near(field.getValue().getAsDouble() / 5, after.getAsJsonObject().get(field.getKey()).getAsDouble(), path + "." + field.getKey());

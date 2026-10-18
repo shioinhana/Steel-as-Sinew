@@ -17,6 +17,8 @@ final class ClientOptions {
     static final ModConfigSpec.DoubleValue SPEAR_AIM_RETURN;
     static final ModConfigSpec.DoubleValue SPEAR_ELBOW_LIMIT, SPEAR_WRIST_LIMIT, SPEAR_CLEARANCE, SPEAR_NECK_LIMIT, SPEAR_VERTICAL_BANK;
     static final ModConfigSpec.DoubleValue SPEAR_CARRY_DOWN, SPEAR_CARRY_BACK, SPEAR_CARRY_SIDE, SPEAR_PELVIS_RESPONSE, SPEAR_TURN_STEP_TIME, SPEAR_TURN_STEP_ANGLE, SPEAR_TURN_STEP_LIFT, SPEAR_AIM_CROUCH;
+    static final ModConfigSpec.DoubleValue WAIST_TWIST_LIMIT, TURN_ROOT_FOLLOW;
+    static final ModConfigSpec.DoubleValue SPEAR_READY_RETRACT;
     static final ModConfigSpec.BooleanValue IDLE_INSPECTIONS;
     static final ModConfigSpec.DoubleValue INSPECT_MIN, INSPECT_MAX, INSPECT_BLEND, ACTION_BLEND;
     static {
@@ -75,8 +77,11 @@ final class ClientOptions {
                 .defineInRange("spearVerticalAimBankDegrees", 18.0, 0, 25);
         SPEAR_CARRY_DOWN=builder.comment("Signed vertical offset from the authored rear grip, in centimeters, positive down. The diagonal underarm guard retains attack displacement.").defineInRange("spearCarryDownCm",-12.0,-20,30);
         SPEAR_CARRY_BACK=builder.comment("Draw the spear rear grip back toward the ribs, in centimeters.").defineInRange("spearCarryBackCm",22.0,0,35);
+        SPEAR_READY_RETRACT=builder.comment("Additional withdrawal of the spear in READY, in centimeters. A thrust extends from this position; holding the attack keeps the extended source pose until release.").defineInRange("spearReadyRetractCm",14.0,0,30);
         SPEAR_CARRY_SIDE=builder.comment("Move the carrying anchor to the right side of the chest, in centimeters; the pole remains outside the torso.").defineInRange("spearCarrySideCm",50.0,0,65);
         SPEAR_PELVIS_RESPONSE=builder.comment("Pelvis follows spear chest turn with this render-time response in ticks.").defineInRange("spearPelvisResponseTicks",3.2,1,10);
+        WAIST_TWIST_LIMIT=builder.comment("Maximum additional pelvis lag from the spear/rapier fighting stance, in degrees. Larger turns immediately carry the lower body and start a turning step; the rapier's authored side-on carry is excluded.").defineInRange("waistTwistLimitDegrees",45.0,10,90);
+        TURN_ROOT_FOLLOW=builder.comment("Share of a spear/rapier root turn followed immediately by the lower body. Remaining turn uses planted feet and alternate turning steps until the waist limit requires a direct follow.").defineInRange("turnRootFollowWeight",.35,0,1);
         SPEAR_TURN_STEP_TIME=builder.comment("Duration of one alternating turning step, in ticks.").defineInRange("spearTurnStepTicks",6.0,3,12);
         SPEAR_TURN_STEP_ANGLE=builder.comment("Maximum heading change per turning step, in degrees.").defineInRange("spearTurnStepDegrees",28.0,6,45);
         SPEAR_TURN_STEP_LIFT=builder.comment("Small turning foot lift, in centimeters; the other sole remains planted.").defineInRange("spearTurnStepLiftCm",5.625,1.25,10);

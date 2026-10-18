@@ -53,6 +53,7 @@ public final class SpearThrustTimingTest {
             check(actor.activeSkill() == thrust, "contact uses configured authority skill without another timing override");
             check(actor.claimVictim(victim), "contact can claim a victim");
             check(!actor.claimVictim(victim), "same thrust cannot hit a victim twice");
+            check(actor.markAttackContact(actor.snapshot().swingSequence()), "actual landed thrust retains its full cost");
             actor.tick();
             equal(CombatPhase.RECOVERY, actor.phase(), "second tick ends contact");
             equal(2, actor.snapshot().phaseTicksRemaining(), "two recovery ticks remain");
@@ -62,7 +63,7 @@ public final class SpearThrustTimingTest {
             actor.tick();
             equal(CombatPhase.READY, actor.phase(), "fourth tick completes one point thrust");
             check(actor.currentSkill() == null && actor.attackAim() == null, "finished attack clears skill and aim");
-            near(30, actor.stamina(), "shorter attack does not bypass original regeneration delay");
+            near(30.625, actor.stamina(), "landed thrust keeps its ten-point cost and recovers fully before contact, then at half rate");
             equal(1, actor.drainStartedSkills().size(), "one click emits one authoritative start");
             for (int tick = 0; tick < 4; tick++) actor.tick();
             equal(1L, actor.snapshot().swingSequence(), "waiting never repeats a point thrust automatically");

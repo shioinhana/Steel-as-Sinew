@@ -157,10 +157,11 @@ public final class WeaponDrawRulesTest {
             for (int i = 0; i < at; i++) actor.tick();
             actor.requestAttack(attack(2, 4, 5));
             double stamina = actor.stamina();
+            double emptyRefund = actor.phase() == CombatPhase.ACTIVE ? actor.currentSkill().staminaCost() * .5 : 0;
             check(control.equip(actor, DEFAULTS, WEAPONS, AIR, AIR, true), "removing weapon interrupts every attack phase " + at);
             check(!actor.drawn() && actor.currentSkill() == null && actor.activeSkill() == null, "old weapon cannot cause a delayed hit");
             check(!actor.comboSnapshot().queued() && actor.drainStartedSkills().isEmpty(), "equipment removal clears buffer and undispatched starts");
-            check(actor.stamina() == stamina && actor.cooldownRemaining("cut") > 0, "equipment change does not refund resources or cooldown");
+            check(actor.stamina() == stamina + emptyRefund && actor.cooldownRemaining("cut") > 0, "equipment change settles an emitted miss once and preserves cooldown");
             for (int i = 0; i < 20; i++) actor.tick();
             check(actor.phase() == CombatPhase.SHEATHED && actor.currentSkill() == null, "removed weapon never resumes attack");
             control.equip(actor, DEFAULTS, WEAPONS, SPEAR, AIR, true);

@@ -11,7 +11,26 @@ public record CombatRules(
         int dodgeDurationTicks, int dodgeInvulnerabilityStartTicks, int dodgeInvulnerabilityTicks,
         int dodgeCooldownTicks, double dodgeStaminaCost, double dodgeDistance,
         boolean dodgeCancelsRecovery, boolean allowAirDodge, RapierTargeting.Rules rapierTargetLock,
-        PerfectGuardCounter perfectGuardCounter, StaminaLevelScaling staminaLevelScaling) {
+        PerfectGuardCounter perfectGuardCounter, StaminaLevelScaling staminaLevelScaling,
+        StaminaCombatRules staminaCombatRules) {
+
+    /** Keep the 0.7.4 canonical constructor source-compatible. */
+    public CombatRules(double maxStamina, double maxSpirit, double staminaRegenPerSecond,
+                       double spiritRegenPerSecond, int resourceRegenDelayTicks, int drawTicks, int sheathTicks,
+                       double guardArcDegrees, double guardDamageMultiplier, double guardStaminaCost,
+                       int perfectGuardTicks, double perfectGuardStaminaCost, int parryStunTicks, int guardBreakStunTicks,
+                       int hitStunTicks, double clashFacingArcDegrees, int dodgeDurationTicks,
+                       int dodgeInvulnerabilityStartTicks, int dodgeInvulnerabilityTicks, int dodgeCooldownTicks,
+                       double dodgeStaminaCost, double dodgeDistance, boolean dodgeCancelsRecovery, boolean allowAirDodge,
+                       RapierTargeting.Rules rapierTargetLock, PerfectGuardCounter perfectGuardCounter,
+                       StaminaLevelScaling staminaLevelScaling) {
+        this(maxStamina, maxSpirit, staminaRegenPerSecond, spiritRegenPerSecond, resourceRegenDelayTicks,
+                drawTicks, sheathTicks, guardArcDegrees, guardDamageMultiplier, guardStaminaCost,
+                perfectGuardTicks, perfectGuardStaminaCost, parryStunTicks, guardBreakStunTicks, hitStunTicks,
+                clashFacingArcDegrees, dodgeDurationTicks, dodgeInvulnerabilityStartTicks, dodgeInvulnerabilityTicks,
+                dodgeCooldownTicks, dodgeStaminaCost, dodgeDistance, dodgeCancelsRecovery, allowAirDodge,
+                rapierTargetLock, perfectGuardCounter, staminaLevelScaling, StaminaCombatRules.defaults());
+    }
 
     /** Keep the 0.7.3 constructor source-compatible. */
     public CombatRules(double maxStamina, double maxSpirit, double staminaRegenPerSecond,
@@ -76,6 +95,7 @@ public record CombatRules(
         if (rapierTargetLock == null) rapierTargetLock = RapierTargeting.Rules.defaults();
         if (perfectGuardCounter == null) perfectGuardCounter = PerfectGuardCounter.defaults();
         if (staminaLevelScaling == null) staminaLevelScaling = StaminaLevelScaling.defaults();
+        if (staminaCombatRules == null) staminaCombatRules = StaminaCombatRules.defaults();
         SkillDefinition.checkNumber(maxStamina, "maxStamina", 1, 1_000_000);
         SkillDefinition.checkNumber(maxSpirit, "maxSpirit", 1, 1_000_000);
         SkillDefinition.checkNumber(staminaRegenPerSecond, "staminaRegenPerSecond", 0, 1_000_000);

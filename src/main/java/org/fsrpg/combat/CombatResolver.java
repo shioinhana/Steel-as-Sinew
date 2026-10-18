@@ -19,6 +19,8 @@ public final class CombatResolver {
             // Preserve the original cooldown timestamps. A clash adds no stamina cost or stun.
             attacker.markHit(defender.id());
             defender.markHit(attacker.id());
+            attacker.markAttackContact(attacker.snapshot().swingSequence());
+            defender.markAttackContact(defender.snapshot().swingSequence());
             attacker.finishClash();
             defender.finishClash();
             return empty(HitOutcome.CLASH, skill.id());
@@ -69,6 +71,8 @@ public final class CombatResolver {
         SkillDefinition.checkNumber(damage, "incoming damage", 0, 100_000_000);
         SkillDefinition.checkNumber(knockback, "incoming knockback", 0, 128);
         if (defender.invulnerable()) return empty(HitOutcome.DODGED, skillId);
+        if (attacker != null && !projectile) attacker.markAttackContact(attacker.snapshot().swingSequence());
+        defender.markCombatActivity();
         CombatRules rules = defender.rules();
         var guard = defender.guardRules();
         if (defender.phase() == CombatPhase.GUARDING && withinArc(defenderFacingAngleDegrees, guard.arcDegrees())) {

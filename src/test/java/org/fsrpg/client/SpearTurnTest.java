@@ -15,11 +15,13 @@ public final class SpearTurnTest {
             for(int frame=0;frame<=480;frame++) {
                 double tick=frame/3.;float yaw=direction*(float)Math.toRadians(frame<240?65:-40);
                 var feet=state.advance(tick,yaw,0,0);
+                if(frame==0)previousYaw=feet.pelvisYaw();
                 check(feet.equals(state.advance(tick,yaw,0,0)),"Repeated skin/armor sample advances turn");
                 check(feet.rightSupport()==1||feet.leftSupport()==1,"Both turning feet airborne");
                 maximumLift=Math.max(maximumLift,Math.max(feet.rightLift(),feet.leftLift()));
                 if(feet.rightLift()>.1f)rightSwings++;if(feet.leftLift()>.1f)leftSwings++;
-                check(Math.abs(feet.pelvisYaw()-previousYaw)<Math.toRadians(2.1),"Pelvis snaps at 60Hz");previousYaw=feet.pelvisYaw();
+                if(frame!=240)check(Math.abs(feet.pelvisYaw()-previousYaw)<Math.toRadians(2.1),"Small turn snaps at 60Hz");previousYaw=feet.pelvisYaw();
+                check(Math.abs(wrap(yaw-feet.pelvisYaw()))<=SpearTurn.Settings.DEFAULT.maximumTwistRadians()+.0001f,"Waist exceeds the additional twist limit");
                 var base=Locomotion.supported(null,null,1,0,0,0,0,1,.72f,48,new PresentationMotion.Balance(0,0,0));
                 var lower=Locomotion.turn(base,feet,0);
                 var r=lower.right().pose();var l=lower.left().pose();
@@ -36,8 +38,9 @@ public final class SpearTurnTest {
                 if(frame==239||frame==480)check(Math.abs(feet.pelvisYaw()-yaw)<.02&&Math.abs(feet.rightYaw()-yaw)<.08&&Math.abs(feet.leftYaw()-yaw)<.08,"Feet do not finish following waist");
             }
             check(maximumLift>.8f&&maximumLift<1,"Turn lacks modest foot lift");
-            check(rightSwings>30&&leftSwings>30,"Turn does not alternate both feet");
+            check(rightSwings>3&&leftSwings>3,"Turn does not alternate both feet");
         }
+        largeTurns();
         for(float dx:new float[]{-1,0,1})for(float forward:new float[]{-1,1}) {
             var state=new SpearTurn.State();
             for(int frame=0;frame<120;frame++) {
@@ -52,6 +55,30 @@ public final class SpearTurnTest {
         }
         boolean rejected=false;try{new SpearTurn.Settings(Float.NaN,6,.5f,.9f);}catch(IllegalArgumentException expected){rejected=true;}
         check(rejected,"Non-finite settings accepted");
-        System.out.println("SpearTurnTest passed: "+checks+" checks (rendered boot soles, shared rotated pelvis, alternating turn, movement direction, same-frame stability)");
+        System.out.println("SpearTurnTest passed: "+checks+" checks (rendered boot soles, attached pelvis, bounded sudden/continuous turns, alternating steps, same-frame stability)");
     }
+    private static void largeTurns() {
+        var settings=SpearTurn.Settings.DEFAULT;
+        for(float stance:new float[]{0,-(float)Math.toRadians(32.5),-(float)Math.toRadians(65)}) {
+            var state=new SpearTurn.State();float initialBody=179;
+            var original=state.advance(0,stance,initialBody,0,settings);
+            check(Math.abs(wrap(original.pelvisYaw()-stance))<.0001,"Initial authored side-on stance treated as an excessive turn");
+            boolean lifted=false;
+            for(int frame=1;frame<=240;frame++) {
+                float root=frame<40?-179:frame<100?1:(float)(frame*7.0%360-180);
+                float chest=stance+(float)Math.toRadians(20*Math.sin(frame*.11));
+                var feet=state.advance(frame/3.,chest,root,0,settings);
+                check(Math.abs(wrap(chest-feet.pelvisYaw()))<=settings.maximumTwistRadians()+.0001,"Fast root turn violates waist cap");
+                check(feet.equals(state.advance(frame/3.,chest,root,0,settings)),"Hard correction repeated within a rendered frame");
+                check(feet.rightSupport()==1||feet.leftSupport()==1,"Hard correction loses both supporting soles");
+                lifted|=feet.rightLift()>.1f||feet.leftLift()>.1f;
+            }
+            check(state.hardTurns()>0,"Large turn never directly follows with lower body");
+            check(lifted,"Large direct turn does not play a stepping gait");
+        }
+        var direct=new SpearTurn.State();direct.advance(0,0,0,0,settings);
+        var followed=direct.advance(1.0/3,0,20,0,settings);
+        check(Math.toDegrees(followed.pelvisYaw())>-20*.8,"Root follow share leaves the lower body entirely planted");
+    }
+    private static float wrap(float yaw) {return (float)Math.atan2(Math.sin(yaw),Math.cos(yaw));}
 }

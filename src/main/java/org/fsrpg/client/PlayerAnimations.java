@@ -231,7 +231,14 @@ public final class PlayerAnimations {
                 boolean measured = previous.state.sequence() != state.sequence() || !previous.state.phase().equals(state.phase())
                         || previous.state.phaseRemaining() != state.phaseRemaining();
                 if (elapsed >= 0) {
-                    if (previous.attackClock == null) previous.attackClock = new PoseLayers.AttackClock(elapsed, receivedTick, state.windupTicks(), state.activeTicks());
+                    if (previous.state.spearHeld() && !state.spearHeld()) {
+                        // A hold can last seconds while the visible stroke stays extended.
+                        // Release starts recovery there, rather than inheriting that wall time
+                        // and skipping directly to the action's final/retracted frame.
+                        elapsed = Math.max(elapsed,Math.min(previous.sampledElapsedTicks,state.windupTicks()+state.activeTicks()));
+                        previous.attackClock = new PoseLayers.AttackClock(elapsed,receivedTick,state.windupTicks(),state.activeTicks());
+                    }
+                    else if (previous.attackClock == null) previous.attackClock = new PoseLayers.AttackClock(elapsed, receivedTick, state.windupTicks(), state.activeTicks());
                     else if (measured) previous.attackClock.accept(elapsed, receivedTick);
                 } else previous.attackClock = null;
                 if (measured || elapsed < 0) previous.phaseReceived = receivedTick;
@@ -269,6 +276,8 @@ public final class PlayerAnimations {
         if (authoritativeElapsed >= 0) authoritativeElapsed += delta;
         double elapsed = authoritativeElapsed < 0 ? -1 : binding.attackClock.sample(renderTick);
         if (binding.pendingAction != null) elapsed = binding.pendingAction.holdElapsed(elapsed, renderTick);
+        if (server.style().equals("spear") && server.spearHeld() && elapsed >= 0)
+            elapsed = Math.min(elapsed, server.windupTicks() + server.activeTicks());
         var clip = binding.asset.full().rig().clips().get(server.action());
         double seconds;
         double breathSeconds = binding.motion.breathingSeconds(renderTick, ClientOptions.BREATH_SPEED.get());
@@ -437,17 +446,9 @@ public final class PlayerAnimations {
                     binding.motion.lateralLean(), binding.motion.forwardLean(), strideScale,
                     ClientOptions.KNEE_BEND.get().floatValue(), hipBalance,
                     pose.get("body").position().y()-restBody.y(), binding.motion.gaitLane(), aimCrouchCm);
-            if(server.style().equals("spear")) {
-                var heading=binding.lastSpearChest==null?pose.get("body").fsQuaternion():binding.lastSpearChest;
-                var forward=heading.transform(new Vector3f(0,0,1));
-                float pelvisYaw=-(float)Math.atan2(forward.x,forward.z);
-                var turnSettings=new SpearTurn.Settings(ClientOptions.SPEAR_PELVIS_RESPONSE.get().floatValue(),ClientOptions.SPEAR_TURN_STEP_TIME.get().floatValue(),
-                        (float)Math.toRadians(ClientOptions.SPEAR_TURN_STEP_ANGLE.get()),ClientOptions.SPEAR_TURN_STEP_LIFT.get().floatValue()/6.25f);
-                supportedLower=Locomotion.turn(supportedLower,binding.spearTurn.advance(renderTick,pelvisYaw,bodyYaw,sample.movingWeight(),turnSettings),sample.movingWeight());
-            }
             if (sword) {
                 float pelvisYaw = -SwordMotion.bodyYaw(binding.asset.full(), pose) * SwordMotion.STANCE_FOLLOW;
-                var turn = binding.swordTurn.advance(renderTick, pelvisYaw, bodyYaw, sample.movingWeight());
+                var turn = binding.swordTurn.advance(renderTick, pelvisYaw, bodyYaw, sample.movingWeight(), turnSettings());
                 supportedLower = Locomotion.turn(supportedLower, turn, sample.movingWeight());
             }
             // One shared vertical translation keeps the unscaled legs grounded. The sword's
@@ -464,8 +465,10 @@ public final class PlayerAnimations {
         if(server.style().equals("spear")) {
             var sourceWorld = binding.asset.full().worldMatrices(pose);
             boolean carrying=server.phase().equals("READY")||server.phase().equals("RECOVERY")||server.phase().equals("WINDUP");
-            sourceWorld=carrying?SpearMotion.readySource(sourceWorld,ClientOptions.SPEAR_CARRY_DOWN.get().floatValue(),ClientOptions.SPEAR_CARRY_BACK.get().floatValue(),ClientOptions.SPEAR_CARRY_SIDE.get().floatValue()):
-                    SpearMotion.underarmSource(sourceWorld,ClientOptions.SPEAR_CARRY_DOWN.get().floatValue(),ClientOptions.SPEAR_CARRY_BACK.get().floatValue(),ClientOptions.SPEAR_CARRY_SIDE.get().floatValue());
+            float backCm = ClientOptions.SPEAR_CARRY_BACK.get().floatValue() + ClientOptions.SPEAR_READY_RETRACT.get().floatValue()
+                    * SpearStrokePose.retraction(server.phase(), elapsed, server.windupTicks(), server.activeTicks(), server.recoveryTicks());
+            sourceWorld=carrying?SpearMotion.readySource(sourceWorld,ClientOptions.SPEAR_CARRY_DOWN.get().floatValue(),backCm,ClientOptions.SPEAR_CARRY_SIDE.get().floatValue()):
+                    SpearMotion.underarmSource(sourceWorld,ClientOptions.SPEAR_CARRY_DOWN.get().floatValue(),backCm,ClientOptions.SPEAR_CARRY_SIDE.get().floatValue());
             spearSourceRear = sourceWorld.get("right_hand").transformPosition(new Vector3f(0, -6.25f, 0));
             spearSourceChest = sourceWorld.get("body").getUnnormalizedRotation(new Quaternionf()).normalize();
             double chestReturn = server.phase().equals("READY") || server.phase().equals("RECOVERY") ? ClientOptions.SPEAR_CHEST_RETURN.get() : 0;
@@ -506,10 +509,9 @@ public final class PlayerAnimations {
                     if (weight >= 1) binding.aimTransitionFrom = null;
                 }
             }
-            // A shortest spherical bridge can bulge above a horizontal field edge.
-            // Ready/windup/recovery stay inside the displayed field; contact keeps
-            // its exact authoritative world trajectory.
-            if (!server.phase().equals("ACTIVE")) aim = SpearAimField.constrain(aim, bodyYaw);
+            // Keep the pole in the current forward field during packet latency and
+            // spherical bridges as well. Legal authoritative contact directions are unchanged.
+            aim = SpearAimField.constrain(aim, bodyYaw);
             binding.lastAim = aim;
             // Ready aiming can carry its latest feasible grip around the body.
             // An attack keeps the authored anchor so its stroke cannot accumulate
@@ -532,8 +534,22 @@ public final class PlayerAnimations {
             maxSpearSolveNanos=Math.max(maxSpearSolveNanos,lastSpearSolveNanos);
         }
         var finalWorld = binding.asset.full().worldMatrices(pose);
+        var spearSolvedWorld = finalWorld;
+        if (server.style().equals("spear") && supportedLower != null) {
+            // Use this frame's solved chest, rather than the previous frame's cached heading:
+            // a sudden target/root turn must obey the waist limit before it is rendered.
+            var forward = finalWorld.get("body").transformDirection(new Vector3f(0,0,1));
+            float pelvisYaw = -(float)Math.atan2(forward.x,forward.z);
+            float previousDrop = supportedLower.pelvisDropCm();
+            supportedLower = Locomotion.turn(supportedLower,
+                    binding.spearTurn.advance(renderTick,pelvisYaw,bodyYaw,sample.movingWeight(),turnSettings()),sample.movingWeight());
+            pose = PresentationMotion.shiftTorso(pose,new PresentationMotion.Balance(0,previousDrop-supportedLower.pelvisDropCm(),0));
+            finalWorld = binding.asset.full().worldMatrices(pose);
+        }
         if (spearSourceRear != null) {
-            binding.spearMotion.commit(finalWorld, renderTick);
+            // Turning-step support is a common cosmetic translation after IK. Exclude
+            // that translation from grip history so it cannot be accumulated as a stroke.
+            binding.spearMotion.commit(spearSolvedWorld, renderTick);
             binding.lastSpearSourceRear = spearSourceRear;
             binding.lastSpearRear = finalWorld.get("right_hand").transformPosition(new Vector3f(0, -6.25f, 0));
             binding.lastSpearSourceChest = spearSourceChest;
@@ -548,6 +564,11 @@ public final class PlayerAnimations {
                 supportedLower == null ? 0 : supportedLower.right().knee(),
                 supportedLower == null ? 0 : supportedLower.left().knee(), hipBalance, supportedLower);
         return binding.sampled;
+    }
+    private static SpearTurn.Settings turnSettings() {
+        return new SpearTurn.Settings(ClientOptions.SPEAR_PELVIS_RESPONSE.get().floatValue(),ClientOptions.SPEAR_TURN_STEP_TIME.get().floatValue(),
+                (float)Math.toRadians(ClientOptions.SPEAR_TURN_STEP_ANGLE.get()),ClientOptions.SPEAR_TURN_STEP_LIFT.get().floatValue()/6.25f,
+                (float)Math.toRadians(ClientOptions.WAIST_TWIST_LIMIT.get()),ClientOptions.TURN_ROOT_FOLLOW.get().floatValue());
     }
     /** A detached editor state may use real skin/armor/items without mutating live actor playback. */
     public static void preview(AvatarRenderState state, ModelDocument document, Map<String, Pose> source) {
