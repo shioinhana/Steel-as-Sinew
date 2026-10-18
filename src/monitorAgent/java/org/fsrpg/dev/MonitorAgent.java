@@ -11,7 +11,7 @@ public final class MonitorAgent {
     public static void premain(String ignored, Instrumentation instrumentation) {
         // This workstation's second physical screen is Windows adapter DISPLAY5.
         String display = System.getProperty("fsrpg.testDisplay", "\\\\.\\DISPLAY5");
-        boolean scriptedReview = Boolean.getBoolean("fsrpg.guardComboSmoke") || Boolean.getBoolean("fsrpg.creatureCombatSmoke") || Boolean.getBoolean("fsrpg.combatBalanceSmoke") || Boolean.getBoolean("fsrpg.spearPerformanceSmoke")
+        boolean scriptedReview = Boolean.getBoolean("fsrpg.dualSourceSmoke") || Boolean.getBoolean("fsrpg.guardComboSmoke") || Boolean.getBoolean("fsrpg.creatureCombatSmoke") || Boolean.getBoolean("fsrpg.combatBalanceSmoke") || Boolean.getBoolean("fsrpg.spearPerformanceSmoke")
                 || Boolean.getBoolean("fsrpg.whiteAdventurerSmoke") || Boolean.getBoolean("fsrpg.rapierLockSmoke")
                 || Boolean.getBoolean("fsrpg.weaponSmoke") || Boolean.getBoolean("fsrpg.actionLimitsSmoke");
         instrumentation.addTransformer(new ClassFileTransformer() {

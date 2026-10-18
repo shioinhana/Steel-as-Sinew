@@ -279,26 +279,24 @@ public final class PlayerAnimations {
         boolean sword = SwordMotion.applies(binding.asset.full());
         if (LegacyMotion.applies(binding.asset.full()) && !sword) {
             seconds=LegacyMotion.actionSeconds(clip,server,elapsed,Math.max(0,renderTick-binding.started)/20);
-            if (elapsed >= 0 && LegacyMotion.kind(binding.asset.full()).equals("dual_blade") && clip.id().contains("attack")) {
-                double total = Math.max(1, server.windupTicks() + server.activeTicks() + server.recoveryTicks());
-                seconds = PoseRemap.warp(binding.asset.full().rig(), clip).clipTime(elapsed / total);
-            }
             binding.sampledClipSeconds=seconds;
             var pose=LegacyMotion.sample(binding.asset.full(),server,seconds,renderTick/20,state,living);
-            // The imported dual strokes hand a held end pose straight to the next action. Without
-            // a bridge the twin blades snap between clips; the sword path bridges below instead.
-            if (!server.action().equals(binding.legacyAction)) {
-                binding.legacyAction = server.action();
-                if (binding.legacyBase != null) {
-                    binding.legacyPending = binding.legacyBase;
-                    binding.legacyDecay = null;
-                    binding.legacyTransitionStarted = renderTick;
-                    binding.legacyTransitionTicks = PoseLayers.transitionTicks(clip, ClientOptions.ACTION_BLEND.get(),
-                            server.windupTicks(), elapsed >= 0);
+            // The original dual action controller uses linear source time and zero transition.
+            // Keep its authored upper/locomotion layers together without the later offset bridge.
+            if (!LegacyMotion.kind(binding.asset.full()).equals("dual_blade")) {
+                if (!server.action().equals(binding.legacyAction)) {
+                    binding.legacyAction = server.action();
+                    if (binding.legacyBase != null) {
+                        binding.legacyPending = binding.legacyBase;
+                        binding.legacyDecay = null;
+                        binding.legacyTransitionStarted = renderTick;
+                        binding.legacyTransitionTicks = PoseLayers.transitionTicks(clip, ClientOptions.ACTION_BLEND.get(),
+                                server.windupTicks(), elapsed >= 0);
+                    }
                 }
+                pose=legacyTransition(binding,pose,renderTick);
+                binding.legacyBase = pose;
             }
-            pose=legacyTransition(binding,pose,renderTick);
-            binding.legacyBase = pose;
             pose=retargetSkin(state,pose);
             renderSamples++; lastSampleTick=renderTick;
             binding.sampledRenderFrame=renderFrameId;
