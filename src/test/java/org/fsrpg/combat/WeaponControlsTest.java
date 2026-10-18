@@ -94,8 +94,10 @@ public final class WeaponControlsTest {
         a.setGuarding(false);finish(a);
         check(a.drainStartedSkills().isEmpty(),"cancelled follow-up never starts later");
         a.requestStyledAttack(SkillInput.LEFT,d.skills());a.drainStartedSkills();
-        check(a.requestStyledAttack(SkillInput.RIGHT,d.skills()).started(),"configured windup attack cancel accepts the other button");
-        check(a.currentSkill().id().equals("dual_rr"),"windup cancellation switches to the requested hand");
+        check(a.requestStyledAttack(SkillInput.RIGHT,d.skills()).status()==ComboInputStatus.BUFFERED,"other button buffers without losing the already accepted cut");
+        check(a.currentSkill().id().equals("dual_ll"),"windup input preserves the current hand");
+        ticks(a,d.skills().get("dual_ll").windupTicks()+d.skills().get("dual_ll").activeTicks());
+        check(a.currentSkill().id().equals("dual_rr"),"other hand begins after all current contact ticks");
         a.drainStartedSkills();ticks(a,d.skills().get("dual_rr").windupTicks());
         check(a.setGuarding(true)==ActionResult.BUSY,"active dual strike remains locked");
         check(a.requestStyledAttack(SkillInput.LEFT,d.skills()).status()==ComboInputStatus.BUFFERED,"other hand buffers during active contact");

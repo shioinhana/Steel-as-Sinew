@@ -24,6 +24,7 @@ import org.fsrpg.network.RpgSnapshotPayload;
 import org.fsrpg.network.RpgAnimationPayload;
 import org.fsrpg.network.RpgTargetLockPayload;
 import org.fsrpg.network.RpgCreatureAttackPayload;
+import org.fsrpg.network.RpgGuardCuePayload;
 import org.lwjgl.glfw.GLFW;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -43,16 +44,43 @@ public final class ClientHooks {
     private static final KeyMapping ART = key("art_gallery", GLFW.GLFW_KEY_F8);
     private static final KeyMapping TREE = key("skill_tree", GLFW.GLFW_KEY_P);
     private static boolean bowCharging, rapierCharging, bowAuto, dualTogether;
-    private static boolean guarding;
-    private static boolean heavyGuarding;
+    private static final GuardKeyIntent guardKeyIntent=new GuardKeyIntent();
+    private static InputConstants.Key sampledGuardBinding;
+    private static final int[] rawKeyboardKeys=java.util.Arrays.stream(GLFW.class.getFields())
+            .filter(field->field.getName().startsWith("GLFW_KEY_")&&!field.getName().equals("GLFW_KEY_UNKNOWN"))
+            .mapToInt(field->{try{return field.getInt(null);}catch(IllegalAccessException impossible){throw new IllegalStateException(impossible);}})
+            .distinct().sorted().toArray();
+    private static final java.util.Map<Integer,int[]> physicalScanKeys=new java.util.HashMap<>();
     private static long snapshotClientTick;
     private static int statusClock;
-    private static int guardRetryClock;
     private static CameraType previousCamera;
     private ClientHooks() {}
 
     private static KeyMapping key(String name, int code) {
         return new KeyMapping("key.fsrpg." + name, KeyConflictContext.IN_GAME, InputConstants.Type.KEYSYM, code, CATEGORY);
+    }
+    /** Query native state because GUI releaseAll() and synthetic KeyMapping.setDown() are not physical edges. */
+    private static boolean physicalGuardDown(Minecraft game) {
+        var binding=GUARD.getKey();
+        if(sampledGuardBinding!=null&&!sampledGuardBinding.equals(binding)) {
+            if(guardKeyIntent.ownsInput())send("guard","false");
+            guardKeyIntent.reset();
+        }
+        sampledGuardBinding=binding;
+        return physicalBindingDown(binding,game.getWindow().handle());
+    }
+    private static boolean physicalBindingDown(InputConstants.Key binding,long window) {
+        int value=binding.getValue();
+        if(binding.getType()==InputConstants.Type.MOUSE)
+            return value>=0&&value<=GLFW.GLFW_MOUSE_BUTTON_LAST&&GLFW.glfwGetMouseButton(window,value)==GLFW.GLFW_PRESS;
+        if(binding.getType()==InputConstants.Type.KEYSYM)
+            return value>=GLFW.GLFW_KEY_SPACE&&value<=GLFW.GLFW_KEY_LAST&&GLFW.glfwGetKey(window,value)==GLFW.GLFW_PRESS;
+        if(binding.getType()==InputConstants.Type.SCANCODE) {
+            int[] keys=physicalScanKeys.computeIfAbsent(value,scan->java.util.Arrays.stream(rawKeyboardKeys)
+                    .filter(key->GLFW.glfwGetKeyScancode(key)==scan).toArray());
+            for(int key:keys)if(GLFW.glfwGetKey(window,key)==GLFW.GLFW_PRESS)return true;
+        }
+        return false;
     }
     public static void register(IEventBus modBus) {
         modBus.addListener(CreatureArtRenderer::register);
@@ -61,6 +89,8 @@ public final class ClientHooks {
         modBus.addListener(PlayerAnimations::layers);
         modBus.addListener(RpgHud::layers);
         NeoForge.EVENT_BUS.addListener(ClientHooks::tick);
+        NeoForge.EVENT_BUS.addListener(GuardCuePresentation::tick);
+        NeoForge.EVENT_BUS.addListener(GuardCuePresentation::render);
         NeoForge.EVENT_BUS.addListener(PlayerAnimations::renderClock);
         NeoForge.EVENT_BUS.addListener(LegacyFirstPersonAnimations::onRenderHand);
         NeoForge.EVENT_BUS.addListener(ArcheryPresentation::tick);
@@ -83,6 +113,10 @@ public final class ClientHooks {
         for (KeyMapping key : new KeyMapping[]{DRAW, LEFT, RIGHT, GUARD, DODGE, EDITOR, JOURNAL, SKILL, STYLE, TREE, ART}) event.register(key);
     }
     private static void payloads(RegisterClientPayloadHandlersEvent event) {
+        event.register(RpgGuardCuePayload.TYPE, (payload, context) -> {
+            try { GuardCuePresentation.accept(payload); }
+            catch (RuntimeException error) { LOG.warn("Ignored invalid guard cue update", error); }
+        });
         event.register(RpgCreatureAttackPayload.TYPE,(payload,context)->{
             try {CreatureCombatAnimation.accept(payload);}
             catch(RuntimeException error){LOG.warn("Ignored invalid creature combat animation update",error);}
@@ -152,16 +186,13 @@ public final class ClientHooks {
         boolean inGame = game.screen == null;
         boolean bow = CombatCamera.style().equals("bow");
         boolean rapier = CombatCamera.style().equals("rapier") && ClientState.bool(ClientState.snapshot(),"legacySkills",false);
-        boolean shouldGuard = inGame && ClientState.drawn() && !bow && GUARD.isDown();
-        boolean shouldHeavy = shouldGuard && game.options.keyShift.isDown();
-        String guardArgument = !shouldGuard ? "false" : shouldHeavy ? "heavy" : "true";
-        if (shouldGuard != guarding || shouldHeavy != heavyGuarding) {
-            guarding = shouldGuard; heavyGuarding = shouldHeavy; guardRetryClock = 0; send("guard", guardArgument);
-        }
-        else if (shouldGuard && ClientState.number(ClientState.snapshot(), "attackDamageMultiplier", 1) <= 1
-                && java.util.Set.of("READY","WINDUP","RECOVERY").contains(ClientState.text(ClientState.snapshot(), "phase", ""))) {
-            if (++guardRetryClock >= 4) { guardRetryClock = 0; send("guard", guardArgument); }
-        } else guardRetryClock = 0;
+        boolean canGuard=inGame&&ClientState.drawn()&&!bow;
+        boolean physicalGuard=physicalGuardDown(game);
+        boolean shouldHeavy=physicalBindingDown(game.options.keyShift.getKey(),game.getWindow().handle());
+        boolean retryGuard=ClientState.number(ClientState.snapshot(),"attackDamageMultiplier",1)<=1
+                &&java.util.Set.of("READY","WINDUP","RECOVERY").contains(ClientState.text(ClientState.snapshot(),"phase",""));
+        String guardArgument=guardKeyIntent.sample(physicalGuard,canGuard,shouldHeavy,retryGuard);
+        if(guardArgument!=null)send("guard",guardArgument);
         boolean nextBow=inGame && ClientState.drawn() && bow && RIGHT.isDown();
         if(nextBow!=bowCharging) {bowCharging=nextBow;if(!nextBow&&(!inGame||!bow||!ClientState.drawn()))send("archeryCancel","");else send("archeryCharge",Boolean.toString(nextBow));}
         boolean nextAuto=inGame && ClientState.drawn() && bow && LEFT.isDown();
@@ -268,8 +299,10 @@ public final class ClientHooks {
         }
     }
     private static void logout(ClientPlayerNetworkEvent.LoggingOut event) {
+        GuardCuePresentation.clear();
         CreatureCombatAnimation.clear();
         ArcheryPresentation.reset();
-        CombatCamera.reset(); ClientState.clear(); PlayerAnimations.clear(); updateCamera(); guarding = heavyGuarding = bowCharging = rapierCharging = bowAuto = dualTogether = false; statusClock = 0; guardRetryClock = 0;
+        CombatCamera.reset(); ClientState.clear(); PlayerAnimations.clear(); updateCamera(); bowCharging = rapierCharging = bowAuto = dualTogether = false; statusClock = 0;
+        guardKeyIntent.reset();sampledGuardBinding=null;physicalScanKeys.clear();
     }
 }

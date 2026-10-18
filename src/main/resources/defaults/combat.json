@@ -9,7 +9,7 @@
   "guardArcDegrees": 120,
   "guardDamageMultiplier": 0.25,
   "guardStaminaCost": 10.0,
-  "perfectGuardTicks": 2,
+  "perfectGuardTicks": 6,
   "perfectGuardStaminaCost": 10.0,
   "parryStunTicks": 4,
   "guardBreakStunTicks": 10,

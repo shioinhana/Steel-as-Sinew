@@ -41,7 +41,7 @@ public final class RpgConfig {
         StaminaLevelMigration staminaLevelMigration = StaminaLevelMigration.capture(directory);
         StaminaCostMigration staminaMigration = StaminaCostMigration.capture(directory);
         StaminaRegenMigration staminaRegenMigration = StaminaRegenMigration.capture(directory);
-        for (String name : List.of("combat.json", "skills.json", "quests.json", "weapons.json", "collections.json", "skill_trees.json", "archery.json")) {
+        for (String name : List.of("combat.json", "skills.json", "quests.json", "weapons.json", "collections.json", "skill_trees.json", "archery.json", "guard_cues.json")) {
             Path target = directory.resolve(name);
             if (!Files.exists(target)) {
                 try (InputStream in = RpgConfig.class.getResourceAsStream("/defaults/" + name)) {
@@ -60,6 +60,7 @@ public final class RpgConfig {
         SpearThrustTimingMigration.migrate(directory);
         WeaponStaminaBalanceMigration.migrate(directory);
         PerfectGuardMigration.migrate(directory);
+        GuardCueMigration.migrate(directory);
         if (staminaLevelMigration != null) staminaLevelMigration.apply();
     }
     private JsonElement read(String name) throws IOException {
@@ -211,7 +212,8 @@ public final class RpgConfig {
             boolean optionalLegacyGate = record == WeaponStyleDefinition.ComboStage.class && !component.getName().equals("skillId");
             boolean optionalTargetLock = record == CombatRules.class && Set.of("rapierTargetLock","perfectGuardCounter","staminaLevelScaling").contains(component.getName()) && !obj.has(component.getName());
             boolean optionalPartialShot = record == ArcheryRules.class && component.getName().equals("partialShotStaminaMultiplier") && !obj.has(component.getName());
-            if (required && !optionalStyleExtension && !optionalLegacyGate && !optionalTargetLock && !optionalPartialShot && (!obj.has(component.getName()) || obj.get(component.getName()).isJsonNull()))
+            boolean optionalComboReset = record == org.fsrpg.combat.WeaponControls.class && component.getName().equals("comboResetTicks") && !obj.has(component.getName());
+            if (required && !optionalStyleExtension && !optionalLegacyGate && !optionalTargetLock && !optionalPartialShot && !optionalComboReset && (!obj.has(component.getName()) || obj.get(component.getName()).isJsonNull()))
                 throw new IllegalArgumentException(record.getSimpleName() + " missing field " + component.getName());
             if (obj.has(component.getName()) && !obj.get(component.getName()).isJsonNull())
                 checkType(obj.get(component.getName()), component.getGenericType(), record.getSimpleName() + "." + component.getName());
@@ -242,9 +244,9 @@ public final class RpgConfig {
         JsonPrimitive primitive = value.getAsJsonPrimitive();
         if ((clazz == String.class || clazz.isEnum()) && !primitive.isString()) throw new IllegalArgumentException(path + " must be text");
         if ((clazz == boolean.class || clazz == Boolean.class) && !primitive.isBoolean()) throw new IllegalArgumentException(path + " must be boolean");
-        if (clazz == int.class || clazz == double.class || clazz == Double.class) {
+        if (clazz == int.class || clazz == Integer.class || clazz == double.class || clazz == Double.class) {
             if (!primitive.isNumber() || !Double.isFinite(primitive.getAsDouble())) throw new IllegalArgumentException(path + " must be a finite number");
-            if (clazz == int.class) {
+            if (clazz == int.class || clazz == Integer.class) {
                 try { primitive.getAsBigDecimal().intValueExact(); }
                 catch (ArithmeticException error) { throw new IllegalArgumentException(path + " must be a 32-bit integer"); }
             }

@@ -343,21 +343,23 @@ public final class CombatTest {
         actor=rapierActor();actor.setStyle(locked);actor.requestStyledAttack(SkillInput.LEFT,catalog);
         equal(actor.setGuarding(true),ActionResult.BUSY,"style can disable windup guard cancel");
         equal(actor.requestDodge(true),ActionResult.BUSY,"style can disable windup dodge cancel");
-        equal(actor.requestStyledAttack(SkillInput.RIGHT,catalog).rejection(),ActionResult.BUSY,"style can disable windup attack cancel");
+        equal(actor.requestStyledAttack(SkillInput.RIGHT,catalog).status(),ComboInputStatus.BUFFERED,"disabled attack cancel still accepts a follow-up without skipping the current attack");
         tick(actor,7);
         equal(actor.setGuarding(true),ActionResult.BUSY,"style can disable recovery guard cancel");
-        equal(actor.requestStyledAttack(SkillInput.LEFT,catalog).rejection(),ActionResult.BUSY,"style can disable recovery attack cancel");
+        equal(actor.requestStyledAttack(SkillInput.LEFT,catalog).status(),ComboInputStatus.BUFFERED,"disabled recovery cancel keeps the next click until full recovery");
     }
 
     private static void shortChargeAndStyleValidation() {
         var catalog=rapierSkills();var actor=rapierActor();
         check(actor.requestStyledAttack(SkillInput.RIGHT,catalog).started(),"right starts charge");
         tick(actor,9);check(actor.activeSkill()==null,"charge has no early hit");
-        check(actor.requestStyledAttack(SkillInput.LEFT,catalog).started(),"left cancels charging thrust before release");
-        equal(actor.currentSkill().id(),"sword_left","cancelled thrust is replaced by first left attack");
+        equal(actor.requestStyledAttack(SkillInput.LEFT,catalog).status(),ComboInputStatus.BUFFERED,"ordinary right attack accepts the next left click while preparing");
+        tick(actor,1+actor.currentSkill().activeTicks());
+        equal(actor.currentSkill().id(),"sword_left","left follows the complete right attack");
         actor=rapierActor();actor.requestStyledAttack(SkillInput.LEFT,catalog);
-        check(actor.requestStyledAttack(SkillInput.RIGHT,catalog).started(),"right can cancel left windup");
-        equal(actor.currentSkill().id(),"sword_thrust","replacement is full charged attack");
+        equal(actor.requestStyledAttack(SkillInput.RIGHT,catalog).status(),ComboInputStatus.BUFFERED,"right click queues during left windup");
+        tick(actor,actor.currentSkill().windupTicks()+actor.currentSkill().activeTicks());
+        equal(actor.currentSkill().id(),"sword_thrust","following right attack starts from full preparation");
         tick(actor,10);equal(actor.phase(),CombatPhase.ACTIVE,"replacement receives full configured windup");
         var disabled=new WeaponStyleDefinition("spear","Reserved","spear",false,List.of(),"",rapierStyle().guard());
         equal(actor.setStyle(disabled),ActionResult.STYLE_DISABLED,"reserved styles remain disabled");

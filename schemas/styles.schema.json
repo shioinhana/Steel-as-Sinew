@@ -1,8 +1,8 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://fsrpg.local/schemas/styles.schema.json",
-  "title": "FSRPG 武器档位、连击窗口与格挡",
-  "description": "服务端 /fsrpg reload 后生效。同一实际装备匹配的 enabled 档位作为拔刀姿态；仅一个时拿出武器自动拔刀，多个时 R 循环切换。匹配副手的专门武器组优先于只约束主手的组。leftCombo 只定义动作顺序；任意阶段可缓存一招，有效判定结束后进入下一段。前摇与后摇的取消规则由 cancels 配置。旧门字段仅兼容读取，不再作为输入时机条件。",
+  "title": "FSRPG 武器档位、宽松连段与格挡",
+  "description": "服务端 /fsrpg reload 后生效。同一实际装备匹配的 enabled 档位作为拔刀姿态；仅一个时拿出武器自动拔刀，多个时 R 循环切换。匹配副手的专门武器组优先于只约束主手的组。leftCombo 只定义动作顺序；任意攻击阶段可缓存一招，每招完整结束有效判定后进入下一段。自然收招后默认保留12tick续段，末段自动循环。禁用后摇取消只会延后已缓存招式到完整收招，不吞输入。旧门字段仅兼容读取，不再作为输入时机条件。",
   "type": "array",
   "minItems": 1,
   "maxItems": 128,
@@ -280,7 +280,7 @@
           "default": true
         }
       },
-      "description": "缺省全部 true。有效判定阶段始终不能被普通主动操作取消；攻击输入可缓存，命中硬直和拨挡等被动强制打断照常生效。"
+      "description": "缺省全部 true。普通攻击输入始终可缓存一招，不截断前摇与有效判定；recoveryAttack=false保留后摇后再执行。普通格挡/闪避的取消规则按字段；只有服务端已验证金闪窗口的新格挡按键能以精准格挡打断有效判定。命中硬直等强制打断照常生效。"
     },
     "controls": {
       "type": "object",
@@ -299,6 +299,7 @@
           "enum": [
             "ordered",
             "dual",
+            "legacy_dual",
             "spear"
           ]
         },
@@ -321,6 +322,11 @@
           "type": "number",
           "minimum": 0.02,
           "maximum": 0.6
+        },
+        "comboResetTicks": {
+          "$ref": "#/$defs/ticks",
+          "default": 12,
+          "description": "自然收招后继续下一段的宽松保留时间；默认12tick=0.6秒，0表示完整收招即重置。此值不是攻击中的输入窗口，攻击全阶段均可预输入一招。"
         }
       }
     }

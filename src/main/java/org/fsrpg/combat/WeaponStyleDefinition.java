@@ -102,7 +102,7 @@ public record WeaponStyleDefinition(String id, String label, String weaponGroup,
         }
     }
 
-    /** Player cancels never shorten ACTIVE; parry/hit reactions remain authoritative interrupts. */
+    /** Ordinary cancels never shorten ACTIVE; a server-validated precision guard is an explicit exception. */
     public record CancelRules(boolean windupAttack, boolean windupGuard, boolean windupDodge,
                               boolean recoveryAttack, boolean recoveryGuard, boolean recoveryDodge) {
         public static CancelRules defaults() { return new CancelRules(true,true,true,true,true,true); }

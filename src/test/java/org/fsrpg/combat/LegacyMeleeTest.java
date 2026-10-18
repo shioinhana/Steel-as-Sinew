@@ -2,7 +2,7 @@ package org.fsrpg.combat;
 
 import java.util.*;
 
-/** Exact legacy thrust commitment/parry and four-cut hand-position routing. No Minecraft mocks. */
+/** Legacy charged-thrust commitment plus unrestricted directional cuts using the original four clips. */
 public final class LegacyMeleeTest {
     private static int checks;
     private static final SkillDefinition THRUST = skill("sword_thrust", SkillInput.RIGHT, 7,2,2,20,9,"sword");
@@ -82,10 +82,10 @@ public final class LegacyMeleeTest {
         equal("dual_ll",a.requestStyledAttack(SkillInput.LEFT,skills).skillId(),"firstleftuseslefthandleft");
         equal(0,a.leftSide(),"leftendsatleft"); equal(-1,a.rightSide(),"unusedrightstillneutral"); tick(a,4);
         equal("dual_rl",a.requestStyledAttack(SkillInput.LEFT,skills).skillId(),"secondleftusesrighthandleft"); equal(0,a.rightSide(),"bothhandsnowleft"); tick(a,4);
-        equal(ActionResult.UNSUPPORTED_INPUT,a.requestStyledAttack(SkillInput.LEFT,skills).rejection(),"thirdleftrejectedwithbothhandsonleft");
+        equal("dual_ll",a.requestStyledAttack(SkillInput.LEFT,skills).skillId(),"thirdleftrecoverslefthandwithoutdirectionexhaustion");tick(a,4);
         equal("dual_rr",a.requestStyledAttack(SkillInput.RIGHT,skills).skillId(),"nextrightmovesrighthandright"); tick(a,4);
         equal("dual_lr",a.requestStyledAttack(SkillInput.RIGHT,skills).skillId(),"secondrightmoveslefthandright"); tick(a,4);
-        equal(ActionResult.UNSUPPORTED_INPUT,a.requestStyledAttack(SkillInput.RIGHT,skills).rejection(),"thirdrightrejectedwithbothhandsonright");
+        equal("dual_rr",a.requestStyledAttack(SkillInput.RIGHT,skills).skillId(),"thirdrightrecoversrighthandwithoutdirectionexhaustion");tick(a,4);
         equal(ActionResult.ACCEPTED,a.requestAttack(skills.get("dual_combined")),"namedlinkedcut accepted"); equal(-1,a.leftSide(),"linkedcut resetslefthand"); equal(-1,a.rightSide(),"linkedcut resetsrighthand");
         equal(100,a.cooldownRemaining("dual_combined"),"linkedcut5secondscooldown"); tick(a,4);
         equal("dual_ll",a.requestStyledAttack(SkillInput.LEFT,skills).skillId(),"linkedcut allowsfreshleft"); tick(a,4);
@@ -93,7 +93,9 @@ public final class LegacyMeleeTest {
         a=ready(style("legacy_dual",skills)); a.requestStyledAttack(SkillInput.LEFT,skills);
         equal(ComboInputStatus.BUFFERED,a.requestStyledAttack(SkillInput.LEFT,skills).status(),"secondleftpreinputqueuesrighthand");
         equal(ComboInputStatus.ALREADY_QUEUED,a.requestStyledAttack(SkillInput.LEFT,skills).status(),"mashingcannotqueueextrathirdleft");
-        tick(a,3); equal("dual_rl",a.currentSkill().id(),"secondhandstartsafteractivecontact"); equal(ActionResult.UNSUPPORTED_INPUT,a.requestStyledAttack(SkillInput.LEFT,skills).rejection(),"queuedhandsstillenforcetwocutlimit");
+        tick(a,3); equal("dual_rl",a.currentSkill().id(),"secondhandstartsafteractivecontact");
+        equal(ComboInputStatus.BUFFERED,a.requestStyledAttack(SkillInput.LEFT,skills).status(),"nextsame-directioncutcanbequeuedwithouttwocutlimit");
+        tick(a,3);equal("dual_ll",a.currentSkill().id(),"thirdsame-directioncutstartsafterfullcontact");
     }
     private static void orderedDualCompatibility() {
         Map<String,SkillDefinition> skills=dualSkills(); CombatActor a=ready(style("dual",skills));
@@ -106,14 +108,14 @@ public final class LegacyMeleeTest {
         cut(a,skills,SkillInput.LEFT,"dual_ll",9);
         cut(a,skills,SkillInput.LEFT,"dual_rl",9);
         cut(a,skills,SkillInput.RIGHT,"dual_rr",9);
-        // Right hand has now swung twice, so its third cut back to the left is slow.
-        cut(a,skills,SkillInput.LEFT,"dual_rl",12);
-        cut(a,skills,SkillInput.RIGHT,"dual_rr",12);
+        // Repeated use keeps the same authored cadence instead of imposing a hidden fatigue gate.
+        cut(a,skills,SkillInput.LEFT,"dual_rl",9);
+        cut(a,skills,SkillInput.RIGHT,"dual_rr",9);
         // Both hands end at the right after LR, then the left hand can alternate destinations.
         cut(a,skills,SkillInput.RIGHT,"dual_lr",9);
         cut(a,skills,SkillInput.LEFT,"dual_ll",9);
-        cut(a,skills,SkillInput.RIGHT,"dual_lr",12);
-        cut(a,skills,SkillInput.LEFT,"dual_ll",12);
+        cut(a,skills,SkillInput.RIGHT,"dual_lr",9);
+        cut(a,skills,SkillInput.LEFT,"dual_ll",9);
         cut(a,skills,SkillInput.LEFT,"dual_rl",9);
     }
     private static void legacyDualBufferedCadence() {
@@ -123,23 +125,23 @@ public final class LegacyMeleeTest {
         tick(a,3);equal(ComboInputStatus.BUFFERED,a.requestStyledAttack(SkillInput.LEFT,skills).status(),"third right-hand cut can be queued while contact is active");
         for(int i=0;i<4;i++)equal(ComboInputStatus.ALREADY_QUEUED,a.requestStyledAttack(SkillInput.LEFT,skills).status(),"repeated queued intents do not count as accepted cuts");
         tick(a,6);equal("dual_rl",a.currentSkill().id(),"third same-hand cut starts at the preceding nine-tick gate");
-        equal(12,gate(a),"queued third same-hand cut uses twelve ticks at actual acceptance");
-        tick(a,3);a.requestStyledAttack(SkillInput.RIGHT,skills);tick(a,8);
-        equal("dual_rl",a.currentSkill().id(),"next queued cut cannot bypass the slow twelve-tick contact gate");
-        a.tick();equal("dual_rr",a.currentSkill().id(),"next queued cut starts at the exact twelve-tick boundary");equal(12,gate(a),"fourth accepted same-hand cut remains slow");
+        equal(9,gate(a),"queued third same-hand cut retains nine authored contact ticks");
+        tick(a,3);a.requestStyledAttack(SkillInput.RIGHT,skills);tick(a,5);
+        equal("dual_rl",a.currentSkill().id(),"next queued cut cannot bypass any authored contact tick");
+        a.tick();equal("dual_rr",a.currentSkill().id(),"next queued cut starts at the exact nine-tick boundary");equal(9,gate(a),"fourth accepted same-hand cut retains authored cadence");
     }
     private static void legacyDualCadenceResets() {
         var skills=dualSkills(3,6,1);var a=rightHandTwice(skills);
         equal(ActionResult.ACCEPTED,a.requestAttack(skills.get("dual_combined")),"linked slash accepted after same-hand cuts");equal(9,gate(a),"linked slash is not counted as a single hand");tick(a,10);
-        equal(-1,a.leftSide(),"linked slash resets hand positions");cut(a,skills,SkillInput.RIGHT,"dual_rr",12);
-        a=rightHandTwice(skills);tick(a,40);equal(-1,a.rightSide(),"idle resets hand position");cut(a,skills,SkillInput.RIGHT,"dual_rr",12);
-        a=rightHandTwice(skills);a.setGuarding(true);cut(a,skills,SkillInput.LEFT,"dual_rl",12);
-        a=rightHandTwice(skills);a.stun(1);a.tick();cut(a,skills,SkillInput.LEFT,"dual_rl",12);
+        equal(-1,a.leftSide(),"linked slash resets hand positions");cut(a,skills,SkillInput.RIGHT,"dual_rr",9);
+        a=rightHandTwice(skills);tick(a,40);equal(-1,a.rightSide(),"idle resets hand position");cut(a,skills,SkillInput.RIGHT,"dual_rr",9);
+        a=rightHandTwice(skills);a.setGuarding(true);cut(a,skills,SkillInput.LEFT,"dual_rl",9);
+        a=rightHandTwice(skills);a.stun(1);a.tick();cut(a,skills,SkillInput.LEFT,"dual_rl",9);
         a=rightHandTwice(skills);a.forceSheathed();equal(-1,a.leftSide(),"forced sheath resets left hand");equal(-1,a.rightSide(),"forced sheath resets right hand");a.requestDrawn();tick(a,8);cut(a,skills,SkillInput.RIGHT,"dual_rr",9);
         a=rightHandTwice(skills);a.toggleDrawn();tick(a,a.rules().sheathTicks());a.requestDrawn();tick(a,8);cut(a,skills,SkillInput.RIGHT,"dual_rr",9);
         a=rightHandTwice(skills);a.setStyle(style("dual",skills));a.setStyle(style("legacy_dual",skills));
         // Same-ID configuration updates preserve counts; a genuinely different stance clears them.
-        equal(12,acceptedGate(a,skills,SkillInput.LEFT),"same style id reload preserves accepted hand streaks");
+        equal(9,acceptedGate(a,skills,SkillInput.LEFT),"same style id reload preserves cadence without a hidden streak penalty");
         a=rightHandTwice(skills);var oldStyle=a.style();
         a.setStyle(new WeaponStyleDefinition("dual_alt",oldStyle.label(),oldStyle.weaponGroup(),true,oldStyle.leftCombo(),oldStyle.rightSkill(),oldStyle.guard(),oldStyle.heavyGuard(),oldStyle.techniques(),oldStyle.cancels(),oldStyle.controls()));
         cut(a,skills,SkillInput.RIGHT,"dual_rr",9);
@@ -150,7 +152,7 @@ public final class LegacyMeleeTest {
     private static void legacyDualBodyAdjustment() {
         var skills=dualSkills(3,6,1);var a=ready(style("legacy_dual",skills));
         a.setLegacyDualIntervalAdjustment(base->Math.max(4,base-2));
-        cut(a,skills,SkillInput.LEFT,"dual_ll",7);cut(a,skills,SkillInput.LEFT,"dual_rl",7);cut(a,skills,SkillInput.RIGHT,"dual_rr",7);cut(a,skills,SkillInput.LEFT,"dual_rl",10);
+        cut(a,skills,SkillInput.LEFT,"dual_ll",7);cut(a,skills,SkillInput.LEFT,"dual_rl",7);cut(a,skills,SkillInput.RIGHT,"dual_rr",7);cut(a,skills,SkillInput.LEFT,"dual_rl",7);
         a=ready(style("legacy_dual",skills));a.setLegacyDualIntervalAdjustment(base->Math.max(4,base-9));
         cut(a,skills,SkillInput.LEFT,"dual_ll",4);cut(a,skills,SkillInput.LEFT,"dual_rl",4);cut(a,skills,SkillInput.RIGHT,"dual_rr",4);cut(a,skills,SkillInput.LEFT,"dual_rl",4);
         var old=ready(style("dual",skills));old.setLegacyDualIntervalAdjustment(base->4);equal(9,acceptedGate(old,skills,SkillInput.LEFT),"old fixed-hand mode does not apply the legacy timing transform");

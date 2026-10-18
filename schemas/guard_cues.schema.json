@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "FSRPG guard cue timing",
+  "description": "本项目可调标定，不是绝区零未公开的原始帧数。20TPS下每tick为50ms。成功窗[contact-inputWindowTicks,contact)，闪光位于contact-flashLeadTicks；输入窗不能早于闪光。过短怪物前摇延长到flashLeadTicks，源动作接触帧仍映射到真实命中。",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["enabled","flashLeadTicks","inputWindowTicks","flashDurationMillis","guardCancelsActive"],
+  "properties": {
+    "enabled": {"type":"boolean","default":true},
+    "flashLeadTicks": {"type":"integer","minimum":1,"maximum":60,"default":6},
+    "inputWindowTicks": {"type":"integer","minimum":1,"maximum":60,"default":6,"description":"不得超过flashLeadTicks，边界由服务端进一步验证"},
+    "flashDurationMillis": {"type":"integer","minimum":16,"maximum":500,"default":120,"description":"只控制单次闪光视觉，不能延长判定窗口"},
+    "guardCancelsActive": {"type":"boolean","default":true,"description":"仅在窗口内真正新按下C时允许中断当前攻击，保留已消耗资源与冷却"}
+  }
+}

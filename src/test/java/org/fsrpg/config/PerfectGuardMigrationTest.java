@@ -16,14 +16,27 @@ public final class PerfectGuardMigrationTest {
     private static void freshAndCompatibility()throws Exception {
         Path directory=Files.createTempDirectory("fsrpg-perfect-fresh-");
         try {
-            RpgConfig config=new RpgConfig(directory); var definitions=config.reload();
+            // Exercise the historical 0.7.3 migration directly; final application reload also runs later releases.
+            for(String name:FILES)try(var input=PerfectGuardMigrationTest.class.getResourceAsStream("/defaults/"+name)){
+                if(input==null)throw new IllegalStateException("Missing fixture default "+name);Files.copy(input,directory.resolve(name));
+            }
+            JsonObject historical=read(directory,"combat.json").getAsJsonObject();historical.addProperty("perfectGuardTicks",2);write(directory,"combat.json",historical);
+            JsonArray historicalStyles=read(directory,"styles.json").getAsJsonArray();for(var value:historicalStyles)for(String field:List.of("guard","heavyGuard")){
+                JsonObject style=value.getAsJsonObject();if(style.has(field)&&style.get(field).isJsonObject()){
+                    var guard=style.getAsJsonObject(field);if(guard.get("perfectGuardTicks").getAsInt()>0)guard.addProperty("perfectGuardTicks",2);
+                }
+            }write(directory,"styles.json",historicalStyles);
+            PerfectGuardMigration.migrate(directory);
+            var definitions=RpgConfig.parse(read(directory,"combat.json"),read(directory,"skills.json"),read(directory,"quests.json"),read(directory,"weapons.json"),read(directory,"styles.json"),
+                    read(directory,"collections.json"),read(directory,"skill_trees.json"),read(directory,"archery.json"));
             equal(2,definitions.combat().perfectGuardTicks(),"new global perfect window is two ticks");
             equal(4,definitions.combat().parryStunTicks(),"new global parry stun is four ticks");
             equal(CombatRules.PerfectGuardCounter.defaults(),definitions.combat().perfectGuardCounter(),"new counter defaults are four ticks and 1.5 damage");
-            equal(CombatRules.defaults(),definitions.combat(),"fallback constructor and bundled combat config agree");
+            JsonObject historicalDefaults=RpgConfig.JSON.toJsonTree(CombatRules.defaults()).getAsJsonObject();historicalDefaults.addProperty("perfectGuardTicks",2);
+            equal(RpgConfig.JSON.fromJson(historicalDefaults,CombatRules.class),definitions.combat(),"historical two-tick constructor and bundled combat config agree");
             check(Files.exists(directory.resolve(PerfectGuardMigration.MARKER)),"fresh defaults mark completed migration");
             check(!Files.exists(directory.resolve(PerfectGuardMigration.BACKUP)),"fresh correct defaults need no invented previous files");
-            Map<String,String> before=texts(directory);config.reload();equal(before,texts(directory),"fresh repeated reload is byte-idempotent");
+            Map<String,String> before=texts(directory);PerfectGuardMigration.migrate(directory);equal(before,texts(directory),"historical repeated migration is byte-idempotent");
             JsonObject combat=read(directory,"combat.json").getAsJsonObject();combat.remove("perfectGuardCounter");
             var old=RpgConfig.parse(combat,read(directory,"skills.json"),read(directory,"quests.json"),read(directory,"weapons.json"),read(directory,"styles.json"),
                     read(directory,"collections.json"),read(directory,"skill_trees.json"),read(directory,"archery.json"));
@@ -77,6 +90,14 @@ public final class PerfectGuardMigrationTest {
     }
     private static Path oldDirectory()throws Exception {
         Path directory=Files.createTempDirectory("fsrpg-perfect-existing-");new RpgConfig(directory).reload();Files.delete(directory.resolve(PerfectGuardMigration.MARKER));
+        // Latest fresh seeds have six-tick windows; their earlier two-tick migration may already have backed them up.
+        // Remove only that synthetic fixture pair so the historical upgrade below captures this fixture's true originals.
+        Path previousBackup=directory.resolve(PerfectGuardMigration.BACKUP).toAbsolutePath().normalize();
+        if(!previousBackup.startsWith(directory.toAbsolutePath().normalize()))throw new IllegalStateException("Historical backup outside fixture");
+        if(Files.isDirectory(previousBackup)){
+            for(String name:List.of("combat.json","styles.json"))Files.deleteIfExists(previousBackup.resolve(name));
+            Files.delete(previousBackup);
+        }
         JsonObject combat=read(directory,"combat.json").getAsJsonObject();combat.addProperty("perfectGuardTicks",4);combat.addProperty("parryStunTicks",8);combat.remove("perfectGuardCounter");write(directory,"combat.json",combat);
         JsonArray styles=read(directory,"styles.json").getAsJsonArray();for(var value:styles)for(String field:List.of("guard","heavyGuard")){
             JsonObject style=value.getAsJsonObject();if(!style.has(field)||!style.get(field).isJsonObject())continue;

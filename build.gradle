@@ -86,6 +86,12 @@ neoForge {
                 jvmArgument "-Dfsrpg.creatureCombatWorld=${project.property('smokeWorld')}"
                 jvmArgument "-Dfsrpg.smokeEvidence=${file(project.property('smokeEvidence')).absolutePath}"
             }
+            if(project.hasProperty('guardComboSmoke')) {
+                if(!project.hasProperty('smokeWorld'))throw new GradleException('guardComboSmoke requires a copied marked world')
+                jvmArgument '-Dfsrpg.guardComboSmoke=true'
+                jvmArgument "-Dfsrpg.guardComboWorld=${project.property('smokeWorld')}"
+                jvmArgument "-Dfsrpg.smokeEvidence=${file(project.property('smokeEvidence')).absolutePath}"
+            }
             if(project.hasProperty('whiteAdventurerSmoke')) {
                 if(!project.hasProperty('smokeWorld'))throw new GradleException('whiteAdventurerSmoke requires a copied marked world')
                 jvmArgument '-Dfsrpg.whiteAdventurerSmoke=true'
@@ -129,7 +135,7 @@ neoForge {
     }
     mods { fsrpg {
         if (project.hasProperty('rpgJarSmoke')) sourceSet sourceSets.packagedSmoke
-        else { sourceSet sourceSets.main; if (project.hasProperty('creatureCombatSmoke') || project.hasProperty('combatBalanceSmoke') || project.hasProperty('whiteAdventurerSmoke') || project.hasProperty('spearPerformanceSmoke') || project.hasProperty('rapierLockSmoke') || project.hasProperty('artSmoke') || project.hasProperty('rpgSmoke') || project.hasProperty('poseSmoke') || project.hasProperty('hudSmoke') || project.hasProperty('collectionSmoke') || project.hasProperty('legacySkillSmoke') || project.hasProperty('spearSolverSmoke') || project.hasProperty('actionLimitsSmoke')) sourceSet sourceSets.smoke }
+        else { sourceSet sourceSets.main; if (project.hasProperty('guardComboSmoke') || project.hasProperty('creatureCombatSmoke') || project.hasProperty('combatBalanceSmoke') || project.hasProperty('whiteAdventurerSmoke') || project.hasProperty('spearPerformanceSmoke') || project.hasProperty('rapierLockSmoke') || project.hasProperty('artSmoke') || project.hasProperty('rpgSmoke') || project.hasProperty('poseSmoke') || project.hasProperty('hudSmoke') || project.hasProperty('collectionSmoke') || project.hasProperty('legacySkillSmoke') || project.hasProperty('spearSolverSmoke') || project.hasProperty('actionLimitsSmoke')) sourceSet sourceSets.smoke }
     } }
 }
 tasks.named('runClient') { dependsOn monitorAgentJar }
@@ -422,4 +428,22 @@ tasks.register('stage074Config', JavaExec) {
     dependsOn testClasses; classpath=sourceSets.test.runtimeClasspath
     mainClass='org.fsrpg.config.Stage074Config'
     doFirst { args file(project.property('releaseStageDirectory')).absolutePath,file(project.property('releaseStageReport')).absolutePath }
+}
+
+['comboFlowTest':'org.fsrpg.combat.ComboFlowTest',
+ 'guardKeyIntentTest':'org.fsrpg.client.GuardKeyIntentTest',
+ 'guardCueClockTest':'org.fsrpg.creature.GuardCueClockTest',
+ 'guardCueWindowTest':'org.fsrpg.creature.GuardCueWindowTest',
+ 'telegraphedGuardTest':'org.fsrpg.combat.TelegraphedGuardTest',
+ 'guardCueMigrationTest':'org.fsrpg.config.GuardCueMigrationTest'].each { taskName, className ->
+    tasks.register(taskName, JavaExec) {
+        dependsOn testClasses; classpath=sourceSets.test.runtimeClasspath; mainClass=className
+        jvmArgs '-Dfile.encoding=UTF-8'
+    }
+    tasks.named('check') { dependsOn taskName }
+}
+
+tasks.register('stage075Config', JavaExec) {
+    dependsOn testClasses; classpath=sourceSets.test.runtimeClasspath; mainClass='org.fsrpg.config.Stage075Config'
+    doFirst {args file(project.property('releaseStageDirectory')).absolutePath,file(project.property('releaseStageReport')).absolutePath}
 }

@@ -41,6 +41,7 @@ import org.fsrpg.archery.*;
 import org.fsrpg.targeting.RapierTargetLock;
 import org.fsrpg.creature.CreatureCombatCatalog;
 import org.fsrpg.creature.CreatureMeleeServer;
+import org.fsrpg.creature.GuardCueSettings;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -68,7 +69,10 @@ public final class RpgServer {
     private record EnemyStun(LivingEntity entity, long untilGameTick) {}
     private final Map<UUID, EnemyStun> enemyStuns = new HashMap<>();
     private CreatureCombatCatalog validatedCreatureCombat;
+    private GuardCueSettings validatedGuardCues;
     private final CreatureMeleeServer creatureMelee;
+    private static final class GuardPress {boolean held;long serial;}
+    private final Map<UUID,GuardPress> guardPresses=new HashMap<>();
     private final Map<UUID, WeaponDrawController> drawControllers = new HashMap<>();
     private final Map<UUID, Resources> resources = new HashMap<>();
     private final Map<UUID, Vec3> dodgeDirections = new HashMap<>();
@@ -98,7 +102,7 @@ public final class RpgServer {
         config = new RpgConfig(FMLPaths.CONFIGDIR.get().resolve("fsrpg"));
         config.setValidator(this::validateRegistryIds);
         var definitions = config.reload();
-        creatureMelee = new CreatureMeleeServer(validatedCreatureCombat, this::perfectGuardStunRemaining);
+        creatureMelee = new CreatureMeleeServer(validatedCreatureCombat, this::perfectGuardStunRemaining,validatedGuardCues);
         quests = new QuestService(definitions.quests());
         Path data = server.getWorldPath(LevelResource.ROOT).resolve("data/fsrpg");
         store = new QuestStore(data.resolve("quests.json"), RpgConfig.JSON);
@@ -229,6 +233,7 @@ public final class RpgServer {
         return current;
     }
     private void resetActor(ServerPlayer p) {
+        guardPresses.remove(p.getUUID());
         CombatActor previous = actors.remove(p.getUUID());
         if (previous != null) resources.put(p.getUUID(), persisted(previous));
         dodgeDirections.remove(p.getUUID()); swingItems.remove(p.getUUID());
@@ -239,6 +244,7 @@ public final class RpgServer {
         actor(p); reconcileWeapon(p); send(p, "", null); broadcastAnimation(p, true);
     }
     private void logout(ServerPlayer p) {
+        guardPresses.remove(p.getUUID());
         CombatActor a = actors.remove(p.getUUID());
         if (a != null) resources.put(p.getUUID(), persisted(a));
         dodgeDirections.remove(p.getUUID()); swingItems.remove(p.getUUID());
@@ -344,9 +350,18 @@ public final class RpgServer {
                     resources.put(p.getUUID(), persisted(a)); message = "武器档位：" + style.label();
                 }
                 case "guard" -> {
-                    if (!List.of("true", "false", "light", "heavy").contains(argument)) throw new IllegalArgumentException("guard requires true/false/light/heavy");
-                    if (!argument.equals("false") && !hasWeapon(p)) throw new IllegalStateException("请先手持战斗武器");
-                    accepted(a.setGuarding(!argument.equals("false"), argument.equals("heavy")));
+                    if (!List.of("true", "false", "light", "heavy", "held", "held_heavy", "suspend").contains(argument)) throw new IllegalArgumentException("Invalid guard intent");
+                    GuardPress press=guardPresses.computeIfAbsent(p.getUUID(),id->new GuardPress());
+                    boolean physicalHeld=!argument.equals("false"),held=physicalHeld&&!argument.equals("suspend");
+                    boolean fresh=held&&!press.held&&(argument.equals("true")||argument.equals("light")||argument.equals("heavy"));
+                    press.held=physicalHeld;if(fresh)press.serial++;
+                    if (held && !hasWeapon(p)) throw new IllegalStateException("请先手持战斗武器");
+                    boolean heavy=argument.equals("heavy")||argument.equals("held_heavy");
+                    boolean opportunity=fresh&&creatureMelee.guardOpportunity(p);
+                    ActionResult result=opportunity&&validatedGuardCues.guardCancelsActive()
+                            ?a.requestPrecisionGuard(heavy):a.setGuarding(held,heavy);
+                    accepted(result);
+                    if(opportunity)creatureMelee.authorizeGuardPress(p,press.serial);
                 }
                 case "dodge" -> {
                     Vec3 intended = rapierDodgeDirection(a, argument);
@@ -529,7 +544,7 @@ public final class RpgServer {
         }
     }
     private void applyConfig(RpgConfig.Definitions definitions) {
-        creatureMelee.reconfigure(validatedCreatureCombat);
+        creatureMelee.reconfigure(validatedCreatureCombat,validatedGuardCues);
         QuestService replacement = new QuestService(definitions.quests());
         replacement.restore(quests.snapshot());
         quests = replacement;
@@ -668,7 +683,10 @@ public final class RpgServer {
         Entity direct = event.getSource().getDirectEntity();
         CombatActor attacker = source instanceof ServerPlayer q ? actor(q) : null;
         double angle = direct instanceof AbstractArrow arrow ? angle(p.getLookAngle(), arrow.getDeltaMovement().scale(-1)) : facing(p, direct);
-        var result = CombatResolver.receiveIncoming(attacker, actor(p), angle, Math.min(1_000_000, event.getAmount()), 0, true, true, direct instanceof AbstractArrow);
+        GuardPress press=guardPresses.get(p.getUUID());
+        Boolean precise=creatureMelee.claimGuardAuthorization(source,direct,p,press==null?0:press.serial,press!=null&&press.held);
+        var result = precise==null?CombatResolver.receiveIncoming(attacker, actor(p), angle, Math.min(1_000_000, event.getAmount()), 0, true, true, direct instanceof AbstractArrow)
+                :CombatResolver.receiveTelegraphed(attacker,actor(p),angle,Math.min(1_000_000,event.getAmount()),0,true,true,false,precise);
         if (result.dealsDamage()) event.setAmount((float) result.damage()); else event.setCanceled(true);
         if (result.outcome() != HitOutcome.HIT) effects(source, p, result);
     }
@@ -864,6 +882,7 @@ public final class RpgServer {
                 if (!BuiltInRegistries.ENTITY_TYPE.containsKey(Identifier.parse(attack.entityType())))
                     throw new IllegalArgumentException("Unknown creature combat entity " + attack.entityType());
             validatedCreatureCombat = candidate;
+            validatedGuardCues = GuardCueSettings.read(config.directory().resolve("guard_cues.json"));
         } catch (IOException error) { throw new IllegalArgumentException("creature_combat.json: " + error.getMessage(),error); }
         definitions.collections().validateReferences(id -> BuiltInRegistries.ITEM.containsKey(Identifier.parse(id)),
                 id -> BuiltInRegistries.ENTITY_TYPE.containsKey(Identifier.parse(id)), id -> BuiltInRegistries.POTION.containsKey(Identifier.parse(id)));

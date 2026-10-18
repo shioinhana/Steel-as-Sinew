@@ -142,6 +142,9 @@ public final class StaminaRegenTest {
         // Isolate the historical x3 upgrade; StaminaLevelMigrationTest separately
         // verifies the subsequent 0.7.4 base replacement and complete upgrade chain.
         Files.writeString(directory.resolve(StaminaLevelMigration.MARKER), "{}");
+        // Guard releases have their own exact-field suites. Keep this historical x3 fixture guard-neutral.
+        Files.writeString(directory.resolve(PerfectGuardMigration.MARKER), "{}");
+        Files.writeString(directory.resolve(GuardCueMigration.MARKER), "{}");
         return directory;
     }
     private static void copyDefaults(Path directory) throws Exception {

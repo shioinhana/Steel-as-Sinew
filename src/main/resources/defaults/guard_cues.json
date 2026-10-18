@@ -1,0 +1,7 @@
+{
+  "enabled": true,
+  "flashLeadTicks": 6,
+  "inputWindowTicks": 6,
+  "flashDurationMillis": 120,
+  "guardCancelsActive": true
+}

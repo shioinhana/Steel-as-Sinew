@@ -267,7 +267,7 @@ public final class CombatCamera {
         } else if(mode.equals("dual_blade")) {
             var combo=ClientState.snapshot().getAsJsonObject("combo");
             String queued=combo!=null&&ClientState.bool(combo,"queued",false)?" · 下一刀已缓存":"";
-            gui.drawString(g.font,"左键左手斩 · 右键右手斩 · 点按一次一刀"+queued,10,66,0xffe6edff);
+            gui.drawString(g.font,"左右键挥斩 · 点按一次一刀"+queued,10,66,0xffe6edff);
         }
     }
 }

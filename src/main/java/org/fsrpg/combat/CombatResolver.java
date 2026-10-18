@@ -25,7 +25,7 @@ public final class CombatResolver {
         }
         attacker.markHit(defender.id());
         return receiveIncoming(attacker, defender, defenderFacingAngleDegrees, skill.damage() * attacker.attackDamageMultiplier(), skill.knockback(),
-                skill.blockable(), skill.parryable(), false, skill.id());
+                skill.blockable(), skill.parryable(), false, skill.id(),null);
     }
 
     /** Side-effect-free prepass predicate; a failed clash check must not resolve an ordinary hit early. */
@@ -52,12 +52,18 @@ public final class CombatResolver {
                                            double damage, double knockback, boolean blockable, boolean parryable,
                                            boolean projectile) {
         return receiveIncoming(attacker, defender, defenderFacingAngleDegrees, damage, knockback,
-                blockable, parryable, projectile, "");
+                blockable, parryable, projectile, "",null);
+    }
+
+    /** A telegraphed enemy owns its input window; generic recent guarding cannot borrow another attack's cue. */
+    public static HitResult receiveTelegraphed(CombatActor attacker,CombatActor defender,double facing,double damage,
+            double knockback,boolean blockable,boolean parryable,boolean projectile,boolean perfectGuardAuthorized){
+        return receiveIncoming(attacker,defender,facing,damage,knockback,blockable,parryable,projectile,"",perfectGuardAuthorized);
     }
 
     private static HitResult receiveIncoming(CombatActor attacker, CombatActor defender, double defenderFacingAngleDegrees,
                                             double damage, double knockback, boolean blockable, boolean parryable,
-                                            boolean projectile, String skillId) {
+                                            boolean projectile, String skillId,Boolean perfectGuardAuthorized) {
         if (defender == null) throw new IllegalArgumentException("defender is required");
         requireAngle(defenderFacingAngleDegrees);
         SkillDefinition.checkNumber(damage, "incoming damage", 0, 100_000_000);
@@ -72,7 +78,8 @@ public final class CombatResolver {
                 defender.breakGuard(guard.guardBreakStunTicks());
                 return new HitResult(HitOutcome.GUARD_BROKEN, damage, knockback, false, guard.guardBreakStunTicks(), skillId);
             }
-            if (parryable && (!guard.perfectGuardRequiresBlockable() || blockable) && defender.inPerfectGuardWindow()) {
+            boolean precise=perfectGuardAuthorized==null?defender.inPerfectGuardWindow():perfectGuardAuthorized&&guard.perfectGuardTicks()>0;
+            if (parryable && (!guard.perfectGuardRequiresBlockable() || blockable) && precise) {
                 if (defender.consumeStamina(guard.perfectGuardStaminaCost())) {
                     defender.recordGuardContact();
                     defender.perfectGuardSucceeded();
