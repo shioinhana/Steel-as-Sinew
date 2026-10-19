@@ -12,7 +12,41 @@ public record CombatRules(
         int dodgeCooldownTicks, double dodgeStaminaCost, double dodgeDistance,
         boolean dodgeCancelsRecovery, boolean allowAirDodge, RapierTargeting.Rules rapierTargetLock,
         PerfectGuardCounter perfectGuardCounter, StaminaLevelScaling staminaLevelScaling,
-        StaminaCombatRules staminaCombatRules) {
+        StaminaCombatRules staminaCombatRules,BurstDashRules burstDash,Double spearSwipeKnockbackMultiplier) {
+
+    /** Keep the initial 0.7.8 constructor source-compatible. */
+    public CombatRules(double maxStamina, double maxSpirit, double staminaRegenPerSecond,
+                       double spiritRegenPerSecond, int resourceRegenDelayTicks, int drawTicks, int sheathTicks,
+                       double guardArcDegrees, double guardDamageMultiplier, double guardStaminaCost,
+                       int perfectGuardTicks, double perfectGuardStaminaCost, int parryStunTicks, int guardBreakStunTicks,
+                       int hitStunTicks, double clashFacingArcDegrees, int dodgeDurationTicks,
+                       int dodgeInvulnerabilityStartTicks, int dodgeInvulnerabilityTicks, int dodgeCooldownTicks,
+                       double dodgeStaminaCost, double dodgeDistance, boolean dodgeCancelsRecovery, boolean allowAirDodge,
+                       RapierTargeting.Rules rapierTargetLock, PerfectGuardCounter perfectGuardCounter,
+                       StaminaLevelScaling staminaLevelScaling,StaminaCombatRules staminaCombatRules,BurstDashRules burstDash) {
+        this(maxStamina,maxSpirit,staminaRegenPerSecond,spiritRegenPerSecond,resourceRegenDelayTicks,drawTicks,sheathTicks,
+                guardArcDegrees,guardDamageMultiplier,guardStaminaCost,perfectGuardTicks,perfectGuardStaminaCost,
+                parryStunTicks,guardBreakStunTicks,hitStunTicks,clashFacingArcDegrees,dodgeDurationTicks,
+                dodgeInvulnerabilityStartTicks,dodgeInvulnerabilityTicks,dodgeCooldownTicks,dodgeStaminaCost,dodgeDistance,
+                dodgeCancelsRecovery,allowAirDodge,rapierTargetLock,perfectGuardCounter,staminaLevelScaling,staminaCombatRules,burstDash,.5);
+    }
+
+    /** Keep the 0.7.7 canonical constructor source-compatible. */
+    public CombatRules(double maxStamina, double maxSpirit, double staminaRegenPerSecond,
+                       double spiritRegenPerSecond, int resourceRegenDelayTicks, int drawTicks, int sheathTicks,
+                       double guardArcDegrees, double guardDamageMultiplier, double guardStaminaCost,
+                       int perfectGuardTicks, double perfectGuardStaminaCost, int parryStunTicks, int guardBreakStunTicks,
+                       int hitStunTicks, double clashFacingArcDegrees, int dodgeDurationTicks,
+                       int dodgeInvulnerabilityStartTicks, int dodgeInvulnerabilityTicks, int dodgeCooldownTicks,
+                       double dodgeStaminaCost, double dodgeDistance, boolean dodgeCancelsRecovery, boolean allowAirDodge,
+                       RapierTargeting.Rules rapierTargetLock, PerfectGuardCounter perfectGuardCounter,
+                       StaminaLevelScaling staminaLevelScaling,StaminaCombatRules staminaCombatRules) {
+        this(maxStamina,maxSpirit,staminaRegenPerSecond,spiritRegenPerSecond,resourceRegenDelayTicks,drawTicks,sheathTicks,
+                guardArcDegrees,guardDamageMultiplier,guardStaminaCost,perfectGuardTicks,perfectGuardStaminaCost,
+                parryStunTicks,guardBreakStunTicks,hitStunTicks,clashFacingArcDegrees,dodgeDurationTicks,
+                dodgeInvulnerabilityStartTicks,dodgeInvulnerabilityTicks,dodgeCooldownTicks,dodgeStaminaCost,dodgeDistance,
+                dodgeCancelsRecovery,allowAirDodge,rapierTargetLock,perfectGuardCounter,staminaLevelScaling,staminaCombatRules,BurstDashRules.defaults());
+    }
 
     /** Keep the 0.7.4 canonical constructor source-compatible. */
     public CombatRules(double maxStamina, double maxSpirit, double staminaRegenPerSecond,
@@ -96,6 +130,9 @@ public record CombatRules(
         if (perfectGuardCounter == null) perfectGuardCounter = PerfectGuardCounter.defaults();
         if (staminaLevelScaling == null) staminaLevelScaling = StaminaLevelScaling.defaults();
         if (staminaCombatRules == null) staminaCombatRules = StaminaCombatRules.defaults();
+        if (burstDash == null) burstDash = BurstDashRules.defaults();
+        if(spearSwipeKnockbackMultiplier==null)spearSwipeKnockbackMultiplier=.5;
+        SkillDefinition.checkNumber(spearSwipeKnockbackMultiplier,"spearSwipeKnockbackMultiplier",0,1);
         SkillDefinition.checkNumber(maxStamina, "maxStamina", 1, 1_000_000);
         SkillDefinition.checkNumber(maxSpirit, "maxSpirit", 1, 1_000_000);
         SkillDefinition.checkNumber(staminaRegenPerSecond, "staminaRegenPerSecond", 0, 1_000_000);

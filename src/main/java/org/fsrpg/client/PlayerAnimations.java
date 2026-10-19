@@ -27,6 +27,7 @@ import org.slf4j.LoggerFactory;
 public final class PlayerAnimations {
     private static final Logger LOG = LoggerFactory.getLogger("FSRPG animation");
     private static final Map<UUID, Binding> bindings = new HashMap<>();
+    private static final Map<UUID,AirPose.State<Frame>> airPoses=new HashMap<>();
     private static final Map<AvatarRenderState, Frame> previews = new WeakHashMap<>();
     private static final PoseLayers.RenderClock renderClock = new PoseLayers.RenderClock();
     private static Object level;
@@ -113,12 +114,12 @@ public final class PlayerAnimations {
     }
     private static void world() {
         Object next = Minecraft.getInstance().level;
-        if (level != next) { bindings.clear(); previews.clear(); AnimationAssets.clear(); SkinnedArms.clear(); renderClock.reset(); level = next; }
+        if (level != next) { bindings.clear(); airPoses.clear(); previews.clear(); AnimationAssets.clear(); SkinnedArms.clear(); renderClock.reset(); level = next; }
     }
-    public static void clear() { bindings.clear(); previews.clear(); AnimationAssets.clear(); SkinnedArms.clear(); renderClock.reset(); level = Minecraft.getInstance().level; }
+    public static void clear() { bindings.clear(); airPoses.clear(); previews.clear(); AnimationAssets.clear(); SkinnedArms.clear(); renderClock.reset(); level = Minecraft.getInstance().level; }
     public static void reloadModels() {
         var states = bindings.values().stream().map(binding -> binding.state).toList();
-        bindings.clear(); AnimationAssets.clear(); states.forEach(PlayerAnimations::accept);
+        bindings.clear(); airPoses.clear(); AnimationAssets.clear(); states.forEach(PlayerAnimations::accept);
     }
     public static long appliedModels() { return appliedModels; }
     public static long weaponBatches() { return weaponBatches; }
@@ -169,7 +170,11 @@ public final class PlayerAnimations {
                 next.spearTurn = previous.spearTurn;
             }
         }
-        if (previous != null && previous.lastPose != null) {
+        // A new sword binding used to show its neutral first frame, then resurrect
+        // the preceding stroke through OffsetDecay on the next frame. Keep authored
+        // sword attack handoffs direct; their existing contact-time mapping stays intact.
+        if (previous != null && previous.lastPose != null
+                && !(SwordMotion.applies(asset.full())&&PoseLayers.attackElapsed(state.phase(),state.phaseRemaining(),state.windupTicks(),state.activeTicks(),state.recoveryTicks())>=0)) {
             var clip = asset.full().rig().clips().get(state.action());
             next.transitionFrom = previous.lastPose;
             next.swordPending = previous.lastPose;
@@ -190,7 +195,7 @@ public final class PlayerAnimations {
     }
     public static void accept(RpgAnimationPayload state) {
         world();
-        if (!state.drawn()) { bindings.remove(state.entityId()); return; }
+        if (!state.drawn()) { bindings.remove(state.entityId()); airPoses.remove(state.entityId()); return; }
         if (state.windupTicks() < 0 || state.activeTicks() < 0 || state.recoveryTicks() < 0 || state.phaseRemaining() < 0) return;
         Binding previous = bindings.get(state.entityId());
         if (previous != null && previous.state.sequence() > state.sequence()) return;
@@ -257,7 +262,7 @@ public final class PlayerAnimations {
         if (!(entity instanceof net.minecraft.world.entity.LivingEntity living)) return null;
         Binding binding = bindings.get(entity.getUUID()); if (binding == null) return null;
         double renderTick = now();
-        if (renderTick - binding.received > 100) { bindings.remove(entity.getUUID()); return null; }
+        if (renderTick - binding.received > 100) { bindings.remove(entity.getUUID()); airPoses.remove(entity.getUUID()); return null; }
         if (binding.pendingAction != null && binding.pendingAction.ready(renderTick)) {
             var pending = binding.pendingAction;
             var nextState = pending.value();
@@ -306,13 +311,13 @@ public final class PlayerAnimations {
                 pose=legacyTransition(binding,pose,renderTick);
                 binding.legacyBase = pose;
             }
-            pose=retargetSkin(state,pose);
+            pose=retargetSkin(state,binding.asset.full(),pose);
             renderSamples++; lastSampleTick=renderTick;
             binding.sampledRenderFrame=renderFrameId;
-            binding.sampled=new Frame(binding.asset.full(),null,pose,binding.asset.full().worldMatrices(pose),
+            binding.sampled=airFrame(entity,server,new Frame(binding.asset.full(),null,pose,binding.asset.full().worldMatrices(pose),
                     1,Locomotion.movementTarget(state.walkAnimationSpeed),renderTick,clip.layer(),
                     LegacyMotion.knee(pose,"right"),LegacyMotion.knee(pose,"left"),
-                    new PresentationMotion.Balance(0,0,0),null);
+                    new PresentationMotion.Balance(0,0,0),null),state);
             return binding.sampled;
         }
         if (sword) {
@@ -459,7 +464,7 @@ public final class PlayerAnimations {
             pose = PresentationMotion.uprightGrip(pose,binding.asset.full().worldMatrices(pose),binding.motion.runWeight());
         // The two-hand solve must see the real stock/slim shoulder positions.
         if(server.style().equals("dual_blade")) pose=PoseLayers.dualElbows(pose);
-        pose = retargetSkin(state, pose);
+        pose = retargetSkin(state, binding.asset.full(),pose);
         Vector3f spearSourceRear = null;
         Quaternionf spearSourceChest = null;
         if(server.style().equals("spear")) {
@@ -559,12 +564,38 @@ public final class PlayerAnimations {
         }
         renderSamples++; lastSampleTick = renderTick;
         binding.sampledRenderFrame=renderFrameId;
-        binding.sampled = new Frame(binding.asset.full(), binding.asset.weapon(), pose, finalWorld,
+        binding.sampled = airFrame(entity,server,new Frame(binding.asset.full(), binding.asset.weapon(), pose, finalWorld,
                 lowerWeight, sample.movingWeight(), renderTick, sample.layer(),
                 supportedLower == null ? 0 : supportedLower.right().knee(),
-                supportedLower == null ? 0 : supportedLower.left().knee(), hipBalance, supportedLower);
+                supportedLower == null ? 0 : supportedLower.left().knee(), hipBalance, supportedLower),state);
         return binding.sampled;
     }
+    private static Frame airFrame(net.minecraft.world.entity.Entity entity,RpgAnimationPayload intent,Frame current,AvatarRenderState state) {
+        boolean inAir=!entity.onGround()&&!entity.isPassenger()&&!entity.isInWater()&&!state.isFallFlying&&state.swimAmount<=.5f;
+        var air=airPoses.computeIfAbsent(entity.getUUID(),id->new AirPose.State<Frame>());
+        Frame selected=air.sample(intent.style()+"|"+System.identityHashCode(current.model())+"|"+state.skin.model(),inAir,intent.phase(),current);
+        if(inAir&&AirPose.attack(intent.phase())&&air.takeoff()!=null){
+            // Continue the authored attack above the waist. Air is not permission for
+            // vanilla legs (or a newly selected fall clip) to replace the takeoff stance.
+            Frame lower=air.takeoff();
+            // Grounded support includes a common torso drop. Airborne sampling no
+            // longer runs that solver, and source root translations may advance;
+            // keep the actual waist attached to the retained pelvis while the
+            // authored torso rotations and hand/weapon chains continue normally.
+            var aligned=AirPoseJoin.align(selected.model(),selected.local(),selected.world(),lower.world());
+            var local=new HashMap<>(aligned);var world=new HashMap<>(selected.model().worldMatrices(aligned));
+            for(String id:PoseLayers.masks(selected.model().rig()).get("lower")){
+                if(lower.local().containsKey(id))local.put(id,lower.local().get(id));
+                if(lower.world().containsKey(id))world.put(id,lower.world().get(id));
+            }
+            selected=new Frame(selected.model(),selected.weapon(),Map.copyOf(local),Map.copyOf(world),lower.lowerBodyWeight(),lower.movingWeight(),
+                    current.sampledTick(),selected.layer(),lower.rightKnee(),lower.leftKnee(),selected.balance(),lower.supportedLower());
+        }
+        if(selected!=current)selected=new Frame(selected.model(),selected.weapon(),selected.local(),selected.world(),selected.lowerBodyWeight(),selected.movingWeight(),
+                current.sampledTick(),selected.layer(),selected.rightKnee(),selected.leftKnee(),selected.balance(),selected.supportedLower());
+        air.presented(selected);return selected;
+    }
+    public static boolean airbornePoseHeld(UUID entity){var pose=airPoses.get(entity);return pose!=null&&pose.holding();}
     private static SpearTurn.Settings turnSettings() {
         return new SpearTurn.Settings(ClientOptions.SPEAR_PELVIS_RESPONSE.get().floatValue(),ClientOptions.SPEAR_TURN_STEP_TIME.get().floatValue(),
                 (float)Math.toRadians(ClientOptions.SPEAR_TURN_STEP_ANGLE.get()),ClientOptions.SPEAR_TURN_STEP_LIFT.get().floatValue()/6.25f,
@@ -574,13 +605,13 @@ public final class PlayerAnimations {
     public static void preview(AvatarRenderState state, ModelDocument document, Map<String, Pose> source) {
         if(LegacyMotion.applies(document)) {
             if (SwordMotion.applies(document)) source = SwordMotion.waist(document, source);
-            var pose=retargetSkin(state,Map.copyOf(source));
+            var pose=retargetSkin(state,document,Map.copyOf(source));
             previews.put(state,new Frame(document,null,pose,document.worldMatrices(pose),1,0,now(),"full",
                     LegacyMotion.knee(pose,"right"),LegacyMotion.knee(pose,"left"),new PresentationMotion.Balance(0,0,0),null));
             return;
         }
         if(document.rig().id().equals("fsrpg.dual_blade"))source=PoseLayers.dualElbows(source);
-        Map<String, Pose> pose = retargetSkin(state, Map.copyOf(source));
+        Map<String, Pose> pose = retargetSkin(state, document,Map.copyOf(source));
         var balance = new PresentationMotion.Balance(0, 0, 0);
         balance = PresentationMotion.withAuthoredHipShift(pose, document.rig().parts().get("body").rest().position(), balance);
         var w = document.worldMatrices(pose);
@@ -620,19 +651,8 @@ public final class PlayerAnimations {
         return binding.legacyDecay.blend(pose, weight);
     }
 
-    private static Map<String, Pose> retargetSkin(AvatarRenderState state, Map<String, Pose> pose) {
-        if (state.skin.model() == PlayerModelType.SLIM) {
-            pose = new HashMap<>(pose);
-            for (var side : new String[]{"right", "left"}) {
-                String id = side + "_arm"; Pose original = pose.get(id);
-                if (original != null) {
-                    var at = original.position();
-                    pose.put(id, new Pose(original.rotation(), new org.fsvoxel.animation.FsvoxAnimation.V(
-                            at.x() + (side.equals("right") ? 3.125f : -3.125f), at.y(), at.z()), original.scale()));
-                }
-            }
-        }
-        return pose;
+    private static Map<String, Pose> retargetSkin(AvatarRenderState state,ModelDocument model, Map<String, Pose> pose) {
+        return PlayerShoulderFit.apply(model,pose,state.skin.model()==PlayerModelType.SLIM);
     }
     /** Action marker times, rather than magic constants, define the three editable combat windows. */
     public static double phaseTime(org.fsvoxel.animation.FsvoxAnimation.Clip clip, double ticks, double windup, double active, double recovery) {

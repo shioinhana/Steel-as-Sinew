@@ -61,7 +61,9 @@ final class LegacyMotion {
     }
     static String gait(ModelDocument model, LivingEntity entity, float speed, RpgAnimationPayload payload) {
         String prefix = "legacy_"+kind(model)+"_";
-        if (!entity.onGround()) return prefix+(entity.getDeltaMovement().y()<0?"fall":"jump");
+        // AirPose keeps the actual takeoff pose. A binding first created in air uses
+        // a neutral authored stance instead of inventing a guard-like jump/fall pose.
+        if (!entity.onGround()) return prefix+"static_idle";
         if (speed > .035f) {
             double radians=Math.toRadians(entity.getYRot());
             double dx=entity.getX()-entity.xo,dz=entity.getZ()-entity.zo;

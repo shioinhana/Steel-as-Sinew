@@ -10,10 +10,24 @@ public final class RapierTargetingTest {
     private static final RapierTargeting.Rules RULES = RapierTargeting.Rules.defaults();
     public static void main(String[] args) {
         priorityAndStability();
+        explicitClickLock();
         validityAndRange();
         directionAndActiveTracking();
         dodgeIntentBounds();
         System.out.println("RapierTargetingTest passed: " + checks + " checks");
+    }
+    private static void explicitClickLock() {
+        var passive=target(401,3,false);var hostile=target(402,2,true);
+        check(RapierTargeting.selected(null,List.of(passive,hostile),RULES)==null,"no nearby entity acquires a lock before an explicit click");
+        check(RapierTargeting.selected(passive.uuid(),List.of(passive,hostile),RULES)==passive,"a selected passive cannot be stolen by a nearer hostile");
+        check(RapierTargeting.selected(passive.uuid(),List.of(hostile),RULES)==null,"a removed selected target clears instead of auto-reacquiring");
+        check(RapierTargeting.selected(passive.uuid(),List.of(passive),new RapierTargeting.Rules(true,2,true,true))==null,"explicit selection still obeys configured distance");
+        check(RapierTargeting.selected(passive.uuid(),List.of(passive),new RapierTargeting.Rules(true,10,false,true))==null,"explicit selection obeys disabled passive policy");
+        check(RapierTargeting.selected(hostile.uuid(),List.of(hostile),new RapierTargeting.Rules(false,10,true,true))==null,"disabled feature cannot accept explicit selection");
+        for(int flag=0;flag<4;flag++) {
+            var invalid=new RapierTargeting.Candidate(passive.uuid(),passive.entityId(),1,false,flag!=0,flag!=1,flag==2,flag!=3);
+            check(RapierTargeting.selected(passive.uuid(),List.of(invalid),RULES)==null,"explicit selection excludes dead/unattackable/friendly/occluded target "+flag);
+        }
     }
     private static void dodgeIntentBounds() {
         var direction=RapierTargeting.dodgeDirection(.3,.4);

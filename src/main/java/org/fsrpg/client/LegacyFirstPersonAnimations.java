@@ -25,6 +25,7 @@ public final class LegacyFirstPersonAnimations {
     private static String lastAction="";
     private static double lastSeconds;
     private static String failedModel="";
+    private static final AirPose.State<java.util.Map<String,FsvoxAnimation.Pose>> airPose=new AirPose.State<>();
     private LegacyFirstPersonAnimations() {}
     public static long samples(){return samples;}
     public static long itemSubmissions(){return itemSubmissions;}
@@ -67,7 +68,10 @@ public final class LegacyFirstPersonAnimations {
                 offsetArm(pose,"left_arm",-.998f,.527f,.05f);
                 offsetArm(pose,"right_arm",.998f,.553f,.05f);
             }
-            var world=model.worldMatrices(pose);
+            java.util.Map<String,FsvoxAnimation.Pose> fitted=kind.equals("dual_blade")?PlayerShoulderFit.dualFirstPerson(pose):java.util.Map.copyOf(pose);
+            boolean inAir=!game.player.onGround()&&!game.player.isPassenger()&&!game.player.isFallFlying()&&!game.player.isInWater();
+            fitted=airPose.sample(System.identityHashCode(game.level)+"|"+System.identityHashCode(model),inAir,intent.phase(),fitted);
+            var world=model.worldMatrices(fitted);
             var poses=event.getPoseStack();var collector=event.getSubmitNodeCollector();
             event.setCanceled(true);
             if(event.getHand()!=InteractionHand.MAIN_HAND)return;
@@ -76,7 +80,7 @@ public final class LegacyFirstPersonAnimations {
             else if(kind.equals("dual_blade"))poses.translate(0,-1.20f,-.60f);
             else poses.translate(0,-.71f,-.54f);
             var conversion=new Matrix4f().scaling(-.01f,.01f,-.01f);
-            for(var draw:model.draws(pose)) {
+            for(var draw:model.draws(fitted)) {
                 Geometry.Mesh mesh=flipV(draw.mesh().transformed(new Matrix4f(conversion).mul(draw.transform())));
                 collector.submitCustomGeometry(poses,RenderTypes.entityCutoutNoCull(game.player.getSkin().body().texturePath()),
                         (at,buffer)->MinecraftMeshRenderer.prepare(mesh,at,-1,event.getPackedLight(),OverlayTexture.NO_OVERLAY).submit(buffer));

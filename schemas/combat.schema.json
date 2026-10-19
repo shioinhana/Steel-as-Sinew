@@ -41,6 +41,20 @@
     "dodgeDistance": { "type": "number", "minimum": 0, "maximum": 32 },
     "dodgeCancelsRecovery": { "type": "boolean" },
     "allowAirDodge": { "type": "boolean" },
+    "spearSwipeKnockbackMultiplier": { "type": "number", "minimum": 0, "maximum": 1, "default": 0.5, "description": "长枪持续刺出时划动接触的击退系数，乘以当前skill.knockback；服务端按真实划动方向处理切向推移或空中下划击坠。缺字段兼容0.5，0关闭划动击退，所有原攻击数值保留。" },
+    "burstDash": {
+      "type": "object", "additionalProperties": false,
+      "description": "物理Shift新按一次触发独立的水平突进，不提供无敌、不取消已发出的攻击，也不重置垂直速度；支持接跳跃。开始后方向固定，按住沿此方向奔跑，松开仅停止后续奔跑。Shift+C优先重格挡。旧Alt闪避数值独立保留。",
+      "required": ["distance", "durationTicks", "staminaCost", "cooldownTicks", "runSpeed", "inputLeaseTicks"],
+      "properties": {
+        "distance": { "type": "number", "minimum": 0.25, "maximum": 32, "default": 3.0 },
+        "durationTicks": { "type": "integer", "minimum": 1, "maximum": 100, "default": 10 },
+        "staminaCost": { "$ref": "#/$defs/resource", "default": 5.0 },
+        "cooldownTicks": { "$ref": "#/$defs/ticks", "default": 10 },
+        "runSpeed": { "type": "number", "minimum": 0, "maximum": 12, "default": 5.6, "description": "格每秒，runSpeed*durationTicks/20 不得超过3*distance，保证加速曲线单调前进。" },
+        "inputLeaseTicks": { "type": "integer", "minimum": 2, "maximum": 100, "default": 12 }
+      }
+    },
     "staminaLevelScaling": {
       "type": "object", "additionalProperties": false,
       "description": "x取服务端同步的原版经验等级experienceLevel（HUD Lv），必须非负；0级直接使用基础值，避免ln(0)。只对正等级回复的完整表达式向下取整，上限保留小数。升级不补体力，降级只截到新上限。缺省兼容默认系数。",
@@ -64,7 +78,7 @@
     },
     "rapierTargetLock": {
       "type": "object", "additionalProperties": false,
-      "description": "仅拔刀西洋剑启用。距离为双方实体位置之间的三维格数，边界包含；敌对优先，同优先级保持现锁，不自动锁玩家、盟友或宠物。旧配置仅补缺字段并备份。",
+      "description": "非spear拔刀状态先由准星明确选中目标，攻击被服务端接受后锁定，只维护已选目标，不自动搜索或抢选。R先解锁，再次R才收刀。距离为双方位置的三维格数，边界包含；保留range、allowPassive和视线参数，不自动锁玩家、盟友或宠物。旧JSON键保持rapierTargetLock以保留已有配置。",
       "required": ["enabled", "range", "allowPassive", "requireLineOfSight"],
       "properties": {
         "enabled": { "type": "boolean", "default": true },

@@ -37,7 +37,7 @@ public final class StyleSelectionScreen extends Screen {
                 case "legacy_dual" -> "左键向左斩 / 右键向右斩 · 双键同时按双刀合击";
                 case "dual" -> "左键左手斩 / 右键右手斩 · 点按一次一刀";
                 case "spear" -> "点按刺击 / 按住拖动扫击";
-                case "bow_rapid", "bow_snipe", "bow", "archery" -> "左键弓身击退（50 熟练度后速射可按住自动引弓） · 右键按住拉弦、松开放箭 · R 切换速射/狙击";
+                case "bow_rapid", "bow_snipe", "bow", "archery" -> "左键弓身击退（50 熟练度后速射可按住自动引弓） · 右键按住拉弦、松开放箭 · V 选择速射/狙击";
                 default -> "左键 " + count + " 段连击 · 右键蓄力刺击";
             };
             button.setTooltip(Tooltip.create(Component.literal(enabled ? control : "该档位尚未启用")));
@@ -54,7 +54,7 @@ public final class StyleSelectionScreen extends Screen {
         gui.fill(left, top, left + panelWidth, top + 3, 0xffc7b185);
         gui.drawString(font, title, left + 12, top + 13, 0xffefd8a9);
         String message = ClientState.text(ClientState.snapshot(), "message", "");
-        gui.drawString(font, font.plainSubstrByWidth(message.isBlank() ? "选择当前武器姿态 · 多姿态可按 R 切换" : message, panelWidth - 24), left + 12, top + 30, 0xffa8b7c9);
+        gui.drawString(font, font.plainSubstrByWidth(message.isBlank() ? "选择当前武器姿态 · R 拔刀/收刀" : message, panelWidth - 24), left + 12, top + 30, 0xffa8b7c9);
         int pages = Math.max(1, (ClientState.objects(ClientState.snapshot(), "styles").size() + rows - 1) / rows);
         gui.drawCenteredString(font, (page + 1) + "/" + pages, left + panelWidth / 2, top + panelHeight - 20, 0xffa8b7c9);
         super.render(gui, mouseX, mouseY, partialTick);

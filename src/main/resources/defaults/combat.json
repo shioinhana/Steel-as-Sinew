@@ -4,6 +4,15 @@
   "staminaRegenPerSecond": 5.0,
   "spiritRegenPerSecond": 1.0,
   "resourceRegenDelayTicks": 20,
+  "spearSwipeKnockbackMultiplier": 0.5,
+  "burstDash": {
+    "distance": 3.0,
+    "durationTicks": 10,
+    "staminaCost": 5.0,
+    "cooldownTicks": 10,
+    "runSpeed": 5.6,
+    "inputLeaseTicks": 12
+  },
   "staminaCombatRules": {
     "combatTicks": 60,
     "regenMultiplier": 0.5,

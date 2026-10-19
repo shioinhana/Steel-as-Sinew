@@ -10,7 +10,7 @@ public final class WeaponDrawController {
     private boolean alive;
 
     /**
-     * Preserve file order for the R cycle. A matching two-handed setup wins over a general
+     * Preserve file order for manual style selection. A matching two-handed setup wins over a general
      * main-hand-only group, so equipping two swords selects dual blades rather than two stances.
      * Generic any styles never turn ordinary items or empty hands into combat weapons.
      */
@@ -61,23 +61,18 @@ public final class WeaponDrawController {
             var selected = selectedMatches ? matches.stream()
                     .filter(style -> style.id().equals(actor.style().id())).findFirst().orElseThrow() : matches.getFirst();
             actor.setStyle(selected);
-            if (matches.size() == 1) actor.requestDrawn();
+            if (matches.size() == 1 && selected.presentationStyleId().equals("spear")) actor.requestDrawn();
         }
         return !before.equals(actor.snapshot()) || !beforeStyle.equals(actor.style() == null ? "" : actor.style().id());
     }
 
-    /** R chooses the next drawn stance of the equipped weapon; it is never a sheath toggle. */
+    /** R toggles the selected non-spear weapon; spear's automatic single stance stays drawn. */
     public ActionResult cycle(CombatActor actor, Collection<WeaponStyleDefinition> styles, WeaponConfig weapons,
                               String main, String offhand, boolean isAlive) {
         equip(actor, styles, weapons, main, offhand, isAlive);
         var matches = matchingStyles(styles, weapons, main, offhand);
         if (!isAlive || matches.isEmpty()) return ActionResult.NOT_DRAWN;
-        if (matches.size() == 1) return actor.requestDrawn();
-        if (actor.phase() != CombatPhase.SHEATHED && actor.phase() != CombatPhase.READY) return ActionResult.BUSY;
-        int current = 0;
-        for (int i = 0; i < matches.size(); i++) if (matches.get(i).id().equals(actor.style().id())) current = i;
-        var next = matches.get(actor.drawn() ? (current + 1) % matches.size() : current);
-        var selected = actor.setStyle(next);
-        return selected == ActionResult.ACCEPTED ? actor.requestDrawn() : selected;
+        if(actor.style().presentationStyleId().equals("spear"))return actor.requestDrawn();
+        return actor.toggleDrawn();
     }
 }

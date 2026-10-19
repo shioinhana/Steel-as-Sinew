@@ -6,8 +6,9 @@ import java.util.List;
 /** Finite ray cover of the whole shaft sweep, with a conservative, explicit interpolation error. */
 public final class SweptSpearContact {
     public static final int MAX_RAYS = 2048;
-    public record Cover(List<AttackAim.Point> points, double padding, double coverageMargin) {
-        public Cover { points = List.copyOf(points); }
+    public record Cover(List<AttackAim.Point> points, double padding, double coverageMargin,List<SpearSwipe.Vector> swipes) {
+        public Cover { points = List.copyOf(points);swipes=List.copyOf(swipes);if(points.size()!=swipes.size())throw new IllegalArgumentException("spear contact metadata differs from rays"); }
+        public Cover(List<AttackAim.Point> points,double padding,double coverageMargin){this(points,padding,coverageMargin,java.util.Collections.nCopies(points.size(),SpearSwipe.Vector.ZERO));}
     }
     public record MotionCover(Cover angular,int originIntervals,double translationMargin,int rayCount) {}
     private record Segment(AttackAim.Point from,AttackAim.Point to,double radians) {}
@@ -51,19 +52,21 @@ public final class SweptSpearContact {
             for(int i=0;i<counts.length;i++)counts[i]=1+(int)Math.floor(additional*segments.get(i).radians()/total);
         }
         var result = new ArrayList<AttackAim.Point>();
-        for(var path:paths)result.add(path.points().getFirst());
+        var swipes=new ArrayList<SpearSwipe.Vector>();
+        for(var path:paths){var first=path.points().getFirst();result.add(first);swipes.add(path.points().size()>1?SpearSwipe.tangent(first,path.points().get(1),first):SpearSwipe.Vector.ZERO);}
         double margin = 0;
         for (int i = 0; i < segments.size(); i++) {
             var segment=segments.get(i);var a=segment.from();var b=segment.to();int count=counts[i];
             margin = Math.max(margin, reach * segment.radians() / (2 * count));
             for (int j = 1; j <= count; j++) {
                 double t = j / (double)count;
-                result.add(new AttackAim.Point(AttackAim.wrap(a.yaw() + AttackAim.wrap(b.yaw() - a.yaw()) * t),
-                        a.pitch() + (b.pitch() - a.pitch()) * t, a.distance() + (b.distance() - a.distance()) * t));
+                var sample=new AttackAim.Point(AttackAim.wrap(a.yaw() + AttackAim.wrap(b.yaw() - a.yaw()) * t),
+                        a.pitch() + (b.pitch() - a.pitch()) * t, a.distance() + (b.distance() - a.distance()) * t);
+                result.add(sample);swipes.add(SpearSwipe.tangent(a,b,sample));
             }
         }
         if (result.size() > maxRays) throw new IllegalStateException("spear ray budget exceeded");
-        return new Cover(result, radius + margin, margin);
+        return new Cover(result, radius + margin, margin,swipes);
     }
 
     /** Joint angular/translation budget. Fewer origin samples increase the explicit conservative translation error. */

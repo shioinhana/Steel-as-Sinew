@@ -19,6 +19,7 @@ final class ClientOptions {
     static final ModConfigSpec.DoubleValue SPEAR_CARRY_DOWN, SPEAR_CARRY_BACK, SPEAR_CARRY_SIDE, SPEAR_PELVIS_RESPONSE, SPEAR_TURN_STEP_TIME, SPEAR_TURN_STEP_ANGLE, SPEAR_TURN_STEP_LIFT, SPEAR_AIM_CROUCH;
     static final ModConfigSpec.DoubleValue WAIST_TWIST_LIMIT, TURN_ROOT_FOLLOW;
     static final ModConfigSpec.DoubleValue SPEAR_READY_RETRACT;
+    static final ModConfigSpec.DoubleValue CAMERA_DISTANCE,CAMERA_HEIGHT,CAMERA_TRANSITION,CAMERA_RESPONSE;
     static final ModConfigSpec.BooleanValue IDLE_INSPECTIONS;
     static final ModConfigSpec.DoubleValue INSPECT_MIN, INSPECT_MAX, INSPECT_BLEND, ACTION_BLEND;
     static {
@@ -86,7 +87,11 @@ final class ClientOptions {
         SPEAR_TURN_STEP_ANGLE=builder.comment("Maximum heading change per turning step, in degrees.").defineInRange("spearTurnStepDegrees",28.0,6,45);
         SPEAR_TURN_STEP_LIFT=builder.comment("Small turning foot lift, in centimeters; the other sole remains planted.").defineInRange("spearTurnStepLiftCm",5.625,1.25,10);
         SPEAR_AIM_CROUCH=builder.comment("How far the aim lowers the pelvis, in centimeters. Aiming down folds both knees while the soles stay planted; aiming up rises slightly. Zero keeps the legs straight.").defineInRange("spearAimCrouchCm",6.0,0,12);
-        SHOULDER=builder.comment("Rapier over-shoulder horizontal camera offset in blocks.").defineInRange("rapierShoulderOffset",.65,-1.5,1.5);
+        SHOULDER=builder.comment("Over-shoulder horizontal camera offset in blocks, shared by drawn weapons and camera-only exploration. Original key retained for existing user settings.").defineInRange("rapierShoulderOffset",.65,-1.5,1.5);
+        CAMERA_DISTANCE=builder.comment("Over-shoulder camera distance behind the eyes, in blocks. Native block collision still limits actual travel.").defineInRange("shoulderCameraDistance",3.0,.5,6);
+        CAMERA_HEIGHT=builder.comment("Additional over-shoulder camera height, in blocks.").defineInRange("shoulderCameraHeight",.12,-.5,1);
+        CAMERA_TRANSITION=builder.comment("Seconds for a smooth eye-to-shoulder entry or return before restoring the previous camera type.").defineInRange("shoulderCameraTransitionSeconds",.5,.15,1.5);
+        CAMERA_RESPONSE=builder.comment("Render-time position response for camera side, heading and wall-distance changes, in seconds. Final wall safety is applied after smoothing.").defineInRange("shoulderCameraResponseSeconds",.12,.02,.5);
         SPEAR_RECT_W=builder.comment("Baseline spear cursor width fraction, expanded 3x at runtime (height 2x), capped at 96% of the viewport. The visible/input field shrinks with FOV, pitch and camera parallax to keep aim within +/-45 yaw and +/-40 pitch ahead of the player.").defineInRange("spearCursorWidth",.56,.2,.9);
         SPEAR_RECT_H=builder.defineInRange("spearCursorHeight",.5,.2,.85);
         SPEAR_DRAG=builder.comment("Minimum angular path length in degrees for a sweep.").defineInRange("spearDragDegrees",5.0,1,30);

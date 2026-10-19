@@ -19,6 +19,7 @@ public final class SweptSpearContactTest {
         var stationary = SweptSpearContact.cover(AttackAim.at(0, 0), 4.5, .18);
         check(stationary.points().size() == 1 && stationary.padding() == .18 && stationary.coverageMargin() == 0,
                 "Stationary spear preserves its original shaft radius");
+        check(stationary.swipes().size()==1&&!stationary.swipes().getFirst().swept(),"Stationary ray has corresponding zero swipe metadata");
         var across = new AttackAim(List.of(new AttackAim.Point(-45, -40), new AttackAim.Point(45, 40)));
         var wide = SweptSpearContact.cover(across, 4.5, .02);
         check(wide.points().size() > 17 && wide.points().size() <= SweptSpearContact.MAX_RAYS, "Wide sweep is adaptively covered within a finite budget");
@@ -26,6 +27,9 @@ public final class SweptSpearContactTest {
         check(wide.points().getFirst().equals(across.points().getFirst()) && wide.points().getLast().equals(across.points().getLast()),
                 "Both endpoint shafts are covered");
         for (var sample : wide.points()) check(SpearAimField.contains(sample, 0), "Forward rectangle stays convex in yaw and pitch");
+        check(wide.swipes().size()==wide.points().size(),"Every sampled shaft has exactly one tangential direction");
+        for(int i=0;i<wide.points().size();i++)checkSwipe(wide.swipes().get(i),SpearSwipe.tangent(across.points().getFirst(),across.points().getLast(),wide.points().get(i)),"one-segment ray retains its source path tangent");
+        checkMetadataOrder();
 
         var random = new Random(7707);
         for (int scenario = 0; scenario < 80; scenario++) {
@@ -97,5 +101,24 @@ public final class SweptSpearContactTest {
                         "Every actual intermediate shaft point and origin lies inside the joint conservative cover");
             }
         }
+    }
+    private static void checkMetadataOrder(){
+        var a=new AttackAim.Point(-30,0);var b=new AttackAim.Point(-10,0);
+        var c=new AttackAim.Point(20,-15);var d=new AttackAim.Point(20,15);
+        var cover=SweptSpearContact.cover(List.of(new AttackAim(List.of(a,b)),new AttackAim(List.of(c,d))),4.5,.18,12);
+        check(cover.swipes().size()==cover.points().size(),"multi-path metadata inventory equals ray inventory");
+        check(cover.points().get(0).equals(a)&&cover.points().get(1).equals(c),"initial ray order retains the two independent path origins");
+        checkSwipe(cover.swipes().get(0),SpearSwipe.tangent(a,b,a),"first origin uses first path tangent");
+        checkSwipe(cover.swipes().get(1),SpearSwipe.tangent(c,d,c),"second origin uses second path tangent");
+        int segment=0;
+        for(int i=2;i<cover.points().size();i++){
+            var sample=cover.points().get(i);check(segment<2,"only admitted source segments produce metadata");
+            checkSwipe(cover.swipes().get(i),segment==0?SpearSwipe.tangent(a,b,sample):SpearSwipe.tangent(c,d,sample),"sample metadata remains paired with its own ordered source segment");
+            if(sample.equals(segment==0?b:d))segment++;
+        }
+        check(segment==2,"both source endpoint rays and their tangent metadata are present");
+    }
+    private static void checkSwipe(SpearSwipe.Vector actual,SpearSwipe.Vector expected,String message){
+        check(Math.abs(actual.x()-expected.x())<1e-10&&Math.abs(actual.y()-expected.y())<1e-10&&Math.abs(actual.z()-expected.z())<1e-10,message);
     }
 }

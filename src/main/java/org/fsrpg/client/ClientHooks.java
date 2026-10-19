@@ -25,6 +25,7 @@ import org.fsrpg.network.RpgAnimationPayload;
 import org.fsrpg.network.RpgTargetLockPayload;
 import org.fsrpg.network.RpgCreatureAttackPayload;
 import org.fsrpg.network.RpgGuardCuePayload;
+import org.fsrpg.network.RpgBurstDashPayload;
 import org.lwjgl.glfw.GLFW;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -45,6 +46,7 @@ public final class ClientHooks {
     private static final KeyMapping TREE = key("skill_tree", GLFW.GLFW_KEY_P);
     private static boolean bowCharging, rapierCharging, bowAuto, dualTogether;
     private static final GuardKeyIntent guardKeyIntent=new GuardKeyIntent();
+    private static final ShiftBurstIntent shiftBurstIntent=new ShiftBurstIntent();
     private static InputConstants.Key sampledGuardBinding;
     private static final int[] rawKeyboardKeys=java.util.Arrays.stream(GLFW.class.getFields())
             .filter(field->field.getName().startsWith("GLFW_KEY_")&&!field.getName().equals("GLFW_KEY_UNKNOWN"))
@@ -53,7 +55,6 @@ public final class ClientHooks {
     private static final java.util.Map<Integer,int[]> physicalScanKeys=new java.util.HashMap<>();
     private static long snapshotClientTick;
     private static int statusClock;
-    private static CameraType previousCamera;
     private ClientHooks() {}
 
     private static KeyMapping key(String name, int code) {
@@ -113,6 +114,7 @@ public final class ClientHooks {
         for (KeyMapping key : new KeyMapping[]{DRAW, LEFT, RIGHT, GUARD, DODGE, EDITOR, JOURNAL, SKILL, STYLE, TREE, ART}) event.register(key);
     }
     private static void payloads(RegisterClientPayloadHandlersEvent event) {
+        event.register(RpgBurstDashPayload.TYPE,(payload,context)->BurstDashMotion.accept(payload));
         event.register(RpgGuardCuePayload.TYPE, (payload, context) -> {
             try { GuardCuePresentation.accept(payload); }
             catch (RuntimeException error) { LOG.warn("Ignored invalid guard cue update", error); }
@@ -155,7 +157,9 @@ public final class ClientHooks {
     public static void send(String action, String argument) {
         var game=Minecraft.getInstance();
         boolean rapier=ClientState.drawn()&&CombatCamera.style().equals("rapier");
-        if(rapier&&(action.equals("attack")||action.equals("aimAttack")||action.equals("rapierCharge")&&argument.equals("true"))) {
+        boolean orbitAttack=ClientState.drawn()&&!CombatCamera.style().equals("spear")
+                &&(action.equals("attack")||action.equals("aimAttack")||action.equals("targetAttack")||action.equals("rapierCharge")&&argument.equals("true"));
+        if(orbitAttack) {
             CombatCamera.prepareRapierAttack();
             // This handler runs after the usual player movement send. Keep a no-lock
             // orbit-and-click in order: vanilla rotation first, then combat intent.
@@ -167,7 +171,7 @@ public final class ClientHooks {
         if(action.startsWith("spear")&&game.player!=null&&game.getConnection()!=null)
             game.getConnection().send(new net.minecraft.network.protocol.game.ServerboundMovePlayerPacket.Rot(
                     game.player.getYRot(),game.player.getXRot(),game.player.onGround(),game.player.horizontalCollision));
-        if (action.equals("attack") || action.equals("aimAttack") || action.startsWith("spear") || action.equals("dodge") || action.equals("draw") || action.equals("guard") || action.equals("guardMode"))
+        if (action.equals("attack") || action.equals("aimAttack") || action.equals("targetAttack") || action.startsWith("spear") || action.equals("burstDash") || action.equals("dodge") || action.equals("draw") || action.equals("guard") || action.equals("guardMode"))
             PlayerAnimations.interruptInspection();
         if (Minecraft.getInstance().getConnection() != null)
             ClientPacketDistributor.sendToServer(new RpgActionPayload(action, argument));
@@ -185,6 +189,7 @@ public final class ClientHooks {
     private static void tick(ClientTickEvent.Post event) {
         Minecraft game = Minecraft.getInstance();
         if (game.player == null || game.getConnection() == null) return;
+        updateCamera();
         if (++statusClock >= 20) { statusClock = 0; send("status", ""); }
         boolean inGame = game.screen == null;
         boolean bow = CombatCamera.style().equals("bow");
@@ -196,13 +201,17 @@ public final class ClientHooks {
                 &&java.util.Set.of("READY","WINDUP","RECOVERY").contains(ClientState.text(ClientState.snapshot(),"phase",""));
         String guardArgument=guardKeyIntent.sample(physicalGuard,canGuard,shouldHeavy,retryGuard);
         if(guardArgument!=null)send("guard",guardArgument);
+        var burstDirection=CombatCamera.burstDirection();
+        String burstArgument=shiftBurstIntent.sample(shouldHeavy,inGame&&game.isWindowActive()&&ClientState.drawn(),physicalGuard,
+                game.level==null?0:game.level.getGameTime(),burstDirection.x,burstDirection.z);
+        if(burstArgument!=null)send("burstDash",burstArgument);
         boolean nextBow=inGame && ClientState.drawn() && bow && RIGHT.isDown();
-        if(nextBow!=bowCharging) {bowCharging=nextBow;if(!nextBow&&(!inGame||!bow||!ClientState.drawn()))send("archeryCancel","");else send("archeryCharge",Boolean.toString(nextBow));}
+        if(nextBow!=bowCharging) {bowCharging=nextBow;if(!nextBow&&(!inGame||!bow||!ClientState.drawn()))send("archeryCancel","");else if(nextBow)CombatCamera.targetAttack("right");else send("archeryCharge","false");}
         boolean nextAuto=inGame && ClientState.drawn() && bow && LEFT.isDown();
         if(nextAuto!=bowAuto) {bowAuto=nextAuto;send("archeryAuto",Boolean.toString(nextAuto));}
         if(rapierCharging && (!inGame || !rapier || !ClientState.drawn() || !RIGHT.isDown())) {rapierCharging=false;if(!inGame||!rapier||!ClientState.drawn())send("rapierCancel","");else send("rapierCharge","false");}
         if (!inGame) { CombatCamera.tick(false); return; }
-        while (DRAW.consumeClick()) send("draw", "");
+        while (DRAW.consumeClick()) CombatCamera.drawKey();
         boolean wasGesture=CombatCamera.gestureHeld();
         boolean heldMouse=LEFT.isDown() || RIGHT.isDown();
         CombatCamera.tick(heldMouse);
@@ -211,14 +220,14 @@ public final class ClientHooks {
         if(together&&!dualTogether) send("attack","dual_combined");
         dualTogether=together;
         while (LEFT.consumeClick()) if (!together && ClientState.drawn() && (!CombatCamera.active() || !CombatCamera.style().equals("spear") || !wasGesture && !heldMouse)) {
-            if(bow) send("archeryBash",""); else CombatCamera.attack("left");
+            if(bow) CombatCamera.targetAttack("left"); else CombatCamera.attack("left");
         }
         while (RIGHT.consumeClick()) if (!together && !bow && ClientState.drawn() && (!CombatCamera.active() || !CombatCamera.style().equals("spear") || !wasGesture && !heldMouse)) {
-            if(rapier) {send("rapierCharge","true");rapierCharging=RIGHT.isDown();if(!rapierCharging)send("rapierCharge","false");}
+            if(rapier) {CombatCamera.targetAttack("right");rapierCharging=RIGHT.isDown();if(!rapierCharging)send("rapierCharge","false");}
             else CombatCamera.attack("right");
         }
         while (DODGE.consumeClick()) send("dodge", "");
-        while (SKILL.consumeClick()) send("attack", "skill");
+        while (SKILL.consumeClick()) {if(ClientState.drawn()&&!CombatCamera.style().equals("spear"))CombatCamera.targetAttack("skill");else send("attack", "skill");}
         while (STYLE.consumeClick()) openStyleSelector();
         while (EDITOR.consumeClick()) openEditor();
         while (JOURNAL.consumeClick()) openJournal();
@@ -238,19 +247,14 @@ public final class ClientHooks {
         }
     }
     private static void updateCamera() {
-        Minecraft game = Minecraft.getInstance();
-        if (ClientState.drawn() && ClientOptions.THIRD_PERSON.get()) {
-            if (previousCamera == null) { previousCamera = game.options.getCameraType(); game.options.setCameraType(CameraType.THIRD_PERSON_BACK); }
-        } else if (previousCamera != null) {
-            game.options.setCameraType(previousCamera); previousCamera = null;
-        }
+        CombatCamera.updateView();
     }
     private static void hud(RenderGuiEvent.Post event) {
         Minecraft game = Minecraft.getInstance();
         if (game.player == null || game.level == null || game.player.isSpectator()
                 || game.getCameraEntity() != game.player || game.options.hideGui) return;
         GuiGraphics gui = event.getGuiGraphics();
-        if (game.screen == null && ClientState.drawn()) CombatCamera.hud(gui);
+        if (game.screen == null && CombatCamera.active()) CombatCamera.hud(gui);
         var state = ClientState.snapshot();
         String phase = ClientState.text(state, "phase", "IDLE");
         String phaseName = switch (phase.toUpperCase(java.util.Locale.ROOT)) {
@@ -265,7 +269,7 @@ public final class ClientHooks {
         for (var definition : ClientState.objects(state, "styles")) if (ClientState.text(definition, "id", "").equals(style)) style = ClientState.text(definition, "label", style);
         boolean equipped = ClientState.bool(state, "weaponEquipped", ClientState.drawn());
         String line = equipped ? style + " · " + phaseName : "探索";
-        if (equipped && ClientState.number(state, "drawStateCount", 0) > 1) line += " · R 切换姿态";
+        if (equipped && ClientState.number(state, "drawStateCount", 0) > 1) line += " · V 选择姿态";
         if (!ClientOptions.RPG_HUD.get()) line += "  体力 " + Math.round(ClientState.number(state, "stamina", 0))
                 + "  灵力 " + Math.round(ClientState.number(state, "spirit", 0));
         gui.fill(6, 6, Math.min(gui.guiWidth() - 6, 15 + game.font.width(line)), 22, 0xb815202e);
@@ -302,10 +306,12 @@ public final class ClientHooks {
         }
     }
     private static void logout(ClientPlayerNetworkEvent.LoggingOut event) {
+        BurstDashMotion.reset();
         GuardCuePresentation.clear();
         CreatureCombatAnimation.clear();
         ArcheryPresentation.reset();
         CombatCamera.reset(); ClientState.clear(); PlayerAnimations.clear(); updateCamera(); bowCharging = rapierCharging = bowAuto = dualTogether = false; statusClock = 0;
         guardKeyIntent.reset();sampledGuardBinding=null;physicalScanKeys.clear();
+        shiftBurstIntent.reset();
     }
 }

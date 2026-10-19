@@ -1,6 +1,6 @@
 package org.fsrpg.targeting;
 
-import java.util.ArrayList;
+import java.util.List;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
@@ -14,7 +14,7 @@ import org.fsrpg.combat.CombatPhase;
 import org.fsrpg.combat.RapierTargeting;
 import org.fsrpg.progression.MinecraftProgression;
 
-/** Minecraft adapter for server-owned selection, validation and character facing. */
+/** Server-owned explicit crosshair selection, retained target validation and character facing. */
 public final class RapierTargetLock {
     public record Snapshot(boolean enabled, int targetId, String targetUuid, double yaw, double pitch, double range) {
         public boolean locked() { return enabled && targetId >= 0 && !targetUuid.isEmpty(); }
@@ -24,24 +24,12 @@ public final class RapierTargetLock {
 
     public Snapshot update(ServerPlayer player, CombatActor actor, boolean weaponEquipped) {
         RapierTargeting.Rules rules = actor.rules().rapierTargetLock();
-        boolean enabled = rules.enabled() && player.isAlive() && !player.isSpectator() && weaponEquipped
-                && actor.drawn() && actor.phase() != CombatPhase.SHEATHING && actor.style() != null
-                && actor.style().presentationStyleId().equals("rapier");
+        boolean enabled = enabled(player,actor,weaponEquipped);
         Snapshot previous = states.get(player.getUUID());
         RapierTargeting.Candidate selected = null;
-        if (enabled) {
-            var candidates = new ArrayList<RapierTargeting.Candidate>();
-            for (Mob mob : player.level().getEntitiesOfClass(Mob.class, player.getBoundingBox().inflate(rules.range()))) {
-                boolean friendly = player.isAlliedTo(mob) || mob.isAlliedTo(player)
-                        || mob instanceof TamableAnimal animal && animal.isTame();
-                boolean hostile = MinecraftProgression.hostile(mob)
-                        || mob.getTarget() != null && mob.getTarget().getUUID().equals(player.getUUID());
-                candidates.add(new RapierTargeting.Candidate(mob.getUUID(), mob.getId(), player.distanceToSqr(mob),
-                        hostile, mob.isAlive() && !mob.isRemoved(), mob.isAttackable() && !mob.isInvulnerable(),
-                        friendly, player.hasLineOfSight(mob)));
-            }
-            UUID held = previous != null && previous.locked() ? UUID.fromString(previous.targetUuid()) : null;
-            selected = RapierTargeting.select(held, candidates, rules);
+        if(enabled&&previous!=null&&previous.locked()&&player.level().getEntity(previous.targetId()) instanceof Mob mob
+                &&mob.getUUID().toString().equals(previous.targetUuid())) {
+            selected=RapierTargeting.selected(mob.getUUID(),List.of(candidate(player,mob)),rules);
         }
         double yaw = AttackAim.wrap(player.getYRot()), pitch = Math.clamp(player.getXRot(), -80, 80);
         if (selected != null && player.level().getEntity(selected.entityId()) instanceof LivingEntity target) {
@@ -52,12 +40,32 @@ public final class RapierTargetLock {
             player.setXRot((float) pitch);
             player.setYHeadRot((float) yaw);
             player.setYBodyRot((float) yaw);
-            actor.trackRapierAim(AttackAim.at(yaw, pitch));
+            actor.trackLockedAim(AttackAim.at(yaw, pitch));
         }
         Snapshot snapshot = new Snapshot(enabled, selected == null ? -1 : selected.entityId(),
                 selected == null ? "" : selected.uuid().toString(), yaw, pitch, rules.range());
         states.put(player.getUUID(), snapshot);
         return snapshot;
+    }
+    private static boolean enabled(ServerPlayer player,CombatActor actor,boolean weaponEquipped) {
+        return actor.rules().rapierTargetLock().enabled() && player.isAlive() && !player.isSpectator() && weaponEquipped
+                && actor.drawn() && actor.phase() != CombatPhase.SHEATHING && actor.style() != null
+                && !actor.style().controls().spear() && !actor.style().weaponGroup().equals("unarmed");
+    }
+    private static RapierTargeting.Candidate candidate(ServerPlayer player,Mob mob) {
+        boolean friendly=player.isAlliedTo(mob)||mob.isAlliedTo(player)||mob instanceof TamableAnimal animal&&animal.isTame();
+        boolean hostile=MinecraftProgression.hostile(mob)||mob.getTarget()!=null&&mob.getTarget().getUUID().equals(player.getUUID());
+        return new RapierTargeting.Candidate(mob.getUUID(),mob.getId(),player.distanceToSqr(mob),hostile,
+                mob.isAlive()&&!mob.isRemoved(),mob.isAttackable()&&!mob.isInvulnerable(),friendly,player.hasLineOfSight(mob));
+    }
+    /** Call only after a real accepted attack; the adapter independently validates the submitted eye ray. */
+    public boolean acquire(ServerPlayer player,CombatActor actor,boolean weaponEquipped,LivingEntity target) {
+        if(!enabled(player,actor,weaponEquipped)||!(target instanceof Mob mob)||!candidate(player,mob).eligible(actor.rules().rapierTargetLock()))return false;
+        states.put(player.getUUID(),new Snapshot(true,mob.getId(),mob.getUUID().toString(),player.getYRot(),player.getXRot(),actor.rules().rapierTargetLock().range()));
+        update(player,actor,weaponEquipped);return true;
+    }
+    public void unlock(ServerPlayer player,CombatActor actor) {
+        states.put(player.getUUID(),new Snapshot(actor.rules().rapierTargetLock().enabled(),-1,"",player.getYRot(),player.getXRot(),actor.rules().rapierTargetLock().range()));
     }
 
     public Snapshot snapshot(ServerPlayer player, CombatActor actor) {

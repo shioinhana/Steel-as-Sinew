@@ -38,6 +38,7 @@ public final class RpgConfig {
     }
     public void seed() throws IOException {
         Files.createDirectories(directory);
+        BurstDashMigration burstDashMigration=BurstDashMigration.capture(directory);
         StaminaCombatMigration staminaCombatMigration = StaminaCombatMigration.capture(directory);
         StaminaLevelMigration staminaLevelMigration = StaminaLevelMigration.capture(directory);
         StaminaCostMigration staminaMigration = StaminaCostMigration.capture(directory);
@@ -54,6 +55,7 @@ public final class RpgConfig {
         // A new optional file adapts to old/custom skill catalogs without editing those catalogs.
         Path styles = directory.resolve("styles.json");
         if (!Files.exists(styles)) atomicWrite(styles, JSON.toJson(compatibleStyles(read("skills.json"), read("weapons.json"))));
+        if(burstDashMigration!=null)burstDashMigration.apply();
         if (staminaCombatMigration != null) staminaCombatMigration.apply();
         LegacySkillMigration.migrate(directory);
         if (staminaMigration != null) staminaMigration.apply();
@@ -212,7 +214,7 @@ public final class RpgConfig {
             boolean optionalStyleExtension = record == WeaponStyleDefinition.class
                     && Set.of("heavyGuard", "techniques", "cancels", "controls").contains(component.getName());
             boolean optionalLegacyGate = record == WeaponStyleDefinition.ComboStage.class && !component.getName().equals("skillId");
-            boolean optionalTargetLock = record == CombatRules.class && Set.of("rapierTargetLock","perfectGuardCounter","staminaLevelScaling","staminaCombatRules").contains(component.getName()) && !obj.has(component.getName());
+            boolean optionalTargetLock = record == CombatRules.class && Set.of("rapierTargetLock","perfectGuardCounter","staminaLevelScaling","staminaCombatRules","burstDash","spearSwipeKnockbackMultiplier").contains(component.getName()) && !obj.has(component.getName());
             boolean optionalPartialShot = record == ArcheryRules.class && component.getName().equals("partialShotStaminaMultiplier") && !obj.has(component.getName());
             boolean optionalComboReset = record == org.fsrpg.combat.WeaponControls.class && component.getName().equals("comboResetTicks") && !obj.has(component.getName());
             if (required && !optionalStyleExtension && !optionalLegacyGate && !optionalTargetLock && !optionalPartialShot && !optionalComboReset && (!obj.has(component.getName()) || obj.get(component.getName()).isJsonNull()))
@@ -239,7 +241,7 @@ public final class RpgConfig {
             boolean completeStyleRules = clazz == WeaponStyleDefinition.ComboStage.class || clazz == WeaponStyleDefinition.GuardRules.class
                     || clazz == WeaponStyleDefinition.Techniques.class || clazz == WeaponStyleDefinition.CancelRules.class || clazz == org.fsrpg.combat.WeaponControls.class
                     || clazz == org.fsrpg.combat.RapierTargeting.Rules.class || clazz == CombatRules.PerfectGuardCounter.class
-                    || clazz == StaminaLevelScaling.class || clazz == StaminaCombatRules.class;
+                    || clazz == StaminaLevelScaling.class || clazz == StaminaCombatRules.class || clazz == BurstDashRules.class;
             recordFields(value.getAsJsonObject(), clazz, completeStyleRules); return;
         }
         if (!value.isJsonPrimitive()) throw new IllegalArgumentException(path + " must be a scalar");

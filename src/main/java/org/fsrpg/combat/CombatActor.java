@@ -60,6 +60,11 @@ public final class CombatActor {
     /** Server adapter may track its validated rapier target through preparation and contact. */
     public void trackRapierAim(AttackAim aim) {
         if (style == null || !style.presentationStyleId().equals("rapier")) return;
+        trackLockedAim(aim);
+    }
+    /** A server-validated lock may drive every non-spear current and queued attack. */
+    public void trackLockedAim(AttackAim aim) {
+        if(style==null||style.presentationStyleId().equals("spear"))return;
         if (skill != null) attackAim = aim;
         if (queuedSkill != null) queuedAim = aim;
     }
@@ -97,6 +102,7 @@ public final class CombatActor {
     private long nextStaminaReservation, attackStaminaReservation;
     private boolean attackEmitted;
     private boolean spearAttackHeld;
+    private final BurstDashState burstDash=new BurstDashState();
 
     public CombatActor(UUID id, CombatRules rules) {
         if (id == null || rules == null) throw new IllegalArgumentException("id and rules are required");
@@ -330,6 +336,7 @@ public final class CombatActor {
 
     /** Equipment removal/death is a forced interrupt, including an active hit window. */
     public void forceSheathed() {
+        burstDash.stopMotion();
         clearAttack();
         clearCounter();
         resetDualHandsAndStreaks();
@@ -621,6 +628,7 @@ public final class CombatActor {
             return ActionResult.BUSY;
         if (tick < dodgeReadyAt) return ActionResult.COOLDOWN;
         if (!consumeStamina(rules.dodgeStaminaCost())) return ActionResult.INSUFFICIENT_STAMINA;
+        burstDash.stopMotion();
         clearAttack();
         clearTechniques();
         clearCounter();
@@ -643,6 +651,7 @@ public final class CombatActor {
     public void stun(int ticks) {
         SkillDefinition.checkTicks(ticks, "stun ticks", true);
         if (ticks == 0) return;
+        burstDash.stopMotion();
         int remaining = phase == CombatPhase.STUNNED ? phaseRemaining : 0;
         clearAttack();
         clearTechniques();
@@ -712,7 +721,27 @@ public final class CombatActor {
         if (tick >= spiritRegenAt) spirit = Math.min(rules.maxSpirit(), spirit + rules.spiritRegenPerSecond() / 20.0);
         if(style!=null && style.controls().legacyDual() && phase==CombatPhase.READY && tick-lastDualEnd>=40) leftRest=rightRest=-1;
         skillReadyAt.entrySet().removeIf(entry -> entry.getValue() <= tick);
-        return new CombatTick(before, phase, dodgeDistance);
+        if(!drawn||phase==CombatPhase.STUNNED||phase==CombatPhase.DODGING||phase==CombatPhase.SHEATHING
+                ||phase==CombatPhase.DRAWING||phase==CombatPhase.GUARDING)burstDash.stopMotion();
+        return new CombatTick(before, phase, dodgeDistance,burstDash.tick(tick));
+    }
+
+    public BurstDashState.Snapshot burstDashSnapshot(){return burstDash.snapshot(tick);}
+    /** Physical Shift edge starts one paid horizontal burst; held renewal only keeps its original-direction run alive. */
+    public ActionResult requestBurstDash(boolean held,double directionX,double directionZ) {
+        boolean fresh=burstDash.input(held,tick);
+        if(!held||!fresh)return ActionResult.ACCEPTED;
+        if(!Double.isFinite(directionX)||!Double.isFinite(directionZ)||Math.abs(directionX)>1_000_000
+                ||Math.abs(directionZ)>1_000_000||Math.hypot(directionX,directionZ)<1e-6)
+            throw new IllegalArgumentException("burst dash requires a finite nonzero horizontal direction");
+        if(!drawn)return ActionResult.NOT_DRAWN;
+        if(style!=null&&!style.enabled())return ActionResult.STYLE_DISABLED;
+        if(pendingHitStun>0||phase==CombatPhase.STUNNED||phase==CombatPhase.DODGING||phase==CombatPhase.SHEATHING
+                ||phase==CombatPhase.DRAWING||phase==CombatPhase.GUARDING||burstDash.active())return ActionResult.BUSY;
+        if(burstDash.coolingDown(tick))return ActionResult.COOLDOWN;
+        if(!consumeStamina(rules.burstDash().staminaCost()))return ActionResult.INSUFFICIENT_STAMINA;
+        burstDash.begin(tick,directionX,directionZ,rules.burstDash());
+        return ActionResult.ACCEPTED;
     }
 
     public CombatSnapshot snapshot() {

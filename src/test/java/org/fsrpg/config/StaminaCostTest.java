@@ -231,6 +231,14 @@ public final class StaminaCostTest {
                         after.getAsJsonObject().get("staminaCombatRules"), path + " adds exact current stamina combat rules");
                 afterFields.remove("staminaCombatRules");
             }
+            if(path.endsWith("combat.json")&&!before.getAsJsonObject().has("burstDash")) {
+                equal(RpgConfig.JSON.toJsonTree(BurstDashRules.defaults()),after.getAsJsonObject().get("burstDash"),path+" adds exact default Shift burst rules");
+                afterFields.remove("burstDash");
+            }
+            if(path.endsWith("combat.json")&&!before.getAsJsonObject().has("spearSwipeKnockbackMultiplier")) {
+                equal(new JsonPrimitive(.5),after.getAsJsonObject().get("spearSwipeKnockbackMultiplier"),path+" adds exact default spear swipe knockback multiplier");
+                afterFields.remove("spearSwipeKnockbackMultiplier");
+            }
             equal(before.getAsJsonObject().keySet(), afterFields, path + " preserves all original fields");
             for (var field : before.getAsJsonObject().entrySet()) {
                 if (field.getKey().equals("staminaCost") || field.getKey().endsWith("StaminaCost")) near(field.getValue().getAsDouble() / 5, after.getAsJsonObject().get(field.getKey()).getAsDouble(), path + "." + field.getKey());

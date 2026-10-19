@@ -13,6 +13,7 @@
     "ItemLayerAccess",
     "CombatMouseMixin",
     "CombatCameraMixin",
+    "BurstDashTravelMixin",
     "ClientInputAccess",
     "GameRendererAccess",
     "GuiContextAccess"

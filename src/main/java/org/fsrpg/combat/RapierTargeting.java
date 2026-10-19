@@ -44,6 +44,13 @@ public final class RapierTargeting {
         return nearestHostile != null ? nearestHostile : nearestPassive;
     }
 
+    /** A crosshair-selected lock is explicit. Nearby or higher-priority arrivals cannot steal it. */
+    public static Candidate selected(UUID requested, Collection<Candidate> candidates, Rules rules) {
+        if(requested==null||!rules.enabled())return null;
+        for(var candidate:candidates)if(candidate.uuid().equals(requested)&&candidate.eligible(rules))return candidate;
+        return null;
+    }
+
     /** Minecraft world yaw and pitch from an authoritative displacement. */
     public static AttackAim.Point direction(double dx, double dy, double dz, double fallbackYaw) {
         if (!Double.isFinite(dx) || !Double.isFinite(dy) || !Double.isFinite(dz))
