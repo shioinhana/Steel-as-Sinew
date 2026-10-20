@@ -83,7 +83,7 @@ public final class RpgServer {
     private final Map<UUID, WeaponDrawController> drawControllers = new HashMap<>();
     private final Map<UUID, Resources> resources = new HashMap<>();
     private final Map<UUID, Vec3> dodgeDirections = new HashMap<>();
-    private final Set<UUID> burstMoving=new HashSet<>();
+    private final Map<UUID,Long> burstRequests=new HashMap<>();
     private final Map<UUID, String> swingItems = new HashMap<>();
     private final Map<UUID, Long> requestTicks = new HashMap<>();
     private final Map<UUID, Integer> requestCounts = new HashMap<>();
@@ -170,6 +170,9 @@ public final class RpgServer {
         });
         bus.addListener((PlayerEvent.PlayerLoggedOutEvent event) -> { if (instance != null && event.getEntity() instanceof ServerPlayer p) instance.logout(p); });
         bus.addListener((PlayerEvent.PlayerRespawnEvent event) -> { if (instance != null && event.getEntity() instanceof ServerPlayer p) instance.resetActor(p); });
+        bus.addListener((PlayerEvent.PlayerChangedDimensionEvent event)->{if(instance!=null&&event.getEntity() instanceof ServerPlayer p){
+            instance.burstRequests.remove(p.getUUID());instance.actor(p).cancelBurstDashInput();
+        }});
         bus.addListener((LivingDeathEvent event) -> {
             if (instance != null) {
                 instance.enemyStuns.remove(event.getEntity().getUUID());
@@ -258,7 +261,7 @@ public final class RpgServer {
         return current;
     }
     private void resetActor(ServerPlayer p) {
-        burstMoving.remove(p.getUUID());
+        burstRequests.remove(p.getUUID());
         archery.remove(p.getUUID());cancelSpear(p);
         guardPresses.remove(p.getUUID());
         CombatActor previous = actors.remove(p.getUUID());
@@ -271,7 +274,7 @@ public final class RpgServer {
         actor(p); reconcileWeapon(p); send(p, "", null); broadcastAnimation(p, true);
     }
     private void logout(ServerPlayer p) {
-        burstMoving.remove(p.getUUID());
+        burstRequests.remove(p.getUUID());
         archery.remove(p.getUUID());cancelSpear(p);
         guardPresses.remove(p.getUUID());
         CombatActor a = actors.remove(p.getUUID());
@@ -452,12 +455,27 @@ public final class RpgServer {
     }
     private void burstDashIntent(ServerPlayer p,CombatActor actor,String argument) {
         String[] parts=argument.trim().split("\\s+");
-        if(parts.length==1&&parts[0].equals("up")){accepted(actor.requestBurstDash(false,0,0));return;}
-        if(parts.length!=3||!parts[0].equals("down"))throw new IllegalArgumentException("invalid Shift movement intent");
+        if(parts.length==1&&parts[0].equals("up")){accepted(actor.requestBurstDash(false,0,0,p.onGround()));return;}
+        if(parts.length!=7||!parts[0].equals("down"))throw new IllegalArgumentException("invalid grounded Shift intent");
+        long request=Long.parseLong(parts[3]),clientTick=Long.parseLong(parts[4]);
+        int entityId=Integer.parseInt(parts[5]);long now=p.level().getGameTime();
+        if(request<=0||entityId!=p.getId()||!parts[6].equals(p.level().dimension().identifier().toString())
+                ||clientTick<0||now-clientTick>20||clientTick-now>5)throw new IllegalArgumentException("expired Shift input context");
+        long previousRequest=burstRequests.getOrDefault(p.getUUID(),0L);
+        if(request<previousRequest||request==previousRequest&&!actor.burstDashSnapshot().held())return;
         var direction=RapierTargeting.dodgeDirection(Double.parseDouble(parts[1]),Double.parseDouble(parts[2]));
+        burstRequests.put(p.getUUID(),request);
         long before=actor.burstDashSnapshot().sequence();
-        accepted(actor.requestBurstDash(true,direction.x(),direction.z()));
-        if(before!=actor.burstDashSnapshot().sequence()){training.forced(p,10);send(p,"",null);}
+        boolean grounded=p.onGround()&&!p.isPassenger()&&!p.isFallFlying()&&!p.isInWater()&&!p.isInLava();
+        accepted(actor.requestBurstDash(true,direction.x(),direction.z(),grounded));
+        if(before==actor.burstDashSnapshot().sequence())return;
+        var impulse=actor.consumeBurstDashImpulse();
+        if(impulse.moving()) {
+            Vec3 velocity=p.getDeltaMovement();p.setDeltaMovement(impulse.x(),velocity.y,impulse.z());
+            PacketDistributor.sendToPlayer(p,new RpgBurstDashPayload(p.getUUID(),p.getId(),p.level().dimension().identifier().toString(),
+                    request,impulse.sequence(),now,impulse.x(),impulse.z()));
+        }
+        training.forced(p,10);send(p,"",null);
     }
     private void targetAttack(ServerPlayer p,CombatActor actor,String argument) {
         if(!hasWeapon(p)||actor.style()==null||actor.style().controls().spear())throw new IllegalStateException("请先持武器进入拔刀模式");
@@ -817,14 +835,7 @@ public final class RpgServer {
             CombatActor a = actor(p);
             if (a.currentSkill() != null && !validSwing(p)) a.stun(1);
             var advance = a.tick();
-            var burst=advance.burstDashStep();
-            if(burst.moving()) {
-                Vec3 velocity=p.getDeltaMovement();p.setDeltaMovement(burst.x(),velocity.y,burst.z());
-                p.setSprinting(true);burstMoving.add(p.getUUID());
-                PacketDistributor.sendToPlayer(p,new RpgBurstDashPayload(a.burstDashSnapshot().sequence(),ticks,burst.x(),burst.z(),true));
-            } else if(burstMoving.remove(p.getUUID())) {
-                PacketDistributor.sendToPlayer(p,new RpgBurstDashPayload(a.burstDashSnapshot().sequence(),ticks,0,0,false));
-            }
+            // Shift has no movement loop: the accepted action assigned one XZ impulse; vanilla owns its decay.
             moveCharge(p);
             applyPendingStyle(p);
             boolean skillStarted = startedSkills(p);

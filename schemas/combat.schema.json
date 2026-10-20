@@ -44,15 +44,16 @@
     "spearSwipeKnockbackMultiplier": { "type": "number", "minimum": 0, "maximum": 1, "default": 0.5, "description": "长枪持续刺出时划动接触的击退系数，乘以当前skill.knockback；服务端按真实划动方向处理切向推移或空中下划击坠。缺字段兼容0.5，0关闭划动击退，所有原攻击数值保留。" },
     "burstDash": {
       "type": "object", "additionalProperties": false,
-      "description": "物理Shift新按一次触发独立的水平突进，不提供无敌、不取消已发出的攻击，也不重置垂直速度；支持接跳跃。开始后方向固定，按住沿此方向奔跑，松开仅停止后续奔跑。Shift+C优先重格挡。旧Alt闪避数值独立保留。",
-      "required": ["distance", "durationTicks", "staminaCost", "cooldownTicks", "runSpeed", "inputLeaseTicks"],
+      "description": "地面新按Shift以initialSpeed沿输入方向设一次XZ速度，保留Y，之后原版摩擦、重力、输入与碰撞自然处理。离地不能新触发，失败不扣费且按住落地不补发。长按仅请求原版sprint，方向由真实WASD决定；Shift+C优先重格挡。原Alt闪避独立保留。",
+      "required": ["distance", "durationTicks", "staminaCost", "cooldownTicks", "runSpeed", "inputLeaseTicks", "initialSpeed"],
       "properties": {
-        "distance": { "type": "number", "minimum": 0.25, "maximum": 32, "default": 3.0 },
-        "durationTicks": { "type": "integer", "minimum": 1, "maximum": 100, "default": 10 },
-        "staminaCost": { "$ref": "#/$defs/resource", "default": 5.0 },
-        "cooldownTicks": { "$ref": "#/$defs/ticks", "default": 10 },
-        "runSpeed": { "type": "number", "minimum": 0, "maximum": 12, "default": 5.6, "description": "格每秒，runSpeed*durationTicks/20 不得超过3*distance，保证加速曲线单调前进。" },
-        "inputLeaseTicks": { "type": "integer", "minimum": 2, "maximum": 100, "default": 12 }
+        "distance": {"type": "number", "minimum": 0.25, "maximum": 32, "default": 3.0, "description": "0.7.8兼容字段，保留原值供配置升级；0.7.9不再驱动位移或奔跑速度。"},
+        "durationTicks": {"type": "integer", "minimum": 1, "maximum": 100, "default": 10, "description": "0.7.8兼容字段，保留原值供配置升级；0.7.9不再驱动位移或奔跑速度。"},
+        "staminaCost": {"$ref": "#/$defs/resource", "default": 5.0},
+        "cooldownTicks": {"$ref": "#/$defs/ticks", "default": 10},
+        "runSpeed": {"type": "number", "minimum": 0, "maximum": 12, "default": 5.6, "description": "0.7.8兼容字段，保留原值供配置升级；0.7.9不再驱动位移或奔跑速度。"},
+        "inputLeaseTicks": {"type": "integer", "minimum": 2, "maximum": 100, "default": 12},
+        "initialSpeed": {"type": "number", "minimum": 0.1, "maximum": 80, "default": 27.0, "description": "初始水平速度，格/秒；接受时除以20只设置一次速度。普通地面无输入下默认约3格，距离受地面摩擦、输入与碰撞影响，不保证3格/0.5秒。旧配置缺省按clamp(distance*9,0.1,80)补齐。"}
       }
     },
     "staminaLevelScaling": {

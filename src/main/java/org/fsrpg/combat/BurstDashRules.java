@@ -2,8 +2,14 @@ package org.fsrpg.combat;
 
 /** Shift burst is independent of the original Alt dodge and never supplies invulnerability. */
 public record BurstDashRules(double distance, int durationTicks, double staminaCost, int cooldownTicks,
-                             double runSpeed, int inputLeaseTicks) {
+                             double runSpeed, int inputLeaseTicks, Double initialSpeed) {
+    /** Source compatibility: legacy distance supplies a conservative initial-speed seed. */
+    public BurstDashRules(double distance,int durationTicks,double staminaCost,int cooldownTicks,double runSpeed,int inputLeaseTicks){
+        this(distance,durationTicks,staminaCost,cooldownTicks,runSpeed,inputLeaseTicks,legacyInitialSpeed(distance));
+    }
     public BurstDashRules {
+        if(initialSpeed==null)initialSpeed=legacyInitialSpeed(distance);
+        SkillDefinition.checkNumber(initialSpeed,"burst dash initialSpeed (blocks/second)",.1,80);
         SkillDefinition.checkNumber(distance,"burst dash distance",.25,32);
         SkillDefinition.checkTicks(durationTicks,"burst dash durationTicks",false);
         if(durationTicks>100)throw new IllegalArgumentException("burst dash durationTicks must be <=100");
@@ -15,6 +21,8 @@ public record BurstDashRules(double distance, int durationTicks, double staminaC
             throw new IllegalArgumentException("burst dash terminal run speed exceeds a monotone acceleration curve");
     }
     public static BurstDashRules defaults(){return new BurstDashRules(3,10,5,10,5.6,12);}
+    public double initialVelocity(){return initialSpeed/20.0;}
+    public static double legacyInitialSpeed(double distance){return Math.clamp(distance*9,.1,80);}
 
     /**
      * Calibrated for actual 20 Hz displacement slices, rather than only an instantaneous end derivative.

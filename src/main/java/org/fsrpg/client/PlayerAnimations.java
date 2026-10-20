@@ -43,7 +43,7 @@ public final class PlayerAnimations {
         PoseLayers.Playback lowerPlayback;
         PresentationMotion motion = new PresentationMotion();
         IdleInspection inspection;
-        PoseLayers.Playback inspectPlayback;
+        Map<String,Pose> inspectionBase;
         String inspectAction = "";
         double received, phaseReceived, started;
         PoseLayers.AttackClock attackClock;
@@ -62,6 +62,7 @@ public final class PlayerAnimations {
         Map<String, Matrix4f> lastSpearWorld;
         PoseRemap.Knots swordKnots;
         SpearMotion.State spearMotion = new SpearMotion.State();
+        SpearRunCarry.State spearRunCarry = new SpearRunCarry.State();
         SpearTurn.State spearTurn = new SpearTurn.State();
         SpearTurn.State swordTurn = new SpearTurn.State();
         double lastSpearChestTick = Double.NaN;
@@ -118,6 +119,8 @@ public final class PlayerAnimations {
     }
     public static void clear() { bindings.clear(); airPoses.clear(); previews.clear(); AnimationAssets.clear(); SkinnedArms.clear(); renderClock.reset(); level = Minecraft.getInstance().level; }
     public static void reloadModels() {
+        try { WeaponInspections.reload(net.neoforged.fml.loading.FMLPaths.CONFIGDIR.get().resolve("fsrpg")); }
+        catch(Exception error){LOG.warn("Unable to reload weapon inspection catalogue; retaining previous validated data",error);}
         var states = bindings.values().stream().map(binding -> binding.state).toList();
         bindings.clear(); airPoses.clear(); AnimationAssets.clear(); states.forEach(PlayerAnimations::accept);
     }
@@ -133,11 +136,60 @@ public final class PlayerAnimations {
     public static long maxSpearSolveNanos() { return maxSpearSolveNanos; }
     public static long lastSpearSolveNanos() { return lastSpearSolveNanos; }
     public static long spearContinuationCalls() { return SpearAimPose.realtimeFallbackCalls(); }
+    public static float spearRunCarryWeight(UUID entity) {
+        var binding = bindings.get(entity); return binding == null ? 0 : binding.spearRunCarry.weight();
+    }
+    public static boolean spearRunCarryActive(UUID entity) { return spearRunCarryWeight(entity) > .0001f; }
     public static double lastSampleTick() { return lastSampleTick; }
     static void weaponSubmitted(int count) { weaponBatches += count; }
     public static boolean active(UUID entity) { world(); return bindings.containsKey(entity); }
     public static String inspectionAction(UUID entity) {
         var binding = bindings.get(entity); return binding == null ? "" : binding.inspection.action();
+    }
+    /** The H mapping cycles only the current cosmetic catalogue, without any server combat intent. */
+    public static boolean requestInspection() { return requestInspection(null); }
+    public static boolean requestInspection(String action) {
+        world(); var player=Minecraft.getInstance().player;
+        Binding binding=player==null?null:bindings.get(player.getUUID());
+        if(binding==null)return false;
+        double tick=now(); updateInspection(binding,player,tick);
+        var choices=WeaponInspections.actions(binding.state.style());
+        boolean eligible=inspectionEligible(binding,player);
+        boolean accepted=action==null?binding.inspection.request(tick,eligible,choices,WeaponInspections::duration)
+                :binding.inspection.request(tick,eligible,choices,action,WeaponInspections::duration);
+        if(accepted){binding.inspectionBase=null;binding.sampled=null;}
+        return accepted;
+    }
+    private static boolean inspectionEligible(Binding binding,net.minecraft.world.entity.LivingEntity entity) {
+        var game=Minecraft.getInstance(); var server=binding.state;
+        boolean localInput=entity==game.player&&(game.options.getCameraType().isFirstPerson()||game.screen!=null||!game.isWindowActive()||game.options.keyUp.isDown()
+                ||game.options.keyDown.isDown()||game.options.keyLeft.isDown()||game.options.keyRight.isDown()
+                ||game.options.keyJump.isDown()||game.options.keyShift.isDown()||game.options.keyAttack.isDown()||game.options.keyUse.isDown());
+        return server.drawn()&&server.phase().equals("READY")&&entity.isAlive()&&entity.onGround()
+                &&!entity.isPassenger()&&!entity.isFallFlying()&&!entity.isInWater()&&!entity.isUsingItem()&&!entity.isCrouching()
+                &&!localInput&&Math.hypot(entity.getX()-entity.xo,entity.getZ()-entity.zo)<.003
+                &&Math.abs(entity.getY()-entity.yo)<.003&&Math.abs(net.minecraft.util.Mth.wrapDegrees(entity.getYRot()-entity.yRotO))<.5;
+    }
+    private static void updateInspection(Binding binding,net.minecraft.world.entity.LivingEntity entity,double tick) {
+        binding.inspection.update(tick,inspectionEligible(binding,entity),ClientOptions.IDLE_INSPECTIONS.get(),
+                ClientOptions.INSPECT_MIN.get(),ClientOptions.INSPECT_MAX.get(),WeaponInspections.actions(binding.state.style()),WeaponInspections::duration);
+    }
+    private static Map<String,Pose> inspectionPose(Binding binding,net.minecraft.world.entity.LivingEntity entity,
+                                                   Map<String,Pose> pose,double renderTick) {
+        updateInspection(binding,entity,renderTick);
+        String inspection = binding.inspection.action();
+        if (!inspection.isEmpty()) {
+            if (binding.inspectionBase == null || !inspection.equals(binding.inspectAction))
+                binding.inspectionBase = Map.copyOf(pose);
+            binding.inspectAction = inspection;
+            double inspectSeconds = Math.max(0,renderTick-binding.inspection.started())/20;
+            double returnSeconds = Math.min(.3,WeaponInspections.duration(inspection)*.15);
+            float returning = (float)Math.clamp((inspectSeconds-WeaponInspections.duration(inspection)+returnSeconds)/returnSeconds,0,1);
+            returning=returning*returning*(3-2*returning);
+            var inspectionBase = PresentationMotion.blend(binding.inspectionBase,pose,returning);
+            pose = WeaponInspections.sample(binding.asset.full(),inspectionBase,inspection,inspectSeconds);
+        } else { binding.inspectionBase = null; binding.inspectAction = ""; }
+        return pose;
     }
     public static double inspectionDeadline(UUID entity) {
         var binding = bindings.get(entity); return binding == null ? Double.NaN : binding.inspection.deadline();
@@ -167,6 +219,7 @@ public final class PlayerAnimations {
                 next.lastSpearChestTick = previous.lastSpearChestTick;
                 next.lastSpearWorld = previous.lastSpearWorld;
                 next.spearMotion = previous.spearMotion;
+                next.spearRunCarry = previous.spearRunCarry;
                 next.spearTurn = previous.spearTurn;
             }
         }
@@ -312,6 +365,7 @@ public final class PlayerAnimations {
                 binding.legacyBase = pose;
             }
             pose=retargetSkin(state,binding.asset.full(),pose);
+            pose=inspectionPose(binding,living,pose,renderTick);
             renderSamples++; lastSampleTick=renderTick;
             binding.sampledRenderFrame=renderFrameId;
             binding.sampled=airFrame(entity,server,new Frame(binding.asset.full(),null,pose,binding.asset.full().worldMatrices(pose),
@@ -363,6 +417,8 @@ public final class PlayerAnimations {
         binding.motion.observePosition(entity.tickCount, entity.getX(), entity.getZ(), entity.getX() - entity.xo, entity.getZ() - entity.zo);
         binding.motion.advance(renderTick, binding.motion.velocityX(), binding.motion.velocityZ(), bodyYaw,
                 entity.isSprinting(), entity.onGround(), sample.movingWeight(), ClientOptions.MOTION_RESPONSE.get().floatValue());
+        float spearRunWeight = server.style().equals("spear") ? binding.spearRunCarry.advance(renderTick, server.phase(),
+                entity.isSprinting(), entity.onGround(), Math.hypot(binding.motion.velocityX(), binding.motion.velocityZ())) : 0;
         if (binding.neutralPlayback != null) {
             var neutral = binding.neutralPlayback.sample(0, renderTick / 20, renderTick, state.walkAnimationSpeed, -state.yRot,
                     ClientOptions.MOVING_FULL_BODY_LOWER_WEIGHT.get().floatValue(), ClientOptions.STANCE_FOOT_YAW_LIMIT.get().floatValue());
@@ -372,32 +428,6 @@ public final class PlayerAnimations {
             var carry = binding.runPlayback.sample(renderTick / 20, renderTick / 20, renderTick, state.walkAnimationSpeed, -state.yRot,
                     ClientOptions.MOVING_FULL_BODY_LOWER_WEIGHT.get().floatValue(), ClientOptions.STANCE_FOOT_YAW_LIMIT.get().floatValue());
             pose = PresentationMotion.blend(pose, carry.pose(), binding.motion.runWeight());
-        }
-        boolean localInput = entity == game.player && (game.screen != null || game.options.keyUp.isDown()
-                || game.options.keyDown.isDown() || game.options.keyLeft.isDown() || game.options.keyRight.isDown()
-                || game.options.keyJump.isDown() || game.options.keyShift.isDown() || game.options.keyAttack.isDown()
-                || game.options.keyUse.isDown());
-        boolean inspectEligible = !sword && ClientOptions.IDLE_INSPECTIONS.get() && server.action().equals("rapier_idle")
-                && server.phase().equals("READY") && entity.onGround() && !entity.isPassenger() && !living.isUsingItem()
-                && !localInput && Math.hypot(binding.motion.velocityX(), binding.motion.velocityZ()) < .003
-                && Math.abs(entity.getY() - entity.yo) < .003 && state.walkAnimationSpeed < .015
-                && Math.abs(net.minecraft.util.Mth.wrapDegrees(entity.getYRot() - entity.yRotO)) < .5;
-        var inspectionAsset = binding.asset;
-        binding.inspection.update(renderTick, inspectEligible, ClientOptions.INSPECT_MIN.get(), ClientOptions.INSPECT_MAX.get(),
-                id -> { var action = inspectionAsset.full().rig().clips().get(id); return action == null ? 0 : action.duration(); });
-        String inspectAction = binding.inspection.action();
-        if (!inspectAction.equals(binding.inspectAction)) {
-            binding.inspectAction = inspectAction;
-            binding.inspectPlayback = inspectAction.isEmpty() ? null : new PoseLayers.Playback(binding.asset.full().rig(), inspectAction);
-            if (binding.lastPose != null) {
-                binding.transitionFrom = binding.lastPose; binding.transitionLowerWeight = binding.lastLowerWeight;
-                binding.transitionStarted = renderTick; binding.transitionTicks = ClientOptions.INSPECT_BLEND.get() * 20;
-            }
-        }
-        if (binding.inspectPlayback != null) {
-            pose = binding.inspectPlayback.sample((renderTick - binding.inspection.started()) / 20, renderTick / 20,
-                    renderTick, state.walkAnimationSpeed, -state.yRot, ClientOptions.MOVING_FULL_BODY_LOWER_WEIGHT.get().floatValue(),
-                    ClientOptions.STANCE_FOOT_YAW_LIMIT.get().floatValue()).pose();
         }
         if (binding.transitionFrom != null && binding.transitionTicks > 0) {
             // Phase corrections cannot pull an entry bridge to its endpoint in a single frame.
@@ -445,7 +475,7 @@ public final class PlayerAnimations {
         if (entity.onGround() && !entity.isPassenger() && !state.isFallFlying && state.swimAmount <= .5f) {
             var lowerWorld = binding.asset.full().worldMatrices(pose);
             if (server.style().equals("spear"))
-                aimCrouchCm = SpearMotion.aimCrouchCm(authoredPitch, ClientOptions.SPEAR_AIM_CROUCH.get().floatValue());
+                aimCrouchCm = SpearMotion.aimCrouchCm(authoredPitch, ClientOptions.SPEAR_AIM_CROUCH.get().floatValue()) * (1 - spearRunWeight);
             supportedLower = Locomotion.supported(lowerWorld.get("right_leg"), lowerWorld.get("left_leg"), lowerWeight,
                     visualWalkPhase, state.walkAnimationSpeed, sample.movingWeight(),
                     binding.motion.lateralLean(), binding.motion.forwardLean(), strideScale,
@@ -467,7 +497,15 @@ public final class PlayerAnimations {
         pose = retargetSkin(state, binding.asset.full(),pose);
         Vector3f spearSourceRear = null;
         Quaternionf spearSourceChest = null;
-        if(server.style().equals("spear")) {
+        // A cosmetic action owning both hands (run carry, or an inspection) must
+        // bypass the forward two-hand aim solver; items still follow the same rig.
+        boolean ownsSpearHands = server.style().equals("spear") && spearRunWeight > 0 && binding.spearRunCarry.reference() != null;
+        var spearCarrySource = pose;
+        Map<String,Matrix4f> spearNormalWorld = null;
+        if (ownsSpearHands && !binding.spearRunCarry.returning()) {
+            pose = SpearRunCarry.apply(binding.asset.full(), pose, binding.spearRunCarry.reference(), spearRunWeight, visualWalkPhase);
+            lastSpearSolveNanos = 0;
+        } else if(server.style().equals("spear")) {
             var sourceWorld = binding.asset.full().worldMatrices(pose);
             boolean carrying=server.phase().equals("READY")||server.phase().equals("RECOVERY")||server.phase().equals("WINDUP");
             float backCm = ClientOptions.SPEAR_CARRY_BACK.get().floatValue() + ClientOptions.SPEAR_READY_RETRACT.get().floatValue()
@@ -537,9 +575,17 @@ public final class PlayerAnimations {
             lastSpearSolveNanos=System.nanoTime()-solveStarted;
             spearSolveNanos+=lastSpearSolveNanos;spearSolveCalls++;
             maxSpearSolveNanos=Math.max(maxSpearSolveNanos,lastSpearSolveNanos);
+            binding.spearRunCarry.remember(pose);
+            if (ownsSpearHands) {
+                // Aim can change while the pole is behind the back. Refresh the
+                // normal return target throughout recovery, before its weight
+                // reaches zero, so the final frame does not jump to a stale aim.
+                spearNormalWorld = binding.asset.full().worldMatrices(pose);
+                pose = SpearRunCarry.apply(binding.asset.full(), spearCarrySource, binding.spearRunCarry.reference(), spearRunWeight, visualWalkPhase);
+            }
         }
         var finalWorld = binding.asset.full().worldMatrices(pose);
-        var spearSolvedWorld = finalWorld;
+        var spearSolvedWorld = spearNormalWorld == null ? finalWorld : spearNormalWorld;
         if (server.style().equals("spear") && supportedLower != null) {
             // Use this frame's solved chest, rather than the previous frame's cached heading:
             // a sudden target/root turn must obey the waist limit before it is rendered.
@@ -555,13 +601,21 @@ public final class PlayerAnimations {
             // Turning-step support is a common cosmetic translation after IK. Exclude
             // that translation from grip history so it cannot be accumulated as a stroke.
             binding.spearMotion.commit(spearSolvedWorld, renderTick);
+            var rememberedWorld = spearNormalWorld == null ? finalWorld : spearNormalWorld;
             binding.lastSpearSourceRear = spearSourceRear;
-            binding.lastSpearRear = finalWorld.get("right_hand").transformPosition(new Vector3f(0, -6.25f, 0));
+            binding.lastSpearRear = rememberedWorld.get("right_hand").transformPosition(new Vector3f(0, -6.25f, 0));
             binding.lastSpearSourceChest = spearSourceChest;
-            binding.lastSpearChest = finalWorld.get("body").getUnnormalizedRotation(new Quaternionf()).normalize();
+            binding.lastSpearChest = rememberedWorld.get("body").getUnnormalizedRotation(new Quaternionf()).normalize();
             binding.lastSpearChestTick = Double.isNaN(binding.lastSpearChestTick) ? renderTick : Math.max(binding.lastSpearChestTick, renderTick);
-            binding.lastSpearWorld = finalWorld;
+            binding.lastSpearWorld = rememberedWorld;
         }
+        pose=inspectionPose(binding,living,pose,renderTick);
+        if(supportedLower!=null&&binding.inspectionBase!=null&&!binding.inspection.action().isEmpty()){
+            float previousDrop=supportedLower.pelvisDropCm();
+            supportedLower=InspectionSupport.apply(supportedLower,binding.inspectionBase,pose);
+            pose=PresentationMotion.shiftTorso(pose,new PresentationMotion.Balance(0,previousDrop-supportedLower.pelvisDropCm(),0));
+        }
+        finalWorld=binding.asset.full().worldMatrices(pose);
         renderSamples++; lastSampleTick = renderTick;
         binding.sampledRenderFrame=renderFrameId;
         binding.sampled = airFrame(entity,server,new Frame(binding.asset.full(), binding.asset.weapon(), pose, finalWorld,
@@ -652,7 +706,7 @@ public final class PlayerAnimations {
     }
 
     private static Map<String, Pose> retargetSkin(AvatarRenderState state,ModelDocument model, Map<String, Pose> pose) {
-        return PlayerShoulderFit.apply(model,pose,state.skin.model()==PlayerModelType.SLIM);
+        return LegacyWaistFit.apply(model,PlayerShoulderFit.apply(model,pose,state.skin.model()==PlayerModelType.SLIM));
     }
     /** Action marker times, rather than magic constants, define the three editable combat windows. */
     public static double phaseTime(org.fsvoxel.animation.FsvoxAnimation.Clip clip, double ticks, double windup, double active, double recovery) {

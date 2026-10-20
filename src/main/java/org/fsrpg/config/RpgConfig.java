@@ -38,6 +38,7 @@ public final class RpgConfig {
     }
     public void seed() throws IOException {
         Files.createDirectories(directory);
+        GroundImpulseMigration groundImpulseMigration=GroundImpulseMigration.capture(directory);
         BurstDashMigration burstDashMigration=BurstDashMigration.capture(directory);
         StaminaCombatMigration staminaCombatMigration = StaminaCombatMigration.capture(directory);
         StaminaLevelMigration staminaLevelMigration = StaminaLevelMigration.capture(directory);
@@ -56,6 +57,7 @@ public final class RpgConfig {
         Path styles = directory.resolve("styles.json");
         if (!Files.exists(styles)) atomicWrite(styles, JSON.toJson(compatibleStyles(read("skills.json"), read("weapons.json"))));
         if(burstDashMigration!=null)burstDashMigration.apply();
+        if(groundImpulseMigration!=null)groundImpulseMigration.apply();
         if (staminaCombatMigration != null) staminaCombatMigration.apply();
         LegacySkillMigration.migrate(directory);
         if (staminaMigration != null) staminaMigration.apply();
@@ -217,7 +219,8 @@ public final class RpgConfig {
             boolean optionalTargetLock = record == CombatRules.class && Set.of("rapierTargetLock","perfectGuardCounter","staminaLevelScaling","staminaCombatRules","burstDash","spearSwipeKnockbackMultiplier").contains(component.getName()) && !obj.has(component.getName());
             boolean optionalPartialShot = record == ArcheryRules.class && component.getName().equals("partialShotStaminaMultiplier") && !obj.has(component.getName());
             boolean optionalComboReset = record == org.fsrpg.combat.WeaponControls.class && component.getName().equals("comboResetTicks") && !obj.has(component.getName());
-            if (required && !optionalStyleExtension && !optionalLegacyGate && !optionalTargetLock && !optionalPartialShot && !optionalComboReset && (!obj.has(component.getName()) || obj.get(component.getName()).isJsonNull()))
+            boolean optionalImpulseSpeed=record==BurstDashRules.class&&component.getName().equals("initialSpeed")&&!obj.has(component.getName());
+            if (required && !optionalStyleExtension && !optionalLegacyGate && !optionalTargetLock && !optionalPartialShot && !optionalComboReset && !optionalImpulseSpeed && (!obj.has(component.getName()) || obj.get(component.getName()).isJsonNull()))
                 throw new IllegalArgumentException(record.getSimpleName() + " missing field " + component.getName());
             if (obj.has(component.getName()) && !obj.get(component.getName()).isJsonNull())
                 checkType(obj.get(component.getName()), component.getGenericType(), record.getSimpleName() + "." + component.getName());

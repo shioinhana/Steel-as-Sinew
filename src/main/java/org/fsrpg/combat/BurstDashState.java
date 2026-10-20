@@ -1,57 +1,38 @@
 package org.fsrpg.combat;
 
-/** Horizontal movement only. The game adapter retains vertical velocity and applies collision-aware movement. */
+/** One paid velocity impulse; ordinary Minecraft travel owns all later acceleration and friction. */
 public final class BurstDashState {
+    /** Retained for source compatibility. A tick never manufactures a movement step. */
     public record Step(double x,double z,boolean bursting,boolean running,long sequence) {
         public static Step none(){return new Step(0,0,false,false,0);}
         public boolean moving(){return x!=0||z!=0;}
     }
     public record Snapshot(boolean held,boolean active,boolean running,int elapsedTicks,int durationTicks,
                            double directionX,double directionZ,long sequence,int inputAgeTicks) {}
-    private boolean held,armed;
-    private long lastInput=-1,readyAt,sequence;
-    private int elapsed;
+    private boolean held,armed,pending;
+    private long lastInput=-1,readyAt,sequence,started;
     private double x,z;
     private BurstDashRules activeRules;
-
-    /** A failed start still consumes its physical press edge; renewal and lease expiry cannot repeat the cost. */
-    public boolean input(boolean down,long now) {
-        checkTick(now);
-        boolean fresh=down&&!held;
-        held=down;lastInput=now;
-        return fresh;
-    }
-    public boolean active(){return armed&&activeRules!=null&&elapsed<activeRules.durationTicks();}
+    /** Rejected starts consume their physical edge too; landing or a lease renewal cannot rearm it. */
+    public boolean input(boolean down,long now){checkTick(now);boolean fresh=down&&!held;held=down;lastInput=now;return fresh;}
+    public boolean active(){return pending;}
     public boolean coolingDown(long now){return now<readyAt;}
-    public void begin(long now,double directionX,double directionZ,BurstDashRules rules) {
-        checkTick(now);
-        SkillDefinition.checkNumber(directionX,"burst dash directionX",-1_000_000,1_000_000);
+    public void begin(long now,double directionX,double directionZ,BurstDashRules rules){
+        checkTick(now);SkillDefinition.checkNumber(directionX,"burst dash directionX",-1_000_000,1_000_000);
         SkillDefinition.checkNumber(directionZ,"burst dash directionZ",-1_000_000,1_000_000);
         double length=Math.hypot(directionX,directionZ);
-        if(length<1e-6)throw new IllegalArgumentException("burst dash direction must be nonzero");
-        if(rules==null)throw new IllegalArgumentException("burst dash rules required");
-        x=directionX/length;z=directionZ/length;activeRules=rules;
-        elapsed=0;armed=true;sequence++;readyAt=now+rules.cooldownTicks();
+        if(length<1e-6||rules==null)throw new IllegalArgumentException("burst dash requires direction and rules");
+        x=directionX/length;z=directionZ/length;activeRules=rules;started=now;armed=pending=true;sequence++;readyAt=now+rules.cooldownTicks();
     }
-    public Step tick(long now) {
-        checkTick(now);
-        if(!armed||activeRules==null)return Step.none();
-        if(elapsed<activeRules.durationTicks()) {
-            double before=elapsed/(double)activeRules.durationTicks();
-            double after=++elapsed/(double)activeRules.durationTicks();
-            double distance=activeRules.displacement(after)-activeRules.displacement(before);
-            return new Step(x*distance,z*distance,true,false,sequence);
-        }
-        if(!held||now-lastInput>activeRules.inputLeaseTicks())return Step.none();
-        double distance=activeRules.runSpeed()/20.0;
-        return new Step(x*distance,z*distance,false,true,sequence);
-    }
-    /** Death, a stun or another incompatible state stops motion but never invents a release edge. */
-    public void stopMotion(){armed=false;}
-    public Snapshot snapshot(long now) {
-        boolean running=armed&&!active()&&held&&activeRules!=null&&now-lastInput<=activeRules.inputLeaseTicks();
-        return new Snapshot(held,active(),running,elapsed,activeRules==null?0:activeRules.durationTicks(),x,z,sequence,
-                lastInput<0?Integer.MAX_VALUE:(int)Math.min(Integer.MAX_VALUE,Math.max(0,now-lastInput)));
+    /** Adapter consumes exactly once in the same action that authorizes and charges the impulse. */
+    public Step consumeImpulse(){if(!pending)return Step.none();pending=false;return new Step(x*activeRules.initialVelocity(),z*activeRules.initialVelocity(),true,false,sequence);}
+    public Step tick(long now){checkTick(now);return Step.none();}
+    /** Stops permission for held sprint, never the physical velocity already applied. */
+    public void stopMotion(){armed=pending=false;}
+    public Snapshot snapshot(long now){
+        checkTick(now);int age=lastInput<0?Integer.MAX_VALUE:(int)Math.min(Integer.MAX_VALUE,Math.max(0,now-lastInput));
+        return new Snapshot(held,pending,armed&&held&&activeRules!=null&&age<=activeRules.inputLeaseTicks(),
+                armed?(int)Math.min(Integer.MAX_VALUE,now-started):0,0,x,z,sequence,age);
     }
     private static void checkTick(long now){if(now<0)throw new IllegalArgumentException("burst dash time must be nonnegative");}
 }

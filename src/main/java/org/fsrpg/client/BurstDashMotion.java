@@ -2,32 +2,46 @@ package org.fsrpg.client;
 
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.ClientLevel;
-import net.minecraft.world.entity.LivingEntity;
 import org.fsrpg.network.RpgBurstDashPayload;
 
-/** Client's ordinary travel consumes one server-approved horizontal step; gravity/jump/collisions stay vanilla. */
+/** Apply an authorization once on receipt; subsequent movement is entirely ordinary vanilla physics. */
 public final class BurstDashMotion {
-    private static long serverTick=-1,receivedTick,sequence;
-    private static double x,z;
-    private static boolean active;
-    private static ClientLevel acceptedLevel;
-    private static LivingEntity acceptedPlayer;
-    private BurstDashMotion() {}
-    public static void accept(RpgBurstDashPayload payload) {
-        var game=Minecraft.getInstance();if(game.level==null||game.player==null)return;
-        if(acceptedLevel!=game.level||acceptedPlayer!=game.player)reset();
-        if(payload.serverTick()<serverTick)return;
-        if(!Double.isFinite(payload.x())||!Double.isFinite(payload.z())||Math.hypot(payload.x(),payload.z())>32)return;
-        serverTick=payload.serverTick();sequence=payload.sequence();x=payload.x();z=payload.z();active=payload.active();receivedTick=game.level.getGameTime();acceptedLevel=game.level;acceptedPlayer=game.player;
-    }
-    public static void beforeMove(LivingEntity entity) {
+    private static final GroundImpulseReceipt receipt=new GroundImpulseReceipt();
+    private static ClientLevel requestedLevel;
+    private static net.minecraft.client.player.LocalPlayer requestedPlayer;
+    private static long lastAppliedTick=-1;
+    private static double lastX,lastZ;
+    private BurstDashMotion(){}
+    private static GroundImpulseReceipt.Context context(){var game=Minecraft.getInstance();return game.player==null||game.level==null?null:
+            new GroundImpulseReceipt.Context(game.player.getUUID(),game.player.getId(),game.level.dimension().identifier().toString());}
+    /** Adds the context before sending a press or its held-sprint renewal. */
+    public static String prepareIntent(String argument){
         var game=Minecraft.getInstance();
-        if(active&&(acceptedLevel!=game.level||acceptedPlayer!=game.player)){reset();return;}
-        if(!active||entity!=game.player||game.level==null||!entity.isAlive()||entity.isPassenger()||entity.isFallFlying())return;
-        long age=game.level.getGameTime()-receivedTick;if(age<0||age>4){reset();return;}
-        var old=entity.getDeltaMovement();entity.setDeltaMovement(x,old.y,z);
+        // A quick physical tap still receives its one already-paid impulse after the release packet.
+        if(argument.equals("up"))return argument;
+        String[] parts=argument.trim().split("\\s+");
+        if(parts.length!=4||!parts[0].equals("down")||game.player==null||game.level==null)throw new IllegalArgumentException("invalid grounded Shift intent");
+        if(requestedLevel!=game.level||requestedPlayer!=game.player){reset();requestedLevel=game.level;requestedPlayer=game.player;}
+        long request=Long.parseLong(parts[3]);receipt.expect(context(),request,game.level.getGameTime());
+        return argument+" "+game.level.getGameTime()+" "+game.player.getId()+" "+game.level.dimension().identifier();
     }
-    public static boolean active(){return active;}
-    public static long sequence(){return sequence;}
-    public static void reset(){active=false;serverTick=-1;sequence=0;x=z=0;acceptedLevel=null;acceptedPlayer=null;}
+    public static void accept(RpgBurstDashPayload payload){
+        var game=Minecraft.getInstance();
+        if(game.player==null||game.level==null||requestedLevel!=game.level||requestedPlayer!=game.player){reset();return;}
+        if(!game.player.isAlive()||game.player.isPassenger()||game.player.isFallFlying()||game.screen!=null||!game.isWindowActive()){receipt.cancel();return;}
+        var packetContext=new GroundImpulseReceipt.Context(payload.playerId(),payload.entityId(),payload.dimension());
+        if(!receipt.accept(context(),packetContext,payload.requestId(),payload.sequence(),payload.serverTick(),game.level.getGameTime(),payload.x(),payload.z()))return;
+        var old=game.player.getDeltaMovement();game.player.setDeltaMovement(payload.x(),old.y,payload.z());
+        lastX=payload.x();lastZ=payload.z();lastAppliedTick=game.level.getGameTime();
+    }
+    public static boolean approved(long requestId){var game=Minecraft.getInstance();return requestedLevel==game.level&&requestedPlayer==game.player&&receipt.approved(requestId);}
+    /** Diagnostic only, never a request to override this or a later move. */
+    public static boolean active(){var game=Minecraft.getInstance();return game.level==requestedLevel&&game.player==requestedPlayer&&game.level!=null&&game.level.getGameTime()==lastAppliedTick;}
+    public static long sequence(){return receipt.sequence();}
+    public static void cancelPending(){receipt.cancel();}
+    public static long applicationCount(){return receipt.applications();}
+    public static long lastAppliedTick(){return lastAppliedTick;}
+    public static double lastAppliedX(){return lastX;}
+    public static double lastAppliedZ(){return lastZ;}
+    public static void reset(){receipt.reset();requestedLevel=null;requestedPlayer=null;lastAppliedTick=-1;lastX=lastZ=0;}
 }

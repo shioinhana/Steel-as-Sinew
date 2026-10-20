@@ -11,7 +11,8 @@
     "staminaCost": 5.0,
     "cooldownTicks": 10,
     "runSpeed": 5.6,
-    "inputLeaseTicks": 12
+    "inputLeaseTicks": 12,
+    "initialSpeed": 27.0
   },
   "staminaCombatRules": {
     "combatTicks": 60,

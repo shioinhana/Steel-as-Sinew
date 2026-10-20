@@ -1,6 +1,7 @@
 package org.fsrpg.client;
 
 import java.util.Random;
+import java.util.List;
 import java.util.function.ToDoubleFunction;
 
 /** Cosmetic game-clock scheduler. Never dispatches combat intents or touches resources. */
@@ -10,6 +11,7 @@ public final class IdleInspection {
     private double deadline = Double.NaN, started, lastTick = Double.NaN, blockedUntil;
     private double configuredMin = Double.NaN, configuredMax;
     private String action = "", previous = "";
+    private List<String> variants = List.of(BLADE,FLOURISH);
     public IdleInspection(long seed) { random = new Random(seed); }
     public String action() { return action; }
     public double started() { return started; }
@@ -19,14 +21,21 @@ public final class IdleInspection {
     }
     public void update(double now, boolean eligible, double minimumSeconds, double maximumSeconds,
                        ToDoubleFunction<String> durationSeconds) {
+        update(now,eligible,true,minimumSeconds,maximumSeconds,List.of(BLADE,FLOURISH),durationSeconds);
+    }
+    /** Auto idle selection and manual selection share one interruption-safe clock. */
+    public void update(double now,boolean eligible,boolean automatic,double minimumSeconds,double maximumSeconds,
+                       List<String> choices,ToDoubleFunction<String> durationSeconds) {
         if (!Double.isFinite(now)) return;
         double min = Math.clamp(Double.isFinite(minimumSeconds) ? minimumSeconds : 10, 1, 600);
         double max = Math.clamp(Double.isFinite(maximumSeconds) ? maximumSeconds : 30, min, 600);
         // Lost visibility, a clock rewind, or a configuration edit starts a fresh stationary interval.
         if (Double.isFinite(lastTick) && (now < lastTick || now - lastTick > 5)
-                || min != configuredMin || max != configuredMax) {
+                || Double.isFinite(configuredMin)&&(min != configuredMin || max != configuredMax)
+                || !variants.equals(choices)) {
             action = ""; deadline = Double.NaN;
         }
+        variants=List.copyOf(choices);
         lastTick = now; configuredMin = min; configuredMax = max;
         if (!eligible || now < blockedUntil) { action = ""; deadline = Double.NaN; return; }
         if (!action.isEmpty()) {
@@ -35,11 +44,24 @@ public final class IdleInspection {
                 action = ""; deadline = Double.NaN;
             } else return;
         }
+        if(!automatic||variants.isEmpty()){deadline=Double.NaN;return;}
         if (!Double.isFinite(deadline)) deadline = now + (min + random.nextDouble() * (max - min)) * 20;
         if (now < deadline) return;
-        String next = previous.isEmpty() ? (random.nextBoolean() ? BLADE : FLOURISH) : previous.equals(BLADE) ? FLOURISH : BLADE;
+        var available=variants.stream().filter(id->variants.size()==1||!id.equals(previous)).toList();
+        String next=available.get(random.nextInt(available.size()));
         double duration = durationSeconds.applyAsDouble(next);
         if (!Double.isFinite(duration) || duration <= 0) { deadline = Double.NaN; return; }
         action = previous = next; started = now;
+    }
+    /** H cycles the authored variants, making each one directly reachable without an idle wait. */
+    public boolean request(double now,boolean eligible,List<String> choices,ToDoubleFunction<String> durationSeconds) {
+        if(choices.isEmpty())return false;
+        int last=choices.indexOf(previous);return request(now,eligible,choices,choices.get((last+1)%choices.size()),durationSeconds);
+    }
+    public boolean request(double now,boolean eligible,List<String> choices,String selected,ToDoubleFunction<String> durationSeconds) {
+        if(!Double.isFinite(now)||!eligible||now<blockedUntil||!choices.contains(selected))return false;
+        double duration=durationSeconds.applyAsDouble(selected);
+        if(!Double.isFinite(duration)||duration<=0)return false;
+        variants=List.copyOf(choices);action=previous=selected;started=lastTick=now;deadline=Double.NaN;return true;
     }
 }

@@ -47,6 +47,8 @@ public final class ClientHooks {
     private static boolean bowCharging, rapierCharging, bowAuto, dualTogether;
     private static final GuardKeyIntent guardKeyIntent=new GuardKeyIntent();
     private static final ShiftBurstIntent shiftBurstIntent=new ShiftBurstIntent();
+    private static net.minecraft.client.multiplayer.ClientLevel burstInputLevel;
+    private static net.minecraft.client.player.LocalPlayer burstInputPlayer;
     private static InputConstants.Key sampledGuardBinding;
     private static final int[] rawKeyboardKeys=java.util.Arrays.stream(GLFW.class.getFields())
             .filter(field->field.getName().startsWith("GLFW_KEY_")&&!field.getName().equals("GLFW_KEY_UNKNOWN"))
@@ -103,6 +105,7 @@ public final class ClientHooks {
         });
         NeoForge.EVENT_BUS.addListener(CombatCamera::angles);
         NeoForge.EVENT_BUS.addListener(CombatCamera::movement);
+        NeoForge.EVENT_BUS.addListener(ClientHooks::burstSprintInput);
         NeoForge.EVENT_BUS.addListener(ClientHooks::interaction);
         NeoForge.EVENT_BUS.addListener(ClientHooks::hud);
         NeoForge.EVENT_BUS.addListener(RpgHud::beforeLayer);
@@ -156,6 +159,11 @@ public final class ClientHooks {
     }
     public static void send(String action, String argument) {
         var game=Minecraft.getInstance();
+        if(action.equals("burstDash")) {
+            argument=BurstDashMotion.prepareIntent(argument);
+            if(game.player!=null&&game.getConnection()!=null)game.getConnection().send(new net.minecraft.network.protocol.game.ServerboundMovePlayerPacket.Rot(
+                    game.player.getYRot(),game.player.getXRot(),game.player.onGround(),game.player.horizontalCollision));
+        }
         boolean rapier=ClientState.drawn()&&CombatCamera.style().equals("rapier");
         boolean orbitAttack=ClientState.drawn()&&!CombatCamera.style().equals("spear")
                 &&(action.equals("attack")||action.equals("aimAttack")||action.equals("targetAttack")||action.equals("rapierCharge")&&argument.equals("true"));
@@ -189,6 +197,10 @@ public final class ClientHooks {
     private static void tick(ClientTickEvent.Post event) {
         Minecraft game = Minecraft.getInstance();
         if (game.player == null || game.getConnection() == null) return;
+        if(burstInputLevel!=game.level||burstInputPlayer!=game.player){
+            shiftBurstIntent.reset();BurstDashMotion.reset();shiftSprintRequested=false;
+            burstInputLevel=game.level;burstInputPlayer=game.player;
+        }
         updateCamera();
         if (++statusClock >= 20) { statusClock = 0; send("status", ""); }
         boolean inGame = game.screen == null;
@@ -202,7 +214,8 @@ public final class ClientHooks {
         String guardArgument=guardKeyIntent.sample(physicalGuard,canGuard,shouldHeavy,retryGuard);
         if(guardArgument!=null)send("guard",guardArgument);
         var burstDirection=CombatCamera.burstDirection();
-        String burstArgument=shiftBurstIntent.sample(shouldHeavy,inGame&&game.isWindowActive()&&ClientState.drawn(),physicalGuard,
+        if(!inGame||!game.isWindowActive()||!ClientState.drawn()||physicalGuard)BurstDashMotion.cancelPending();
+        String burstArgument=shiftBurstIntent.sample(shouldHeavy,inGame&&game.isWindowActive()&&ClientState.drawn(),physicalGuard,game.player.onGround(),
                 game.level==null?0:game.level.getGameTime(),burstDirection.x,burstDirection.z);
         if(burstArgument!=null)send("burstDash",burstArgument);
         boolean nextBow=inGame && ClientState.drawn() && bow && RIGHT.isDown();
@@ -305,6 +318,19 @@ public final class ClientHooks {
             }
         }
     }
+    private static boolean shiftSprintRequested;
+    /** Offer the ordinary sprint key to vanilla; WASD, hunger, collisions and vanilla travel still decide motion. */
+    private static void burstSprintInput(net.neoforged.neoforge.client.event.MovementInputUpdateEvent event) {
+        var game=Minecraft.getInstance();if(event.getEntity()!=game.player||game.player==null)return;
+        boolean wanted=game.screen==null&&game.isWindowActive()&&ClientState.drawn()&&shiftBurstIntent.ownsInput()
+                &&BurstDashMotion.approved(shiftBurstIntent.requestId())&&!physicalGuardDown(game)
+                &&physicalBindingDown(game.options.keyShift.getKey(),game.getWindow().handle())
+                &&!java.util.Set.of("GUARDING","STUNNED","DODGING","DRAWING","SHEATHING").contains(ClientState.text(ClientState.snapshot(),"phase",""));
+        if(wanted){var input=event.getInput();var keys=input.keyPresses;
+            input.keyPresses=new net.minecraft.world.entity.player.Input(keys.forward(),keys.backward(),keys.left(),keys.right(),keys.jump(),false,true);
+        } else if(shiftSprintRequested)game.player.setSprinting(false);
+        shiftSprintRequested=wanted;
+    }
     private static void logout(ClientPlayerNetworkEvent.LoggingOut event) {
         BurstDashMotion.reset();
         GuardCuePresentation.clear();
@@ -313,5 +339,7 @@ public final class ClientHooks {
         CombatCamera.reset(); ClientState.clear(); PlayerAnimations.clear(); updateCamera(); bowCharging = rapierCharging = bowAuto = dualTogether = false; statusClock = 0;
         guardKeyIntent.reset();sampledGuardBinding=null;physicalScanKeys.clear();
         shiftBurstIntent.reset();
+        shiftSprintRequested=false;
+        burstInputLevel=null;burstInputPlayer=null;
     }
 }

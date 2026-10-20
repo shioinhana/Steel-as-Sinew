@@ -727,14 +727,21 @@ public final class CombatActor {
     }
 
     public BurstDashState.Snapshot burstDashSnapshot(){return burstDash.snapshot(tick);}
-    /** Physical Shift edge starts one paid horizontal burst; held renewal only keeps its original-direction run alive. */
+    public void cancelBurstDashInput(){burstDash.input(false,tick);burstDash.stopMotion();}
+    public BurstDashState.Step consumeBurstDashImpulse(){return burstDash.consumeImpulse();}
+    /** Source-compatible core entry point; game adapters must pass authoritative grounded state below. */
     public ActionResult requestBurstDash(boolean held,double directionX,double directionZ) {
+        return requestBurstDash(held,directionX,directionZ,true);
+    }
+    /** A fresh grounded edge authorizes one paid impulse. Held renewal never writes velocity. */
+    public ActionResult requestBurstDash(boolean held,double directionX,double directionZ,boolean grounded) {
         boolean fresh=burstDash.input(held,tick);
         if(!held||!fresh)return ActionResult.ACCEPTED;
         if(!Double.isFinite(directionX)||!Double.isFinite(directionZ)||Math.abs(directionX)>1_000_000
                 ||Math.abs(directionZ)>1_000_000||Math.hypot(directionX,directionZ)<1e-6)
             throw new IllegalArgumentException("burst dash requires a finite nonzero horizontal direction");
         if(!drawn)return ActionResult.NOT_DRAWN;
+        if(!grounded)return ActionResult.AIR_BURST_DISABLED;
         if(style!=null&&!style.enabled())return ActionResult.STYLE_DISABLED;
         if(pendingHitStun>0||phase==CombatPhase.STUNNED||phase==CombatPhase.DODGING||phase==CombatPhase.SHEATHING
                 ||phase==CombatPhase.DRAWING||phase==CombatPhase.GUARDING||burstDash.active())return ActionResult.BUSY;

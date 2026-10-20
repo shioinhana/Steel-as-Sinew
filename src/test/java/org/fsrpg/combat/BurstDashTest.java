@@ -2,12 +2,12 @@ package org.fsrpg.combat;
 
 import java.util.UUID;
 
-/** Server-only input edges, fixed direction, exact curved distance and independent attack state. */
+/** Ground-only input edges, one velocity grant and independent ordinary physics/attack state. */
 public final class BurstDashTest {
     private static int checks;
     public static void main(String[] args) {
         curveAndTap();heldDirectionAndLease();attackIndependence();gatesAndFreshEdges();interruptions();
-        oldDodgeAndValidation();lockedAim();customDiscreteCurves();
+        oldDodgeAndValidation();lockedAim();customInitialSpeeds();
         System.out.println("BurstDashTest passed: "+checks+" checks");
     }
     private static CombatActor actor(){var actor=new CombatActor(UUID.randomUUID(),rules());actor.requestDrawn();return actor;}
@@ -17,33 +17,25 @@ public final class BurstDashTest {
             d.dodgeCancelsRecovery(),d.allowAirDodge(),d.rapierTargetLock(),d.perfectGuardCounter(),d.staminaLevelScaling(),d.staminaCombatRules(),d.burstDash());}
     private static SkillDefinition skill(int windup,int active,int recovery){return new SkillDefinition("cut","cut","sword",SkillInput.LEFT,windup,active,recovery,0,10,0,7,3,90,0,true,true,false,"","");}
     private static void curveAndTap(){
-        var actor=actor();equal(ActionResult.ACCEPTED,actor.requestBurstDash(true,1,0),"fresh Shift starts a burst");
-        near(95,actor.stamina(),"one burst costs five");check(actor.staminaCombatState(),"real movement cost enters combat");
-        actor.requestBurstDash(false,0,0);double distance=0,first=0,last=0,maximum=0;
-        for(int tick=0;tick<10;tick++){
-            var move=actor.tick().burstDashStep();check(move.bursting()&&!move.running(),"ten paid burst frames survive a tap release");
-            check(move.x()>0&&move.z()==0,"curve always moves forward");if(tick==0)first=move.x();last=move.x();maximum=Math.max(maximum,move.x());distance+=move.x();
-            check(!actor.invulnerable(),"Shift never borrows Alt invulnerability");
-        }
-        near(3,distance,"ten steps integrate to exactly three unobstructed blocks");
-        check(first<maximum*.25,"burst accelerates naturally from a slow first step");
-        near(5.6/20,last,"actual final 20 Hz burst step matches the following held run exactly");
-        check(!actor.tick().burstDashStep().moving(),"tap does not continue running");
-        near(95,actor.stamina(),"tap completion cannot refund a real movement cost");
+        var actor=actor();equal(ActionResult.ACCEPTED,actor.requestBurstDash(true,1,0,true),"a fresh grounded press authorizes one impulse");
+        near(95,actor.stamina(),"one impulse costs five");check(actor.staminaCombatState(),"paid motion enters combat");
+        var impulse=actor.consumeBurstDashImpulse();near(1.35,impulse.x(),"initial velocity is 27 blocks per second / 20");near(0,impulse.z(),"requested axis preserved");
+        check(!actor.consumeBurstDashImpulse().moving(),"same authorization is consumed exactly once");
+        actor.requestBurstDash(false,0,0,true);
+        for(int tick=0;tick<100;tick++){check(!actor.tick().burstDashStep().moving(),"tick never writes a position or another velocity");check(!actor.invulnerable(),"Shift supplies no invulnerability");}
+        near(95,actor.stamina(),"a tap never refunds or repeats its fixed movement fee");
+        // This describes vanilla standard-ground friction, not a custom movement curve.
+        double speed=impulse.x(),distance=0;for(int tick=0;tick<40;tick++){distance+=speed;speed*=.6*.91;}
+        check(distance>2.9&&distance<3.1,"a standard-ground no-input coast is about three blocks, not a prescribed duration");
     }
     private static void heldDirectionAndLease(){
-        var actor=actor();actor.requestBurstDash(true,3,4);double x=0,z=0;
-        for(int tick=0;tick<10;tick++){
-            actor.requestBurstDash(true,-9,0);var step=actor.tick().burstDashStep();x+=step.x();z+=step.z();
-            near(95,actor.stamina(),"held packets never pay again");
-        }
-        near(1.8,x,"world direction is normalized and frozen X");near(2.4,z,"world direction is normalized and frozen Z");
-        var run=actor.tick().burstDashStep();check(run.running()&&!run.bursting(),"held Shift seamlessly becomes running");
-        near(.168,run.x(),"run keeps initial X direction");near(.224,run.z(),"run keeps initial Z direction");
-        for(int i=0;i<13;i++)actor.tick();check(!actor.tick().burstDashStep().moving(),"lost input lease stops running");
-        actor.requestBurstDash(true,0,-1);check(actor.tick().burstDashStep().running(),"renewal after stale lease resumes only the same run");
-        near(95,actor.stamina(),"lease expiry cannot rearm a paid press");near(.6,actor.burstDashSnapshot().directionX(),"renewal never redirects a run");
-        actor.requestBurstDash(false,0,0);check(!actor.tick().burstDashStep().moving(),"release ends continued running");
+        var actor=actor();actor.requestBurstDash(true,3,4,true);var impulse=actor.consumeBurstDashImpulse();
+        near(.81,impulse.x(),"the initial direction is normalized X");near(1.08,impulse.z(),"the initial direction is normalized Z");
+        for(int i=0;i<40;i++){actor.requestBurstDash(true,-1,0,true);check(!actor.consumeBurstDashImpulse().moving(),"held renewals cannot overwrite current vanilla velocity");check(!actor.tick().burstDashStep().moving(),"held running manufactures no motion step");}
+        near(95,actor.stamina(),"renewals never charge again");check(actor.burstDashSnapshot().running(),"a successful held input grants ordinary sprint permission");
+        for(int i=0;i<14;i++)actor.tick();check(!actor.burstDashSnapshot().running(),"lost input lease ends sprint permission");
+        actor.requestBurstDash(true,0,-1,true);check(actor.burstDashSnapshot().running(),"a renewal may resume sprint permission without a new impulse");
+        actor.requestBurstDash(false,0,0,true);check(!actor.burstDashSnapshot().running(),"up ends held sprint permission");
     }
     private static void attackIndependence(){
         for(int at:new int[]{0,2,7}){
@@ -55,24 +47,26 @@ public final class BurstDashTest {
         }
     }
     private static void gatesAndFreshEdges(){
-        var actor=new CombatActor(UUID.randomUUID(),rules());
-        equal(ActionResult.NOT_DRAWN,actor.requestBurstDash(true,1,0),"sheathed item cannot dash");actor.requestDrawn();
-        actor.requestBurstDash(true,1,0);check(!actor.tick().burstDashStep().moving(),"a held rejected press does not auto-fire on draw");
-        actor.requestBurstDash(false,0,0);equal(ActionResult.ACCEPTED,actor.requestBurstDash(true,1,0),"release permits a real fresh press");
-        actor=actor();actor.setResources(4,100);equal(ActionResult.INSUFFICIENT_STAMINA,actor.requestBurstDash(true,1,0),"full five-point budget required");
-        actor.restoreResources(10,0);actor.requestBurstDash(true,1,0);check(!actor.tick().burstDashStep().moving(),"resource recovery cannot auto-start held input");
-        near(14,actor.stamina(),"failed and renewed requests never partly debit");
-        actor=actor();actor.setGuarding(true);equal(ActionResult.BUSY,actor.requestBurstDash(true,1,0),"Shift plus actual guard cannot start movement");
-        actor.setGuarding(false);actor.requestBurstDash(true,1,0);check(!actor.tick().burstDashStep().moving(),"leaving guard while Shift remains down does not invent an edge");
-        actor=actor();actor.requestDodge(true);equal(ActionResult.BUSY,actor.requestBurstDash(true,1,0),"Alt dodge cannot stack with Shift");
+        var actor=actor();equal(ActionResult.AIR_BURST_DISABLED,actor.requestBurstDash(true,1,0,false),"airborne fresh press is rejected");
+        near(100,actor.stamina(),"air rejection spends no stamina");check(!actor.staminaCombatState(),"air rejection does not change regeneration state");
+        actor.requestBurstDash(true,1,0,true);check(!actor.consumeBurstDashImpulse().moving(),"holding Shift through landing cannot manufacture a press");near(100,actor.stamina(),"landing with a rejected hold is free");
+        actor.requestBurstDash(false,0,0,true);equal(ActionResult.ACCEPTED,actor.requestBurstDash(true,1,0,true),"release and a new grounded press may start");
+        check(actor.consumeBurstDashImpulse().moving(),"real second press produces the first impulse");near(95,actor.stamina(),"only the accepted second press pays");
+        actor=new CombatActor(UUID.randomUUID(),rules());equal(ActionResult.NOT_DRAWN,actor.requestBurstDash(true,1,0,true),"sheathed cannot dash");actor.requestDrawn();
+        actor.requestBurstDash(true,1,0,true);check(!actor.consumeBurstDashImpulse().moving(),"drawing while held does not invent a press");
+        actor=actor();actor.setResources(4,100);equal(ActionResult.INSUFFICIENT_STAMINA,actor.requestBurstDash(true,1,0,true),"full five-point budget required");
+        actor.restoreResources(10,0);actor.requestBurstDash(true,1,0,true);check(!actor.consumeBurstDashImpulse().moving(),"resource recovery cannot trigger a held request");near(14,actor.stamina(),"failed starts do not partly debit");
+        actor=actor();actor.setGuarding(true);equal(ActionResult.BUSY,actor.requestBurstDash(true,1,0,true),"Shift+C guard gets priority");
+        actor.setGuarding(false);actor.requestBurstDash(true,1,0,true);check(!actor.consumeBurstDashImpulse().moving(),"releasing C while Shift remains down does not trigger");
+        actor=actor();actor.requestDodge(true);equal(ActionResult.BUSY,actor.requestBurstDash(true,1,0,true),"Alt dodge cannot stack with Shift");
     }
     private static void interruptions(){
         for(boolean sheath:new boolean[]{false,true}){
-            var actor=actor();actor.requestBurstDash(true,1,0);actor.tick();if(sheath)actor.forceSheathed();else actor.stun(2);
-            check(!actor.tick().burstDashStep().moving(),"authoritative interruption stops burst movement");
+            var actor=actor();actor.requestBurstDash(true,1,0,true);check(actor.consumeBurstDashImpulse().moving(),"accepted impulse delivered before interruption");
+            if(sheath)actor.forceSheathed();else actor.stun(2);
+            check(!actor.tick().burstDashStep().moving()&&!actor.burstDashSnapshot().running(),"interruptions end sprint permission without an artificial braking step");
             if(sheath)actor.requestDrawn();else actor.tick();
-            actor.requestBurstDash(true,1,0);check(!actor.tick().burstDashStep().moving(),"interrupted held input cannot restart and charge again");
-            near(95,actor.stamina(),"interruption has no hidden repeat fee");
+            actor.requestBurstDash(true,1,0,true);check(!actor.consumeBurstDashImpulse().moving(),"interrupted held input never repeats the impulse");near(95,actor.stamina(),"interruption has no repeat fee");
         }
     }
     private static void oldDodgeAndValidation(){
@@ -93,26 +87,16 @@ public final class BurstDashTest {
         equal(aim,actor.attackAim(),"non-spear lock can update another weapon's active aim");
         actor.trackRapierAim(AttackAim.at(0,0));equal(aim,actor.attackAim(),"compatibility rapier API retains its old style filter");
     }
-    private static void customDiscreteCurves(){
-        for(int ticks=1;ticks<=100;ticks++)for(double distance:new double[]{.25,3,32}){
-            double maximum=Math.min(12,3*distance*20/ticks);
-            for(double run:new double[]{0,maximum*.25,maximum*.75,maximum}){
-                var rules=new BurstDashRules(distance,ticks,5,10,run,12);
-                double total=0,previous=0,last=0;
-                for(int tick=1;tick<=ticks;tick++){
-                    double now=rules.displacement(tick/(double)ticks);last=now-previous;
-                    check(Double.isFinite(last)&&last>=-1e-12,"every legal custom curve keeps all discrete movement forward and finite");
-                    total+=last;previous=now;
-                }
-                near(distance,total,"every legal custom duration retains its exact integrated burst distance");
-                if(ticks>=2&&run/20<=distance)near(run/20,last,"every feasible custom terminal step matches its held run");
-            }
+    private static void customInitialSpeeds(){
+        for(double speed:new double[]{.1,1,27,40,80})for(double[] direction:new double[][]{{1,0},{0,-1},{3,4},{-12,5}}){
+            var state=new BurstDashState();var rules=new BurstDashRules(3,10,5,10,5.6,12,speed);state.input(true,0);state.begin(0,direction[0],direction[1],rules);
+            var impulse=state.consumeImpulse();near(speed/20,Math.hypot(impulse.x(),impulse.z()),"configured speed sets one horizontal velocity magnitude");
+            for(int i=0;i<30;i++)check(!state.tick(i).moving()&&!state.consumeImpulse().moving(),"all following ticks remain owned by external physics");
         }
-        var defaults=BurstDashRules.defaults();double previous=0,maximum=0;int peak=0;double[] steps=new double[10];
-        for(int i=0;i<10;i++){double next=defaults.displacement((i+1)/10.0);steps[i]=next-previous;previous=next;if(steps[i]>maximum){maximum=steps[i];peak=i;}}
-        check(peak>0&&peak<9,"default curve has a real acceleration and braking interval");
-        for(int i=1;i<=peak;i++)check(steps[i]>=steps[i-1],"default burst accelerates without an early velocity reversal");
-        for(int i=peak+1;i<10;i++)check(steps[i]<=steps[i-1],"default burst brakes continuously toward its exact running step");
+        rejects(()->new BurstDashRules(3,10,5,10,5.6,12,Double.NaN),"NaN initial speed rejected");
+        rejects(()->new BurstDashRules(3,10,5,10,5.6,12,0.0),"zero initial speed rejected");
+        rejects(()->new BurstDashRules(3,10,5,10,5.6,12,80.01),"unsafe initial speed rejected");
+        near(27,new BurstDashRules(3,10,5,10,5.6,12).initialSpeed(),"old constructor gains a derived speed without changing old fields");
     }
     private static void near(double expected,double actual,String message){check(Math.abs(expected-actual)<1e-8,message+": "+expected+" != "+actual);}
     private static void equal(Object expected,Object actual,String message){check(expected.equals(actual),message+": "+expected+" != "+actual);}
