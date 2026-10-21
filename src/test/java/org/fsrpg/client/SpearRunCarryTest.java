@@ -15,6 +15,8 @@ import org.joml.Vector3f;
 /** Real stock/slim FK, complete-pole clearance, closed official grip and free running arm. */
 public final class SpearRunCarryTest {
     private static int checks;
+    private static float minimumElevation = 90, maximumElevation, minimumCrossY = Float.POSITIVE_INFINITY, maximumCrossY;
+    private static float minimumWorldAxisY = 1, minimumRearZ, maximumRearZ = -100, minimumFreeDistance = Float.POSITIVE_INFINITY;
     private static void check(boolean value, String label) { if (!value) throw new AssertionError(label); checks++; }
     private static float angle(Quaternionf a, Quaternionf b) {
         return (float)Math.toDegrees(2 * Math.acos(Math.clamp(Math.abs(a.dot(b)), 0, 1)));
@@ -23,7 +25,6 @@ public final class SpearRunCarryTest {
         state();
         var model = ModelLoader.load(Path.of("src/main/resources/assets/fsrpg/fsvoxel/models/spear.fsvoxel"));
         returnTarget(model);
-        cadence(model);
         stride(model);
         for (boolean slim : List.of(false, true)) for (float yaw : new float[]{-40, 0, 40}) for (float pitch : new float[]{-35, 0, 35}) {
             Map<String, Pose> source = new PoseLayers.Playback(model.rig(), "spear_idle").sample(.3, .3, 6, 0, 0, .25f, 55).pose();
@@ -48,7 +49,7 @@ public final class SpearRunCarryTest {
                 var pose = SpearRunCarry.apply(model, movingSource, reference, weight, frame / 12f);
                 var world = model.worldMatrices(pose); var measured = SpearRunCarry.measure(world);
                 String where = "skin=" + slim + " yaw=" + yaw + " pitch=" + pitch + " frame=" + frame;
-                check(measured.clearShaft(), "entire actual pole stays outside torso/head " + where + " rear=" + measured.chestRear() + " axis=" + measured.chestAxis() + " body=" + pose.get("body").rotation() + " head=" + pose.get("head").rotation());
+                check(measured.clearShaft(), "entire actual pole stays outside torso/head " + where + " rear=" + measured.chestRear() + " axis=" + measured.chestAxis() + " headRear=" + new Matrix4f(world.get("head")).invert().transformPosition(new Vector3f(measured.rear())) + " headAxis=" + new Matrix4f(world.get("head")).invert().transformDirection(new Vector3f(measured.axis())) + " body=" + pose.get("body").rotation() + " head=" + pose.get("head").rotation());
                 var shoulder = world.get("right_arm").getTranslation(new Vector3f());
                 var elbow = world.get("right_forearm").getTranslation(new Vector3f());
                 check(Math.abs(shoulder.distance(elbow) - 37.5f) < .002f, "upper bone never stretches " + where);
@@ -61,16 +62,19 @@ public final class SpearRunCarryTest {
                 for (String bone : List.of("right_arm", "right_forearm", "right_hand"))
                     check(angle(previous.get(bone).fsQuaternion(), pose.get(bone).fsQuaternion()) < 13,
                             "analytic elbow branch never swaps " + where + " " + bone + " step=" + angle(previous.get(bone).fsQuaternion(), pose.get(bone).fsQuaternion()));
+                independentGeometry(world, weight, slim, where);
+                supportedWaist(world, frame / 12f, where);
+                if (frame == 0) check(SpearRunCarry.leftShaftDistance(world) < .01f, "zero carry preserves the exact normal two-hand hold " + where);
                 var wrist = pose.get("right_hand").fsQuaternion();
                 check(angle(new Quaternionf(), wrist) <= 150.2f, "independent wrist stays within its rotation stop " + where);
                 if (weight > .97) check(measured.freeHandDistanceCm() > 55, "left hand truly leaves the shaft " + where);
                 if (frame == 240) {
-                    check(measured.chestRear().z < -29 && measured.chestRear().y < 27, "right palm stays low behind waist " + where);
-                    check(measured.chestAxis().y < -.23f && measured.chestAxis().z < -.94f && measured.axis().y < -.03f,
-                            "official spear tip points behind and below, never up " + where);
+                    check(measured.chestRear().z < -30 && measured.chestRear().y > 15 && measured.chestRear().y < 50, "right palm stays behind the right waist " + where);
+                    check(measured.chestAxis().x > .55f && measured.chestAxis().y > .5f && Math.abs(measured.chestAxis().z) < .15f && measured.axis().y > .35f,
+                            "official spear tip rises diagonally across the back toward the left shoulder " + where);
                     var chestElbow = new Matrix4f(world.get("body")).invert().transformPosition(new Vector3f(elbow));
-                    check(chestElbow.z < -25 && chestElbow.y < 60, "right elbow reaches behind below its shoulder " + where);
-                    check(angle(new Quaternionf(), wrist) < 40, "steady carry wrist is relaxed " + where);
+                    check(chestElbow.z < -20 && chestElbow.y < 75, "right elbow reaches behind below its shoulder " + where);
+                    check(angle(new Quaternionf(), wrist) < 60, "steady carry wrist is relaxed " + where);
                     var first = SpearRunCarry.apply(model, source, reference, 1, 0);
                     var second = SpearRunCarry.apply(model, source, reference, 1, (float)Math.PI / .6662f);
                     firstFree = SpearRunCarry.palm(model.worldMatrices(first), "left");
@@ -85,14 +89,30 @@ public final class SpearRunCarryTest {
                 }
                 previous = pose;
             }
+            for (int frame = 0; frame < 180; frame++) {
+                float phase = frame * (float)(2 * Math.PI) / 180 / .6662f;
+                var world = model.worldMatrices(SpearRunCarry.apply(model, source, reference, 1, phase));
+                String where = "full cycle slim=" + slim + " yaw=" + yaw + " pitch=" + pitch + " frame=" + frame;
+                check(SpearAimPose.hasClearShaft(world), "full starting-aim cycle clears complete pole " + where);
+                diagonal(SpearRunCarry.measure(world), where);
+                independentGeometry(world, 1, slim, where);
+                supportedWaist(world, phase, where);
+                officialGrip(world, where);
+            }
         }
-        System.out.println("SpearRunCarryTest passed: " + checks + " checks; real stock/slim source, 18 starting aims, 240-step low trailing route, separate forearm/wrist/palm, complete pole clearance and opposite-phase left run arm");
+        cadence(model);
+        System.out.println("Diagonal measurements: elevation=" + minimumElevation + ".." + maximumElevation
+                + "deg, center-back crossing y=" + minimumCrossY + ".." + maximumCrossY + "cm, rear z=" + minimumRearZ + ".." + maximumRearZ
+                + "cm, world axis y >= " + minimumWorldAxisY + ", free palm distance >= " + minimumFreeDistance + "cm");
+        System.out.println("SpearRunCarryTest passed: " + checks + " checks; real stock/slim source, 18 starting aims, 240-step diagonal back route, complete stock/slim gait cycles and cadence, independent chest/head/13 lumbar sections/free arm, exact official grip");
     }
     private static void cadence(org.fsvoxel.render.ModelDocument model) {
         for (int fps : new int[]{30, 60, 120}) {
             float peakJoint = 0, peakPalm = 0, peakAxis = 0;
-            for (float yaw : new float[]{-40, 0, 40}) for (float pitch : new float[]{-35, 0, 35}) {
+            String peakWhere = "";
+            for (boolean slim : List.of(false, true)) for (float yaw : new float[]{-40, 0, 40}) for (float pitch : new float[]{-35, 0, 35}) {
                 var source = new PoseLayers.Playback(model.rig(), "spear_idle").sample(.3, .3, 6, 0, 0, .25f, 55).pose();
+                source = skin(source, slim);
                 var raw = SpearMotion.readySource(model.worldMatrices(source), -12, 36, 50);
                 var reference = SpearAimPose.apply(model, source, new AttackAim.Point(yaw, pitch, 10), 0, 1.62f,
                         raw.get("right_hand").transformPosition(new Vector3f(0, -6.25f, 0)), null, null,
@@ -106,8 +126,12 @@ public final class SpearRunCarryTest {
                     var pose = weight > 0 ? SpearRunCarry.apply(model, source, reference, weight, (float)tick) : reference;
                     var world = model.worldMatrices(pose);
                     check(SpearAimPose.hasClearShaft(world), "real cadence start/stop keeps the whole shaft clear");
-                    for (String bone : List.of("right_arm", "right_forearm", "right_hand", "left_arm", "body"))
-                        peakJoint = Math.max(peakJoint, angle(previous.get(bone).fsQuaternion(), pose.get(bone).fsQuaternion()));
+                    independentGeometry(world, weight, slim, "cadence=" + fps + " tick=" + tick);
+                    supportedWaist(world, (float)tick, "cadence=" + fps + " tick=" + tick);
+                    for (String bone : List.of("right_arm", "right_forearm", "right_hand", "left_arm", "body")) {
+                        float step = angle(previous.get(bone).fsQuaternion(), pose.get(bone).fsQuaternion());
+                        if (step > peakJoint) { peakJoint = step; peakWhere = "slim=" + slim + " " + bone + " tick=" + tick + " weight=" + weight + " yaw=" + yaw + " pitch=" + pitch; }
+                    }
                     peakPalm = Math.max(peakPalm, SpearRunCarry.palm(world, "right").distance(SpearRunCarry.palm(previousWorld, "right")));
                     var axis = world.get("right_hand").transformDirection(new Vector3f(0, 0, 1)).normalize();
                     var oldAxis = previousWorld.get("right_hand").transformDirection(new Vector3f(0, 0, 1)).normalize();
@@ -115,6 +139,7 @@ public final class SpearRunCarryTest {
                     previous = pose; previousWorld = world;
                 }
             }
+            System.out.println("Cadence peak " + fps + "Hz: " + peakWhere + " joint=" + peakJoint + " grip=" + peakPalm + " axis=" + peakAxis);
             check(peakJoint < 2400f / fps, "no elbow/wrist branch exchange at real " + fps + "Hz: " + peakJoint);
             check(peakPalm < 1400f / fps, "bounded actual grip travel at " + fps + "Hz: " + peakPalm);
             check(peakAxis < 1500f / fps, "bounded official pole turn at " + fps + "Hz: " + peakAxis);
@@ -133,12 +158,15 @@ public final class SpearRunCarryTest {
                 float phase = frame * (float)(2 * Math.PI) / 180 / .6662f;
                 var pose = SpearRunCarry.apply(model, source, reference, 1, phase, lateral, forward);
                 var carried = model.worldMatrices(pose); var measured = SpearRunCarry.measure(carried);
-                check(measured.clearShaft() && measured.axis().y < -.03f, "whole cycle keeps world spear tip below grip despite chest lean");
-                check(measured.chestRear().z < -29 && measured.chestRear().y < 27, "every stride retains a low rear hand");
+                diagonal(measured, "directional stride frame=" + frame);
+                independentGeometry(carried, 1, false, "directional stride");
+                check(measured.clearShaft() && measured.axis().y > .35f, "whole cycle keeps the spear inclined above the left shoulder despite chest lean");
+                check(measured.chestRear().z < -30 && measured.chestRear().y > 15 && measured.chestRear().y < 50, "every stride retains the right rear hand");
                 var lower = Locomotion.supported(world.get("right_leg"), world.get("left_leg"), 0,
                         phase, .28f, 1, lateral, forward, .8f, 55, new PresentationMotion.Balance(0, 0, 0));
                 check(Math.abs(lower.right().pose().y() - lower.left().pose().y()) < .001f,
                         "both supported legs continue to share one pelvis");
+                waist(carried, lower, "directional stride frame=" + frame);
                 officialGrip(carried, "stride frame=" + frame);
             }
         }
@@ -188,6 +216,89 @@ public final class SpearRunCarryTest {
             check(returned, "return completes after a changed aim at " + fps + " Hz");
         }
     }
+    private static Map<String, Pose> skin(Map<String, Pose> source, boolean slim) {
+        if (!slim) return source;
+        var result = new HashMap<>(source);
+        for (String side : List.of("right", "left")) {
+            var old = source.get(side + "_arm"); var p = old.position();
+            result.put(side + "_arm", new Pose(old.rotation(), new V(p.x() + (side.equals("right") ? 3.125f : -3.125f), p.y(), p.z()), old.scale()));
+        }
+        return result;
+    }
+    private static void diagonal(SpearRunCarry.Measurements measured, String where) {
+        var rear = measured.chestRear(); var axis = measured.chestAxis();
+        float elevation = (float)Math.toDegrees(Math.asin(Math.clamp(axis.y, -1, 1)));
+        var crossing = new Vector3f(rear).fma(-rear.x / axis.x, axis);
+        check(axis.x > .55f && axis.y > .5f && Math.abs(axis.z) < .15f && elevation >= 30 && elevation <= 60,
+                "shaft is a 30..60 degree diagonal in the back plane " + where);
+        check(rear.x < -30 && rear.z < -30 && rear.y > 15 && rear.y < 50,
+                "right fist remains behind the right waist " + where);
+        check(crossing.y >= 50 && crossing.y <= 100 && crossing.z < -30,
+                "shaft crosses the center of the back below/above the shoulder line " + where + " crossing=" + crossing);
+        check(measured.axis().y > .35f, "spear remains inclined in world space " + where);
+        check(measured.freeHandDistanceCm() > 55, "free left fist stays away from the spear " + where);
+        minimumElevation = Math.min(minimumElevation, elevation); maximumElevation = Math.max(maximumElevation, elevation);
+        minimumCrossY = Math.min(minimumCrossY, crossing.y); maximumCrossY = Math.max(maximumCrossY, crossing.y);
+        minimumWorldAxisY = Math.min(minimumWorldAxisY, measured.axis().y);
+        minimumRearZ = Math.min(minimumRearZ, rear.z); maximumRearZ = Math.max(maximumRearZ, rear.z);
+        minimumFreeDistance = Math.min(minimumFreeDistance, measured.freeHandDistanceCm());
+    }
+    /** Independent slab intersections against actual chest, head and released arm boxes. */
+    private static void independentGeometry(Map<String, Matrix4f> world, float weight, boolean slim, String where) {
+        var rear = SpearRunCarry.palm(world, "right");
+        var axis = world.get("right_hand").transformDirection(new Vector3f(0, 0, 1)).normalize();
+        var a = new Vector3f(rear).fma(-60, axis); var b = new Vector3f(rear).fma(178, axis);
+        check(!box(world.get("body"), a, b, new Vector3f(-27, -2, -14.5f), new Vector3f(27, 77, 14.5f)), "independent chest box clears pole " + where);
+        check(!box(world.get("head"), a, b, new Vector3f(-27, -2, -27), new Vector3f(27, 52, 27)), "independent head box clears pole " + where);
+        if (weight >= .68f) {
+            float halfWidth = slim ? 9.375f : 12.5f;
+            check(!box(world.get("left_arm"), a, b, new Vector3f(-halfWidth - 2, -39.5f, -14.5f), new Vector3f(halfWidth + 2, 2, 14.5f)),
+                    "released left upper arm clears whole pole " + where);
+            check(!box(world.get("left_forearm"), a, b, new Vector3f(-halfWidth - 2, -27, -14.5f), new Vector3f(halfWidth + 2, 2, 14.5f)),
+                    "released left forearm clears whole pole " + where);
+        }
+    }
+    private static boolean box(Matrix4f frame, Vector3f from, Vector3f to, Vector3f minimum, Vector3f maximum) {
+        var inverse = new Matrix4f(frame).invert();
+        var p = inverse.transformPosition(new Vector3f(from)); var d = inverse.transformPosition(new Vector3f(to)).sub(p);
+        float enter = 0, leave = 1;
+        for (int axis = 0; axis < 3; axis++) {
+            if (Math.abs(d.get(axis)) < 1e-6f) { if (p.get(axis) < minimum.get(axis) || p.get(axis) > maximum.get(axis)) return false; }
+            else {
+                float a = (minimum.get(axis) - p.get(axis)) / d.get(axis), b = (maximum.get(axis) - p.get(axis)) / d.get(axis);
+                enter = Math.max(enter, Math.min(a, b)); leave = Math.min(leave, Math.max(a, b));
+                if (enter > leave) return false;
+            }
+        }
+        return true;
+    }
+    private static void supportedWaist(Map<String, Matrix4f> world, float phase, String where) {
+        var lower = Locomotion.supported(world.get("right_leg"), world.get("left_leg"), 0,
+                phase, .28f, 1, 0, 1, .8f, 55, new PresentationMotion.Balance(0, 0, 0));
+        waist(world, lower, where);
+    }
+    /** Reconstruct all thirteen rendered lumbar cross sections in native pixels. */
+    private static void waist(Map<String, Matrix4f> world, Locomotion.LowerBody lower, String where) {
+        var rear = SpearRunCarry.palm(world, "right");
+        var axis = world.get("right_hand").transformDirection(new Vector3f(0, 0, 1)).normalize();
+        var a = nativePixels(new Vector3f(rear).fma(-60, axis)); var b = nativePixels(new Vector3f(rear).fma(178, axis));
+        var q = world.get("body").getUnnormalizedRotation(new Quaternionf()).normalize();
+        var chest = new Quaternionf(q.x, -q.y, -q.z, q.w);
+        var r = lower.right().pose(); var l = lower.left().pose();
+        var pelvis = new Vector3f((r.x() + l.x()) / 2, (r.y() + l.y()) / 2, (r.z() + l.z()) / 2);
+        for (int section = 0; section <= 12; section++) {
+            float y = 6 + section * .5f, blend = section / 12f; blend = blend * blend * (3 - 2 * blend);
+            var center = nativePixels(world.get("body").transformPosition(new Vector3f(0, 75 - y * 6.25f, 0)))
+                    .lerp(new Vector3f(pelvis).add(0, y - 12, 0), blend);
+            var rotation = new Quaternionf(chest).slerp(new Quaternionf().rotationY(lower.pelvisYaw()), blend);
+            var frame = new Matrix4f().translationRotate(center, rotation);
+            // Half a source-pixel covers the gap to either adjacent mesh ring;
+            // the additional 2 cm is the actual pole radius.
+            check(!box(frame, a, b, new Vector3f(-4.32f, -.57f, -2.32f), new Vector3f(4.32f, .57f, 2.32f)),
+                    "independent rendered waist section " + section + " clears whole pole " + where);
+        }
+    }
+    private static Vector3f nativePixels(Vector3f p) { return new Vector3f(p.x / 6.25f, (150 - p.y) / 6.25f, -p.z / 6.25f); }
     private static void officialGrip(Map<String, Matrix4f> world, String where) {
         float deg = (float)Math.PI / 180;
         var display = new Matrix4f().translation(0, 2f / 16, 2f / 16).rotateXYZ(5 * deg, 270 * deg, -40 * deg)

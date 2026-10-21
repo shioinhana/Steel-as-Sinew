@@ -11,7 +11,7 @@ import org.joml.Matrix4f;
 import org.joml.Quaternionf;
 import org.joml.Vector3f;
 
-/** Low trailing Chinese-spear run: the real right hand stays behind the waist. */
+/** Diagonal back carry: the official spear rises from the right rear hip over the left shoulder. */
 public final class SpearRunCarry {
     public static final double MINIMUM_SPEED = .16;
     public static final double ENTER_TICKS = 14, EXIT_TICKS = 12;
@@ -87,25 +87,24 @@ public final class SpearRunCarry {
                 .mul(referenceWorld.get("right_hand").getUnnormalizedRotation(new Quaternionf()).normalize());
         var startAxis = startHand.transform(new Vector3f(0, 0, 1));
         var shoulder = result.get("right_arm").position().vector();
-        // The spear tip trails behind and slightly below the right hand. In body
-        // space +Z is forward: a negative Z axis is the actual official spear tip.
+        // Chest +Z points forward. Settle the complete shaft behind the torso
+        // before inclining it across the back from right hip to left shoulder.
         float lag = (float)Math.sin(cycle - .35f);
-        var endPalm = new Vector3f(shoulder.x - 6.5f + .7f * lag, shoulder.y - 51 + 1.1f * landing,
-                -32 + 1.4f * lag);
-        var endAxis = new Vector3f(-.08f + .012f * lag, -.26f + .014f * landing, -.99f).normalize();
-        float outward = smoother(Math.clamp(weight / .20f, 0, 1));
-        float level = smoother(Math.clamp((weight - .20f) / .32f, 0, 1));
-        float turn = smoother(Math.clamp((weight - .52f) / .24f, 0, 1));
-        float trail = smoother(Math.clamp((weight - .76f) / .24f, 0, 1));
+        var endPalm = new Vector3f(-42 + .7f * lag, 32 + 1.1f * landing, -38 + 1.4f * lag);
+        var endAxis = new Vector3f(.75f + .008f * lag, .66f + .014f * landing, 0).normalize();
+        float outward = smooth(Math.clamp(weight / .18f, 0, 1));
+        float level = smooth(Math.clamp((weight - .18f) / .28f, 0, 1));
+        float turn = smooth(Math.clamp((weight - .46f) / .22f, 0, 1));
+        float rearward = smooth(Math.clamp((weight - .68f) / .18f, 0, 1));
+        float diagonal = smooth(Math.clamp((weight - .86f) / .14f, 0, 1));
         var corner = new Vector3f(shoulder.x - 45.5f, shoulder.y - 15, 28);
-        var outside = new Vector3f(shoulder.x - 54.5f, shoulder.y - 25, 0);
-        var goal = new Vector3f(startPalm).lerp(corner, outward).lerp(outside, level).lerp(endPalm, trail);
+        var outside = new Vector3f(shoulder.x - 42, shoulder.y - 25, 0);
+        var backPalm = new Vector3f(endPalm).add(0, 6, 0);
+        var goal = new Vector3f(startPalm).lerp(corner, outward).lerp(outside, level).lerp(backPalm, rearward).lerp(endPalm, diagonal);
         var axis = direction(startAxis, new Vector3f(0, 0, 1), level);
-        axis = direction(axis, new Vector3f(-1, 0, 0), turn);
-        axis = direction(axis, endAxis, trail);
-        // The 60 cm butt must also pass outside the waist during the side sweep.
-        if (axis.x < 0 && weight > .51f) goal.x = Math.min(goal.x, -32 + 60 * axis.x);
-        var hand = transportedHand(startHand, startAxis, axis, level);
+        axis = direction(axis, new Vector3f(.15f, .974f, -.17f).normalize(), turn);
+        axis = direction(axis, endAxis, diagonal);
+        var hand = transportedHand(startHand, startAxis, axis, level, diagonal, endAxis);
         var startWrist = inverse.transformPosition(referenceWorld.get("right_hand").getTranslation(new Vector3f()));
         var startElbow = inverse.transformPosition(referenceWorld.get("right_forearm").getTranslation(new Vector3f()));
         arm(result, goal, hand, startWrist, startElbow, endPalm, endAxis, reference.get("right_hand").fsQuaternion(), weight);
@@ -126,12 +125,16 @@ public final class SpearRunCarry {
         if (weight >= 1) return new Vector3f(to);
         return new Quaternionf().slerp(new Quaternionf().rotationTo(from, to), weight).transform(new Vector3f(from)).normalize();
     }
-    private static Quaternionf transportedHand(Quaternionf start, Vector3f from, Vector3f axis, float weight) {
+    private static Quaternionf transportedHand(Quaternionf start, Vector3f from, Vector3f axis, float weight, float diagonal, Vector3f endAxis) {
         var hand = new Quaternionf().rotationTo(from, axis).mul(start).normalize();
         if (weight >= 1) {
-            var up = new Vector3f(0, 1, 0).fma(-axis.y, axis).normalize();
-            var x = new Vector3f(up).cross(axis).normalize();
-            return new Quaternionf().setFromNormalized(new Matrix3f(x, up, axis));
+            // Parallel transport stays smooth as the pole passes near vertical.
+            // Projecting world up there would spin the wrist around the shaft.
+            var parallel = new Quaternionf().rotationTo(new Vector3f(0, 0, 1), axis);
+            var finalUp = new Vector3f(0, 1, 0).fma(-endAxis.y, endAxis).normalize();
+            var transportedUp = new Quaternionf().rotationTo(new Vector3f(0, 0, 1), endAxis).transform(new Vector3f(0, 1, 0));
+            float roll = (float)Math.atan2(endAxis.dot(new Vector3f(transportedUp).cross(finalUp)), transportedUp.dot(finalUp));
+            return new Quaternionf().rotationAxis(roll * diagonal, axis).mul(parallel).normalize();
         }
         // Resolve roll once at the forward waypoint: recomputing a wrapped roll
         // against every intermediate axis flips the wrist at the +/-180 boundary.

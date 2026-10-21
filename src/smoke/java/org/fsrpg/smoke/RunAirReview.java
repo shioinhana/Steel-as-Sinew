@@ -52,6 +52,7 @@ final class RunAirReview {
         double maxWaistPixels,maxBodyPitchDegrees,maxLegPitchDegrees,minAirPitch=100000,maxAirPitch=-100000,maximumAirEpisodeRotationRadians;
         transient boolean priorAir;transient Quaternionf episodeRotation;
         double minLeftArm=100000,maxLeftArm=-100000,minLeg=100000,maxLeg=-100000,maxShaftUp=-100000,maxShaftForward=-100000,maxPalmForward=-100000,maxPalmUp=-100000,maxWorldShaftUp=-100000,minYaw=100000,maxYaw=-100000,attackGripTravel;
+        double minShaftAcross=100000,minShaftUp=100000,maxAbsShaftForward,minCarryElevationDegrees=100000,maxCarryElevationDegrees=-100000,minPalmUp=100000,minWorldShaftUp=100000,minBackCrossingY=100000,maxBackCrossingY=-100000,maxBackCrossingZ=-100000;
         transient Vector3f firstAttackPalm;
     }
     private volatile Throwable failure;
@@ -85,12 +86,12 @@ final class RunAirReview {
         Files.createDirectories(root);JsonObject env=new JsonObject();RpgSmoke.windowEnvironment(env);
         check("\\\\.\\DISPLAY5".equals(ClientState.text(env,"monitorAdapter","")),"Native window is on DISPLAY5");
         Path world=game.getSingleplayerServer().getWorldPath(LevelResource.ROOT).toAbsolutePath().normalize();
-        check(world.getFileName().toString().equals("FSRPG Run Air Review 20261021 01")&&Files.isRegularFile(world.resolve(".fsrpg-run-air-test-world")),"Only the marked copied test world is used");
+        check(world.getFileName().toString().equals("FSRPG Diagonal Spear Review 20261021 01")&&Files.isRegularFile(world.resolve(".fsrpg-diagonal-spear-test-world")),"Only the marked copied test world is used");
         playerId=game.player.getUUID();previousFps=game.options.framerateLimit().get();previousDistance=game.options.renderDistance().get();previousScale=game.options.guiScale().get();previousPause=game.options.pauseOnLostFocus;previousVsync=game.options.enableVsync().get();previousActive=game.isWindowActive();previousCamera=game.options.getCameraType();
         var cls=Class.forName("org.fsrpg.client.ClientOptions");var f=cls.getDeclaredField("THIRD_PERSON");f.setAccessible(true);shoulder=(ModConfigSpec.BooleanValue)f.get(null);previousShoulder=shoulder.get();
         f=cls.getDeclaredField("AIR_INERTIA_STRENGTH");f.setAccessible(true);inertia=(ModConfigSpec.DoubleValue)f.get(null);previousInertia=inertia.get();
         game.options.pauseOnLostFocus=false;game.options.enableVsync().set(false);game.options.framerateLimit().set(40);game.options.renderDistance().set(3);game.options.guiScale().set(2);game.setWindowActive(true);game.getTutorial().setStep(TutorialSteps.NONE);KeyMapping.releaseAll();
-        var bounds=env.getAsJsonObject("monitorBounds");long handle=game.getWindow().handle();GLFW.glfwSetWindowSize(handle,1000,680);GLFW.glfwSetWindowPos(handle,bounds.get("x").getAsInt()+35,bounds.get("y").getAsInt()+45);GLFW.glfwSetWindowTitle(handle,"FSRPG Astra 后置拖枪与空中惯性 · DISPLAY5");game.resizeDisplay();
+        var bounds=env.getAsJsonObject("monitorBounds");long handle=game.getWindow().handle();GLFW.glfwSetWindowSize(handle,1000,680);GLFW.glfwSetWindowPos(handle,bounds.get("x").getAsInt()+35,bounds.get("y").getAsInt()+45);GLFW.glfwSetWindowTitle(handle,"FSRPG Astra 斜背长枪与空中惯性 · DISPLAY5");game.resizeDisplay();
         var load=Class.forName("org.fsrpg.client.AnimationAssets").getDeclaredMethod("load",String.class);load.setAccessible(true);
         for(String name:List.of("legacy_rapier.fsvoxel","legacy_dual_blade.fsvoxel","legacy_bow.fsvoxel","spear.fsvoxel","legacy_rapier_fp.fsvoxel","legacy_dual_blade_fp.fsvoxel","legacy_bow_fp.fsvoxel"))load.invoke(null,name);
         cameraPosition=net.minecraft.client.Camera.class.getDeclaredMethod("setPosition",Vec3.class);cameraPosition.setAccessible(true);
@@ -137,28 +138,33 @@ final class RunAirReview {
     private void clientTick(ClientTickEvent.Post event){var game=Minecraft.getInstance();if(done||game.player==null||game.level==null||game.getSingleplayerServer()==null)return;try{
         if(!initialized){if(warmup++>=20)initialize(game);return;}if(failure!=null)throw new IllegalStateException("Native run/air failure",failure);
         movie.assertHealthy();require(System.nanoTime()-started<300_000_000_000L,"Review exceeded five minutes");game.setWindowActive(true);game.getFramerateLimitTracker().onInputReceived();if(game.screen instanceof net.minecraft.client.gui.screens.PauseScreen)game.setScreen(null);
-        if(ready&&!recording&&++prewarm>=55){officialBefore=OfficialHeldItems.submissions();movie.start("run-air","Astra Ultra rear low spear carry and motion-driven airborne poses: actual vanilla movement, jumps and official held items",this::observation);recording=true;}
+        if(ready&&!recording&&++prewarm>=55){officialBefore=OfficialHeldItems.submissions();movie.start("run-air","Astra Ultra diagonal across-back spear carry and motion-driven airborne poses: actual vanilla movement, jumps and official held items",this::observation);recording=true;}
         if(recording&&!scriptDone)controls(game);
         if(scriptDone&&!stopped){movie.stop();stopped=true;KeyMapping.releaseAll();}if(scriptDone&&movie.finish()){validate();finish(null);}
     }catch(Throwable t){finish(t);}}
     /** Filming-only quarter of the front run: keep the real player as camera entity and leave input/physics untouched. */
     private void profileCamera(ViewportEvent.ComputeCameraAngles event){
-        if(!recording||done||!begun||!caseId.equals("spear-run-front")||elapsed<45)return;
-        try{var game=Minecraft.getInstance();float yaw=game.player.getYRot()-90,pitch=8;
+        if(!recording||done||!begun||!(caseId.equals("spear-run-front")||caseId.equals("spear-run-rear"))||elapsed<45)return;
+        try{var game=Minecraft.getInstance();float yaw=game.player.getYRot()+(caseId.equals("spear-run-rear")?0:-90),pitch=8;
             Vec3 target=game.player.position().add(0,1.05,0);
             Vec3 direction=Vec3.directionFromRotation(pitch,yaw);
             cameraPosition.invoke(event.getCamera(),target.subtract(direction.scale(4.6)));
             event.setYaw(yaw);event.setPitch(pitch);event.setRoll(0);
         }catch(Throwable t){failure=t;}
     }
-    private JsonObject observation(){var game=Minecraft.getInstance();var o=new JsonObject();o.addProperty("caseId",caseId);o.addProperty("elapsedTicks",elapsed);o.addProperty("onGround",game.player.onGround());o.addProperty("actualVerticalDisplacement",game.player.getY()-game.player.yo);o.addProperty("phase",ClientState.text(ClientState.snapshot(),"phase",""));o.addProperty("view",caseId.equals("spear-run-front")&&elapsed>=45?"FILMING_RIGHT_PROFILE":game.options.getCameraType().name());o.addProperty("carryWeight",PlayerAnimations.spearRunCarryWeight(playerId));o.add("inertia",RpgConfig.JSON.toJsonTree(PlayerAnimations.airInertiaOffset(playerId)));
+    private JsonObject observation(){var game=Minecraft.getInstance();var o=new JsonObject();o.addProperty("caseId",caseId);o.addProperty("elapsedTicks",elapsed);o.addProperty("onGround",game.player.onGround());o.addProperty("actualVerticalDisplacement",game.player.getY()-game.player.yo);o.addProperty("phase",ClientState.text(ClientState.snapshot(),"phase",""));o.addProperty("view",elapsed>=45&&caseId.equals("spear-run-front")?"FILMING_RIGHT_PROFILE":elapsed>=45&&caseId.equals("spear-run-rear")?"FILMING_REAR":game.options.getCameraType().name());o.addProperty("carryWeight",PlayerAnimations.spearRunCarryWeight(playerId));o.add("inertia",RpgConfig.JSON.toJsonTree(PlayerAnimations.airInertiaOffset(playerId)));
         try{var actual=RenderObservations.submittedSampler(game.player).get();o.add("rig",actual.remove("rig"));o.add("submittedAvatar",actual);}catch(IllegalStateException absent){o.add("rig",new JsonObject());}return o;}
     private void submitted(RenderLivingEvent.Post<?,?,?> event){RenderObservations.captureSubmittedAvatar(event);var game=Minecraft.getInstance();if(!recording||done||index>=CASES.size()||game.player==null||!(event.getRenderState() instanceof AvatarRenderState state)||state.id!=game.player.getId())return;
         try{var frame=PlayerAnimations.frame(state);if(frame==null)return;var c=CASES.get(index);String expectedRig=c.style().equals("spear")?"fsrpg.spear":c.style().equals("rapier")?"fsrpg.legacy_rapier":c.style().equals("dual_blade")?"fsrpg.legacy_dual_blade":"fsrpg.legacy_bow";clientCaseReady=frame.model().rig().id().equals(expectedRig)&&ClientState.text(ClientState.snapshot(),"weaponStyle","").equals(c.style());if(!begun)return;var v=visuals.computeIfAbsent(c.id(),id->new Visual());v.frames++;v.minYaw=Math.min(v.minYaw,AttackAim.wrap(game.player.getYRot()));v.maxYaw=Math.max(v.maxYaw,AttackAim.wrap(game.player.getYRot()));
             String phase=ClientState.text(ClientState.snapshot(),"phase","READY");float carry=PlayerAnimations.spearRunCarryWeight(playerId);
             if(carry>.99&&game.player.onGround()){
                 var m=SpearRunCarry.measure(frame.world());v.carryFrames++;v.maxShaftUp=Math.max(v.maxShaftUp,m.chestAxis().y);v.maxShaftForward=Math.max(v.maxShaftForward,m.chestAxis().z);v.maxPalmForward=Math.max(v.maxPalmForward,m.chestRear().z);v.maxPalmUp=Math.max(v.maxPalmUp,m.chestRear().y);v.maxWorldShaftUp=Math.max(v.maxWorldShaftUp,m.axis().y);
-                require(m.clearShaft()&&m.chestRear().z< -15&&m.chestRear().y<50&&m.chestAxis().z<-.8&&m.chestAxis().y<.05&&m.axis().y<.02&&m.freeHandDistanceCm()>20,"The real pole points behind and down; the right palm stays low behind the torso and the left hand is free");
+                double elevation=Math.toDegrees(Math.atan2(m.chestAxis().y,Math.abs(m.chestAxis().x)));
+                double crossing=-m.chestRear().x/m.chestAxis().x;var across=new Vector3f(m.chestRear()).fma((float)crossing,m.chestAxis());
+                v.minShaftAcross=Math.min(v.minShaftAcross,m.chestAxis().x);v.minShaftUp=Math.min(v.minShaftUp,m.chestAxis().y);v.maxAbsShaftForward=Math.max(v.maxAbsShaftForward,Math.abs(m.chestAxis().z));
+                v.minCarryElevationDegrees=Math.min(v.minCarryElevationDegrees,elevation);v.maxCarryElevationDegrees=Math.max(v.maxCarryElevationDegrees,elevation);v.minPalmUp=Math.min(v.minPalmUp,m.chestRear().y);v.minWorldShaftUp=Math.min(v.minWorldShaftUp,m.axis().y);
+                v.minBackCrossingY=Math.min(v.minBackCrossingY,across.y);v.maxBackCrossingY=Math.max(v.maxBackCrossingY,across.y);v.maxBackCrossingZ=Math.max(v.maxBackCrossingZ,across.z);
+                require(m.clearShaft()&&m.chestRear().z< -30&&m.chestRear().y>15&&m.chestRear().y<50&&m.chestAxis().x>.55&&m.chestAxis().y>.5&&Math.abs(m.chestAxis().z)<.15&&m.axis().y>.35&&elevation>30&&elevation<60&&crossing>0&&crossing<178&&across.y>50&&across.y<100&&across.z< -30&&m.freeHandDistanceCm()>20,"The actual pole crosses diagonally behind the upper back from the right waist toward the opposite shoulder; the official right grip and free running left hand remain clear");
                 if(event.getRenderer().getModel() instanceof PlayerModel model){v.minLeftArm=Math.min(v.minLeftArm,model.leftArm.xRot);v.maxLeftArm=Math.max(v.maxLeftArm,model.leftArm.xRot);v.minLeg=Math.min(v.minLeg,model.rightLeg.xRot);v.maxLeg=Math.max(v.maxLeg,model.rightLeg.xRot);}
             }
             if(c.kind().equals("stop")&&elapsed>=85){require(carry<.001&&SpearRunCarry.leftShaftDistance(frame.world())<2,"Stopping after looking around restores real two-hand grip");v.returnFrames++;}
@@ -177,13 +183,13 @@ final class RunAirReview {
     private void validate(){
         check(rows.size()==CASES.size(),"All fifteen run, return, jump, action-priority and disabled cases completed");
         for(var c:CASES){var v=visuals.get(c.id());check(v!=null&&v.frames>30,"Actual submitted avatar observed: "+c.id());
-            if(c.kind().equals("run")){check(v.carryFrames>70,"Sustained rear low carry across multiple real steps: "+c.id());check(v.maxLeftArm-v.minLeftArm>.15&&v.maxLeg-v.minLeg>.2,"Actual free arm and legs keep running: "+c.id());}
+            if(c.kind().equals("run")){check(v.carryFrames>70,"Sustained diagonal across-back carry across multiple real steps: "+c.id());check(v.maxLeftArm-v.minLeftArm>.15&&v.maxLeg-v.minLeg>.2,"Actual free arm and legs keep running: "+c.id());}
             if(Set.of("jump","runJump","disabled","airAttack","airGuard").contains(c.kind())){check(v.upFrames>3&&v.downFrames>3&&v.landedFrames>10,"Real ascent, descent and landing observed: "+c.id());}
             if(Set.of("jump","runJump").contains(c.kind()))check(v.activeInertiaFrames>10&&v.maximumAirEpisodeRotationRadians>.005,"Actual airborne body responds to changing inertia: "+c.id());
             if(c.kind().equals("disabled"))check(v.activeInertiaFrames==0&&v.maximumAirEpisodeRotationRadians<.0001,"Zero strength keeps the exact retained airborne body");
             if(c.kind().equals("airAttack")||c.kind().equals("attack"))check(v.attackFrames>1&&v.attackGripTravel>.5,"Actual attack still advances: "+c.id());
             if(c.kind().equals("airGuard"))check(v.guardFrames>1,"Real guard overrides the cosmetic air layer");
-            if(c.kind().equals("turn"))check(v.maxYaw-v.minYaw>25&&v.carryFrames>30,"Real running turn and sustained trailing carry observed");
+            if(c.kind().equals("turn"))check(v.maxYaw-v.minYaw>25&&v.carryFrames>30,"Real running turn and sustained diagonal across-back carry observed");
             if(c.kind().equals("stop"))check(v.returnFrames>10,"The changed aim is restored after stopping");
         }
         var clip=movie.summary().getAsJsonArray("clips").get(0).getAsJsonObject();check(ClientState.number(clip,"sourceFps",0)>=30,"Native render capture reaches thirty actual frames per second");check(OfficialHeldItems.submissions()>officialBefore,"Actual official ItemStack submissions retained");
