@@ -40,6 +40,8 @@ import org.fsrpg.network.*;
 import org.fsrpg.quest.*;
 import org.fsrpg.progression.*;
 import org.fsrpg.archery.*;
+import org.fsrpg.movement.FootworkDamage;
+import org.fsrpg.movement.FootworkServer;
 import org.fsrpg.targeting.RapierTargetLock;
 import org.fsrpg.creature.CreatureCombatCatalog;
 import org.fsrpg.creature.CreatureMeleeServer;
@@ -63,6 +65,7 @@ public final class RpgServer {
     private final ProgressionStore progressionStore;
     private final MinecraftProgression training;
     private final ArcheryServer archery;
+    private final FootworkServer footwork;
     private final Path archeryFile;
     private long progressionSavedRevision=-1;
     private final Map<UUID,Long> rapierHasteUntil=new HashMap<>();
@@ -137,6 +140,7 @@ public final class RpgServer {
     public ProgressionService progression(){return progression;}
     public RpgConfig config(){return config;}
     public ArcheryServer archery(){return archery;}
+    public FootworkServer footwork(){return footwork;}
     public CreatureMeleeServer creatureMelee(){return creatureMelee;}
     public RapierTargetLock.Snapshot targetLock(ServerPlayer player){return rapierTargets.snapshot(player,actor(player));}
     private RpgServer(MinecraftServer server) throws IOException {
@@ -166,6 +170,7 @@ public final class RpgServer {
         progressionStore=new ProgressionStore(data.resolve("skill_trees.json"),RpgConfig.JSON);
         progression.restore(progressionStore.load());
         training=new MinecraftProgression(progression,()->config.current().skillTrees(),resources.keySet());
+        footwork=new FootworkServer(progression,()->config.current().skillTrees().rules().footwork(),training::forced);
         archeryFile=data.resolve("archery.json");
         archery=new ArcheryServer(definitions.archery(),new ArcheryServer.Sink(){
             @Override public void changed(ServerPlayer player){send(player,"",null);broadcastAnimation(player,true);}
@@ -214,13 +219,21 @@ public final class RpgServer {
         bus.addListener((PlayerEvent.PlayerChangedDimensionEvent event)->{if(instance!=null&&event.getEntity() instanceof ServerPlayer p){
             instance.flushMelee(p);instance.creatureMelee.cancel(p);
             instance.burstRequests.remove(p.getUUID());instance.actor(p).cancelBurstDashInput();
+            instance.footwork.remove(p.getUUID());
         }});
+        bus.addListener((LivingEvent.LivingJumpEvent event) -> {
+            if (instance != null && event.getEntity() instanceof ServerPlayer p) instance.footwork.onJump(p);
+        });
+        bus.addListener((LivingFallEvent event) -> {
+            if (instance != null && event.getEntity() instanceof ServerPlayer p && instance.footwork.fallImmune(p))
+                event.setCanceled(true);
+        });
         bus.addListener((LivingDeathEvent event) -> {
             if (instance != null) {
                 instance.enemyStuns.remove(event.getEntity().getUUID());
                 instance.enemyCounters.remove(event.getEntity().getUUID());
                 instance.creatureMelee.cancel(event.getEntity());
-                if (event.getEntity() instanceof ServerPlayer dead) instance.actor(dead).forceSheathed();
+                if (event.getEntity() instanceof ServerPlayer dead) { instance.actor(dead).forceSheathed(); instance.footwork.remove(dead.getUUID()); }
             }
             if(instance!=null)instance.archery.onDeath(event);
             if (instance != null && event.getSource().getEntity() instanceof ServerPlayer p) {
@@ -318,7 +331,7 @@ public final class RpgServer {
         pendingStyles.remove(p.getUUID());
         drawControllers.remove(p.getUUID());
         rapierTargets.remove(p.getUUID()); sentTargetLocks.remove(p.getUUID());
-        archery.remove(p.getUUID());training.remove(p.getUUID());
+        archery.remove(p.getUUID());training.remove(p.getUUID());footwork.remove(p.getUUID());
         actor(p); reconcileWeapon(p); send(p, "", null); broadcastAnimation(p, true);
     }
     private void logout(ServerPlayer p) {
@@ -337,6 +350,7 @@ public final class RpgServer {
         swingOffhands.remove(p.getUUID());damageItems.remove(p.getUUID());
         animationStates.remove(p.getUUID()); animationSequences.remove(p.getUUID());
         archery.remove(p.getUUID());training.remove(p.getUUID());rapierHasteUntil.remove(p.getUUID());
+        footwork.remove(p.getUUID());
     }
     public boolean canEdit(ServerPlayer p) { return p.permissions().hasPermission(Permissions.COMMANDS_GAMEMASTER); }
     public void action(ServerPlayer p, String action, String argument) {
@@ -462,6 +476,7 @@ public final class RpgServer {
                     dodgeDirections.put(p.getUUID(), direction.normalize());
                 }
                 case "burstDash" -> burstDashIntent(p,a,argument);
+                case "footwork" -> footwork.action(p, argument);
                 case "acceptQuest" -> { quests.accept(p.getUUID(), argument); saveQuests(); message = "已接受任务"; }
                 case "claimQuest" -> { claim(p, argument); message = "已领取奖励"; }
                 case "collectionSubmitMob", "collectionSubmitCrop", "collectionClaimSeeds" -> {
@@ -844,7 +859,7 @@ public final class RpgServer {
             if (reconcileWeapon(p)) { send(p, "", null); broadcastAnimation(p, true); }
             refreshTargetLock(p, false);
             if (!p.isAlive()) { cancelSpear(p); broadcastAnimation(p, false); continue; }
-            training.tick(p,a);archery.tick(p,a,archeryProgress(p));
+            training.tick(p,a);archery.tick(p,a,archeryProgress(p));footwork.tick(p);
             if (a.currentSkill() != null && !validSwing(p)) a.stun(1);
             if (a.phase() == CombatPhase.GUARDING && !hasWeapon(p)) a.setGuarding(false);
             prepareSpearRays(p,a);
@@ -1093,6 +1108,7 @@ public final class RpgServer {
             if(hurt&&h.dual())progression.recordDualHit(attacker.getUUID(),h.level().getGameTime(),MinecraftProgression.epochDay());
             if(hurt&&h.thrust()) {
                 rapierHasteUntil.put(attacker.getUUID(),ticks+60);
+                flashThrust(attacker,target,damage);
                 if(!clashRemainder&&h.execution()&&target.isAlive()) {
                     double missing=target.getMaxHealth()-target.getHealth();target.invulnerableTime=0;
                     target.hurtServer(h.level(),attacker.damageSources().playerAttack(attacker),(float)(missing*config.current().skillTrees().rules().rapier().executionMissingHealthShare()));
@@ -1138,6 +1154,7 @@ public final class RpgServer {
             if(hurt&&actor.style()!=null&&actor.style().controls().dual())progression.recordDualHit(attacker.getUUID(),attacker.level().getGameTime(),MinecraftProgression.epochDay());
             if(hurt&&actor.currentSkill()!=null&&actor.currentSkill().id().equals("sword_thrust")) {
                 rapierHasteUntil.put(attacker.getUUID(),ticks+60);
+                flashThrust(attacker,target,damage*multiplier);
                 if(bonus.rapierExecution()&&target.isAlive()) {
                     double missing=target.getMaxHealth()-target.getHealth();target.invulnerableTime=0;
                     target.hurtServer(attacker.level(),attacker.damageSources().playerAttack(attacker),(float)(missing*config.current().skillTrees().rules().rapier().executionMissingHealthShare()));
@@ -1149,6 +1166,22 @@ public final class RpgServer {
                 else target.knockback(result.knockback(), attacker.getX() - target.getX(), attacker.getZ() - target.getZ());
             }
         } finally { resolvingDamage = false;suppressedSpearKnockback=null; }
+    }
+    /**
+     * 闪刺: only a real rapier-thrust contact inside a Rabbit invulnerability or Flying Swan
+     * window adds the old 50% pre-armor, armor-bypassing damage, once per 100-tick combination
+     * cooldown. Vanilla i-frames are cleared first so the extra hit lands exactly here.
+     */
+    private void flashThrust(ServerPlayer attacker,LivingEntity target,double preArmorDamage) {
+        if(preArmorDamage<=0||!target.isAlive()||target.level()!=attacker.level())return;
+        if(!footwork.takeFlashThrust(attacker))return;
+        target.invulnerableTime=0;
+        try {
+            target.hurtServer(attacker.level(),FootworkDamage.flashThrust(attacker),
+                    (float)(preArmorDamage*config.current().skillTrees().rules().footwork().flashThrustDamageShare()));
+        } catch(RuntimeException invalidDamageType) {
+            LOG.warn("Flash thrust damage type is unavailable; the combination hit was skipped",invalidDamageType);
+        }
     }
     private static void applySpearSwipe(LivingEntity target,SpearSwipe.Vector swipe,double amount,double multiplier) {
         var event=net.neoforged.neoforge.common.CommonHooks.onLivingKnockBack(target,(float)(amount*multiplier),-swipe.x(),-swipe.z());
@@ -1170,6 +1203,13 @@ public final class RpgServer {
         if (!resolvingDamage && sourceEntity != null && sourceEntity == event.getSource().getDirectEntity()
                 && perfectGuardStunRemaining(sourceEntity) > 0) { event.setCanceled(true); return; }
         archery.onOutgoing(event);
+        // Rabbit's 8-tick window cancels every incoming damage source, exactly like the old event.
+        // The old handler still recorded the hostile attack that the dash negated, so training sees
+        // the real event but the health loss never happens.
+        if (event.getEntity() instanceof ServerPlayer target && footwork.invulnerable(target)) {
+            if (!resolvingDamage) training.incoming(target, event.getSource().getEntity());
+            event.setCanceled(true); return;
+        }
         if (resolvingDamage || !(event.getEntity() instanceof ServerPlayer p) || event.getSource().getDirectEntity() == null) return;
         reconcileAndSync(p);
         training.incoming(p,event.getSource().getEntity());
@@ -1623,8 +1663,11 @@ public final class RpgServer {
         snapshot.add("archery",bowJson);
         JsonObject skillTree=new JsonObject();skillTree.add("view",RpgConfig.JSON.toJsonTree(progression.view(p.getUUID())));
         skillTree.add("nodes",RpgConfig.JSON.toJsonTree(progression.nodes(p.getUUID())));skillTree.add("effects",RpgConfig.JSON.toJsonTree(progression.effects(p.getUUID())));
+        skillTree.add("footwork",RpgConfig.JSON.toJsonTree(progression.footworkView(p.getUUID())));
         skillTree.addProperty("trainingHint","睡眠开启心法；食物、在线时间增长心法；实际承受敌对伤害开启煅体；采矿、走路、承受攻击增长煅体与步法");
         snapshot.add("progression",skillTree);
+        // Transient footwork clocks are presentation data; the client never decides a distance or window.
+        snapshot.add("footworkMotion",footwork.snapshot(p));
         JsonArray journal = new JsonArray();
         for (var progress : quests.progress(p.getUUID())) {
             var definition = quests.catalog().get(progress.questId());

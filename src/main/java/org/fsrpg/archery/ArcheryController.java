@@ -42,10 +42,12 @@ public final class ArcheryController {
         charging=true; chargeStart=now; transientAction=""; animationStart=now; sequence++; return true;
     }
     public void cancelCharge() { charging=false; chargeStart=Long.MIN_VALUE; }
+    /** A bash, cancelled input or combat interruption requires a new physical press. */
+    public void interruptHeld() { automaticHeld=false; cancelCharge(); }
     public void detach() {
         equipped=false; active=false; equippedKey=""; automaticHeld=false; cancelCharge(); transientAction=""; transientDuration=0; sequence++;
     }
-    /** Left-button automatic intent is separate from an ordinary right-button release. */
+    /** 50-score left-button hold-to-fire (kept from the 0.5 migration); the held right button auto-releases too. */
     public boolean automatic(boolean held,long now,ArcheryRules r,ArcheryProgress p) {
         automaticHeld=held&&active&&stance==Stance.RAPID&&p.score()>=r.autoChargeScore();
         if(automaticHeld) beginCharge(now);
@@ -74,7 +76,7 @@ public final class ArcheryController {
         return active&&charging&&stance==Stance.RAPID&&p.score()>=r.autoChargeScore()&&power(now,r,p)>=1;
     }
     public boolean bash(long now,ArcheryRules r) {
-        cancelCharge();
+        interruptHeld();
         if(!active||now<bashReady) return false;
         bashReady=now+r.bashCooldownTicks(); transientAction="bow_bash"; transientDuration=r.bashAnimationTicks();
         animationStart=now; sequence++; return true;

@@ -23,8 +23,14 @@ public final class SkillTreeScreen extends Screen {
     private Button detailUp,detailDown;
     private record Stage(String caption,List<JsonObject> nodes) {}
     private record TextLine(FormattedCharSequence text,int color) {}
-    public SkillTreeScreen(){super(Component.literal("武器修行 · 技能树"));}
+    public SkillTreeScreen(){super(Component.literal("修行 · 技能树"));}
     private JsonObject progress(){return ClientState.object(ClientState.snapshot(),"progression");}
+    private JsonObject footworkView(){return ClientState.object(progress(),"footwork");}
+    private boolean footworkNode(JsonObject node){return ClientState.text(node,"tree","").equals("footwork");}
+    private boolean footworkStyleNode(JsonObject node){
+        return footworkNode(node)&&java.util.Set.of("RABBIT","FLYING_SWAN").contains(ClientState.text(node,"effect",""));
+    }
+    private boolean footworkTechniqueNode(JsonObject node){return footworkNode(node)&&!footworkStyleNode(node);}
     private JsonObject chosen(){return byId.getOrDefault(selected,new JsonObject());}
     @Override protected void init() {
         panelWidth=Math.min(680,width-16);panelHeight=Math.min(420,height-16);
@@ -34,7 +40,7 @@ public final class SkillTreeScreen extends Screen {
         detailX=chartX+chartWidth+12;detailWidth=left+panelWidth-12-detailX;
         bodyY=chartY+29;bodyHeight=Math.max(12,top+panelHeight-38-bodyY);
         positions.clear();byId.clear();
-        String[] ids={"rapier","dual_blade","bow"},labels={"西洋剑","双刀","弓"};int tabWidth=(panelWidth-24)/3;
+        String[] ids={"rapier","dual_blade","bow","footwork"},labels={"西洋剑","双刀","弓","步法"};int tabWidth=(panelWidth-24)/4;
         for(int i=0;i<ids.length;i++) {
             String id=ids[i];addRenderableWidget(Button.builder(Component.literal((tree.equals(id)?"● ":"")+labels[i]),b->{
                 tree=id;selected="";chartPage=detailScroll=0;feedback="";learning=false;rebuild();
@@ -92,7 +98,8 @@ public final class SkillTreeScreen extends Screen {
         List<Stage> result=new ArrayList<>();
         for(var group:groups.values())for(int start=0;start<group.size();start+=2) {
             var node=group.get(start);var req=ClientState.object(node,"requirements");int score=(int)ClientState.number(req,"score",0);
-            String caption=depths.get(ClientState.text(node,"id",""))==0?"入门":score>0?"熟练度 "+score:
+            String caption=footworkNode(node)?(pointStage(node)>0?"步法总值 "+pointStage(node):"入门")
+                    :depths.get(ClientState.text(node,"id",""))==0?"入门":score>0?"熟练度 "+score:
                     ClientState.bool(req,"trial",false)?"完成试炼":ClientState.bool(req,"dragon",false)?"击败末影龙":"修行总值 "+pointStage(node);
             if(!ClientState.text(node,"exclusiveGroup","").isBlank())caption+=" · 二选一";
             result.add(new Stage(caption,List.copyOf(group.subList(start,Math.min(start+2,group.size())))));
@@ -132,6 +139,12 @@ public final class SkillTreeScreen extends Screen {
         if(ClientState.bool(req,"trial",false))requirements.add("完整通过试炼刷怪笼");
         if(ClientState.bool(req,"dragon",false))requirements.add("击杀末影龙");
         if(!requirements.isEmpty())prose(rows,"要求："+String.join("；",requirements),MUTED);
+        if(footworkNode(node)) {
+            var fw=footworkView();
+            int available=(int)ClientState.number(fw,"selectionsAvailable",0),earned=(int)ClientState.number(fw,"selectionsEarned",0);
+            if(footworkTechniqueNode(node))prose(rows,"选学额度：剩余 "+available+" / 已获得 "+earned+"（每 150 步法总值获得 1 次，可存，服务端判定）。",GREEN);
+            else prose(rows,"流派选择与另一流派永久互斥，不占选学额度。",GREEN);
+        }
         String exclusive=ClientState.text(node,"exclusiveGroup","");
         if(!exclusive.isBlank()) {
             List<String> peers=nodes.stream().filter(n->!ClientState.text(n,"id","").equals(selected)&&ClientState.text(n,"exclusiveGroup","").equals(exclusive))
@@ -160,8 +173,18 @@ public final class SkillTreeScreen extends Screen {
     }
     @Override public void render(GuiGraphics gui,int mouseX,int mouseY,float partialTick) {
         gui.fill(left,top,left+panelWidth,top+panelHeight,0xf016202c);gui.fill(left,top,left+panelWidth,top+3,0xffb8d19c);
-        var view=ClientState.object(progress(),"view");int mastery=(int)ClientState.number(view,tree.equals("rapier")?"rapierKills":tree.equals("dual_blade")?"dualHits":"archeryScore",0);
-        gui.drawString(font,font.plainSubstrByWidth(title.getString()+" · 熟练度 "+mastery,panelWidth-24),left+12,top+12,0xffe9f4dc);
+        var view=ClientState.object(progress(),"view");
+        String header;
+        if(tree.equals("footwork")) {
+            var fw=footworkView();
+            int earned=(int)ClientState.number(fw,"selectionsEarned",0),used=(int)ClientState.number(fw,"selectionsUsed",0),available=(int)ClientState.number(fw,"selectionsAvailable",0);
+            header=title.getString()+" · 步法总值 "+(int)ClientState.number(ClientState.object(view,"footwork"),"total",0)
+                    +" · 选学 剩余 "+available+"（已用 "+used+"/获得 "+earned+"）";
+        } else {
+            int mastery=(int)ClientState.number(view,tree.equals("rapier")?"rapierKills":tree.equals("dual_blade")?"dualHits":"archeryScore",0);
+            header=title.getString()+" · 熟练度 "+mastery;
+        }
+        gui.drawString(font,font.plainSubstrByWidth(header,panelWidth-24),left+12,top+12,0xffe9f4dc);
         String stats="可用/总值 · 心法 "+points(view,"mind")+"  煅体 "+points(view,"body")+"  步法 "+points(view,"footwork");
         gui.drawString(font,font.plainSubstrByWidth(stats,panelWidth-24),left+12,top+57,TEXT);
         gui.fill(chartX-2,chartY-3,chartX+chartWidth+2,top+panelHeight-35,0xb9101720);
@@ -187,7 +210,12 @@ public final class SkillTreeScreen extends Screen {
         gui.drawCenteredString(font,(stages.isEmpty()?"0":(chartPage+1)+"–"+Math.min(stages.size(),chartPage+visibleRows))+" / "+stages.size(),chartX+chartWidth/2,top+panelHeight-21,MUTED);
         JsonObject node=chosen();gui.drawString(font,font.plainSubstrByWidth(ClientState.text(node,"label","技能详情"),detailWidth-36),detailX,chartY+2,GOLD);
         var cost=ClientState.object(node,"cost");String state=ClientState.bool(node,"learned",false)?"已学会":ClientState.bool(node,"available",false)?"可学习":ClientState.bool(node,"automatic",false)?"条件达成自动解锁":"尚未解锁";
-        String meta=state+(ClientState.bool(node,"automatic",false)?" · 自动节点":" · 消耗 心"+(int)ClientState.number(cost,"mind",0)+"/体"+(int)ClientState.number(cost,"body",0)+"/步"+(int)ClientState.number(cost,"footwork",0));
+        String costText;
+        if(ClientState.bool(node,"automatic",false))costText=" · 自动节点";
+        else if(footworkStyleNode(node))costText=" · 流派二选一，不占选学额度";
+        else if(footworkTechniqueNode(node))costText=" · 消耗 选学 ×1（不扣心/体/步点数）";
+        else costText=" · 消耗 心"+(int)ClientState.number(cost,"mind",0)+"/体"+(int)ClientState.number(cost,"body",0)+"/步"+(int)ClientState.number(cost,"footwork",0);
+        String meta=state+costText;
         gui.drawString(font,font.plainSubstrByWidth(meta,detailWidth),detailX,chartY+18,ClientState.bool(node,"learned",false)?GREEN:MUTED);
         var lines=detailRows();detailPixels=lines.size()*11;detailScroll=Math.clamp(detailScroll,0,Math.max(0,detailPixels-bodyHeight));
         detailUp.active=detailScroll>0;detailDown.active=detailScroll<Math.max(0,detailPixels-bodyHeight);

@@ -241,6 +241,22 @@ public final class StaminaCostTest {
             }
         }
     }
+    /** 0.9.0 deliberately enables the released rapier conditional pair on an empty/legacy object. */
+    private static void compareTechniques(JsonElement before, JsonElement after, String path) {
+        JsonObject old = before.getAsJsonObject(), next = after.getAsJsonObject();
+        boolean disabled = (!old.has("riposteSkill") || old.get("riposteSkill").getAsString().isEmpty())
+                && (!old.has("repriseSkill") || old.get("repriseSkill").getAsString().isEmpty())
+                && (!old.has("riposteWindowTicks") || old.get("riposteWindowTicks").getAsInt() == 0)
+                && (!old.has("repriseWindowTicks") || old.get("repriseWindowTicks").getAsInt() == 0);
+        if (!disabled) {
+            equal(before, after, path + " custom techniques preserved");
+            return;
+        }
+        equal(RapierTechniquesMigration.RIPOSTE_SKILL, next.get("riposteSkill").getAsString(), path + " enables the released riposte");
+        equal(RapierTechniquesMigration.RIPOSTE_WINDOW_TICKS, next.get("riposteWindowTicks").getAsInt(), path + " released riposte window");
+        equal(RapierTechniquesMigration.REPRISE_SKILL, next.get("repriseSkill").getAsString(), path + " enables the released reprise");
+        equal(RapierTechniquesMigration.REPRISE_WINDOW_TICKS, next.get("repriseWindowTicks").getAsInt(), path + " released reprise window");
+    }
     private static boolean containsId(JsonArray entries, String id) { for (var value : entries) if (id.equals(value.getAsJsonObject().get("id").getAsString())) return true; return false; }
     private static CombatActor ready(CombatRules rules) { CombatActor actor = new CombatActor(UUID.randomUUID(), rules); actor.toggleDrawn(); for (int i = 0; i < rules.drawTicks(); i++) actor.tick(); return actor; }
     private static void compareCosts(JsonElement before, JsonElement after, String path) {
@@ -272,6 +288,7 @@ public final class StaminaCostTest {
             for (var field : before.getAsJsonObject().entrySet()) {
                 if (field.getKey().equals("staminaCost") || field.getKey().endsWith("StaminaCost")) near(field.getValue().getAsDouble() / 5, after.getAsJsonObject().get(field.getKey()).getAsDouble(), path + "." + field.getKey());
                 else if (field.getKey().equals("staminaRegenPerSecond")) near(path.equals("combat.json") ? 5 : field.getValue().getAsDouble() * 3, after.getAsJsonObject().get(field.getKey()).getAsDouble(), path + " current template base or isolated historical x3 upgrade");
+                else if (field.getKey().equals("techniques")) compareTechniques(field.getValue(), after.getAsJsonObject().get(field.getKey()), path + ".techniques");
                 else compareCosts(field.getValue(), after.getAsJsonObject().get(field.getKey()), path + "." + field.getKey());
             }
         } else if (before.isJsonArray()) {

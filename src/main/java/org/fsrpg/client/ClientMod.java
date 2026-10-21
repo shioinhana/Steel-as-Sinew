@@ -15,5 +15,6 @@ public final class ClientMod {
         catch(Exception error){org.slf4j.LoggerFactory.getLogger("FSRPG client").warn("Unable to load weapon inspection catalogue; keeping the validated catalogue",error);}
         ClientHooks.register(modBus);
         InspectionInput.register(modBus);
+        FootworkClient.install();
     }
 }

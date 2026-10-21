@@ -6,11 +6,15 @@ import net.minecraft.client.CameraType;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.particle.Particle;
 import net.minecraft.core.particles.ParticleTypes;
+import net.minecraft.core.BlockPos;
+import net.minecraft.tags.FluidTags;
 import net.minecraft.world.level.ClipContext;
 import net.minecraft.world.phys.HitResult;
 import net.minecraft.world.phys.Vec3;
 import net.neoforged.neoforge.client.event.ClientTickEvent;
 import net.neoforged.neoforge.client.event.ViewportEvent;
+import org.fsrpg.archery.ArcheryBallistics;
+import org.fsrpg.archery.ArcheryBlockPiercing;
 
 /** Old 100-point arrow prediction and 300-point optical scope; all unlocks and speeds are server data. */
 public final class ArcheryPresentation {
@@ -70,13 +74,20 @@ public final class ArcheryPresentation {
         Vec3 look=game.player.getLookAngle();
         Vec3 position=game.player.getEyePosition().add(0,-.1,0).add(look.scale(.4));
         Vec3 velocity=look.scale(speed),landing=null;
+        int blocks=(int)Math.clamp(ClientState.number(bow,"blockPierce",0),0,32);
+        double blockSlow=Math.clamp(ClientState.number(bow,"blockSlow",0),0,1);
         for(int step=0;step<140;step++) {
+            boolean inWater=game.level.getFluidState(BlockPos.containing(position)).is(FluidTags.WATER);
             Vec3 nextPosition=position.add(velocity);
-            var hit=game.level.clip(new ClipContext(position,nextPosition,ClipContext.Block.COLLIDER,ClipContext.Fluid.NONE,game.player));
-            if(hit.getType()!=HitResult.Type.MISS){landing=hit.getLocation();break;}
-            position=nextPosition;
-            // Vanilla arrow order, exactly as the original SnipeTrajectory: move, drag, gravity.
-            velocity=new Vec3(velocity.x*.99,velocity.y*.99-.05,velocity.z*.99);
+            var hit=game.level.clipIncludingBorder(new ClipContext(position,nextPosition,ClipContext.Block.COLLIDER,ClipContext.Fluid.NONE,game.player));
+            if(hit.getType()!=HitResult.Type.MISS) {
+                if(blocks<=0||hit.isWorldBorderHit()){landing=hit.getLocation();break;}
+                var crossing=ArcheryBlockPiercing.trace(game.level,game.player,hit,velocity,blocks,blockSlow);
+                if(crossing.stoppedAt()!=null){landing=crossing.stoppedAt().getLocation();break;}
+                if(crossing.blocks()==0){landing=hit.getLocation();break;}
+                position=crossing.position();blocks-=crossing.blocks();velocity=velocity.scale(crossing.speedFactor());
+            } else position=nextPosition;
+            velocity=ArcheryBlockPiercing.vec3(ArcheryBallistics.nextVelocity(ArcheryBlockPiercing.vector(velocity),inWater));
             if(!game.options.getCameraType().isFirstPerson()&&step%3==0)particle(ParticleTypes.END_ROD,position);
             if(position.y<game.level.getMinY())break;
         }

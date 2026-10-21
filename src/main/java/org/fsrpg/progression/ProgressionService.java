@@ -18,12 +18,14 @@ public final class ProgressionService {
                        int archeryScore, int dualStacks, int dualCap, boolean trialPassed,
                        boolean dragonKilled, int physiquePercent, int insightPercent, boolean migrated,
                        Set<String> learnedNodes, String branch150, String branch250) {}
-    public record NodeView(String id, String tree, String label, String description, boolean automatic,
+    public record NodeView(String id, String tree, String effect, String label, String description, boolean automatic,
                            boolean learned, boolean available, List<String> blockers, Cost cost,
                            Requirements requirements, List<String> prerequisites,
                            String exclusiveGroup, List<String> skills) {}
     public record LearnResult(boolean success, String reason) {}
     public record BowProgress(boolean unlocked, int score, String branch150, String branch250) {}
+    public record FootworkView(boolean enabled, FootworkStyle style, int cloudTier, int lightTier,
+                               int selectionsEarned, int selectionsUsed, int selectionsAvailable) {}
     public record Effects(boolean rapier, boolean dual, boolean bow, boolean rapierThrust,
                           boolean rapierParry, boolean rapierExecution, int dualComboCap, int dualStacks,
                           double healthBonus, double damageBonus, double attackIntervalReductionSeconds,
@@ -70,7 +72,7 @@ public final class ProgressionService {
         Player p = read(player); List<NodeView> result = new ArrayList<>();
         for (Node node : catalog.nodes()) {
             boolean unlocked = unlocked(p, node); List<String> blockers = blockers(p, node, true);
-            result.add(new NodeView(node.id(), node.tree(), node.label(), node.description(), node.automatic(),
+            result.add(new NodeView(node.id(), node.tree(), node.effect().name(), node.label(), node.description(), node.automatic(),
                     unlocked, !node.automatic() && !unlocked && blockers.isEmpty(), List.copyOf(blockers),
                     node.cost(), node.requirements(), node.prerequisites(), node.exclusiveGroup(), node.skills()));
         }
@@ -108,6 +110,15 @@ public final class ProgressionService {
     public synchronized BowProgress archeryView(UUID player) {
         Player p = read(player); return new BowProgress(effect(p, Effect.ROOT_BOW), p.archeryScore,
                 branch(p, "archery_150"), branch(p, "archery_250"));
+    }
+    public synchronized FootworkView footworkView(UUID player) {
+        Player p = read(player); boolean enabled = p.mindUnlocked && p.footworkUnlocked;
+        int earned = p.footwork.total() / catalog.rules().footwork().selectionPoints(), used = footworkSelectionsUsed(p);
+        FootworkStyle style = effect(p, Effect.RABBIT) ? FootworkStyle.RABBIT
+                : effect(p, Effect.FLYING_SWAN) ? FootworkStyle.FLYING_SWAN : FootworkStyle.NONE;
+        int cloud = effect(p, Effect.CLOUD_STEP_III) ? 3 : effect(p, Effect.CLOUD_STEP_II) ? 2 : effect(p, Effect.CLOUD_STEP) ? 1 : 0;
+        int light = effect(p, Effect.LIGHT_BODY_III) ? 3 : effect(p, Effect.LIGHT_BODY_II) ? 2 : effect(p, Effect.LIGHT_BODY) ? 1 : 0;
+        return new FootworkView(enabled, style, cloud, light, earned, used, Math.max(0, earned - used));
     }
     public synchronized Effects effects(UUID player) {
         Player p = read(player); TrainingRules t = catalog.rules().training(); DualRules d = catalog.rules().dual();
@@ -290,15 +301,19 @@ public final class ProgressionService {
     private List<String> blockers(Player p, Node node, boolean learning) {
         List<String> blockers = new ArrayList<>();
         if (learning && !node.automatic() && !p.mindUnlocked) blockers.add("先完成一次有效睡眠，开启心法");
+        if (SkillTreeCatalog.isFootwork(node.effect()) && (!p.mindUnlocked || !p.footworkUnlocked)) blockers.add("先开启心法与步法修行");
         for (String dependency : node.prerequisites()) if (!unlocked(p, catalog.node(dependency))) blockers.add("需要前置：" + catalog.node(dependency).label());
         Requirements req = node.requirements();
         if (p.mind.total() < req.mind()) blockers.add("心法总值 " + p.mind.total() + "/" + req.mind());
         if (p.body.total() < req.body()) blockers.add("煅体总值 " + p.body.total() + "/" + req.body());
         if (p.footwork.total() < req.footwork()) blockers.add("步法总值 " + p.footwork.total() + "/" + req.footwork());
-        if (score(p, node.tree()) < req.score()) blockers.add("武器成长 " + score(p, node.tree()) + "/" + req.score());
+        if (!node.tree().equals("footwork") && score(p, node.tree()) < req.score()) blockers.add("武器成长 " + score(p, node.tree()) + "/" + req.score());
         if (req.trial() && !p.trialPassed) blockers.add("完整通过试炼刷怪笼");
         if (req.dragon() && !p.dragonKilled) blockers.add("击杀末影龙");
         if (learning) {
+            if (SkillTreeCatalog.isFootworkTechnique(node.effect())
+                    && p.footwork.total() / catalog.rules().footwork().selectionPoints() <= footworkSelectionsUsed(p))
+                blockers.add("步法选学额度不足（每" + catalog.rules().footwork().selectionPoints() + "步法总值获得一次）");
             Cost cost = node.cost();
             if (p.mind.available() < cost.mind()) blockers.add("心法可用点数 " + p.mind.available() + "/" + cost.mind());
             if (p.body.available() < cost.body()) blockers.add("煅体可用点数 " + p.body.available() + "/" + cost.body());
@@ -313,8 +328,12 @@ public final class ProgressionService {
     private String branch(Player p, String group) { for (Node node : catalog.nodes()) if (node.exclusiveGroup().equals(group) && unlocked(p, node)) return node.effect().name(); return "NONE"; }
     private boolean revokeInvalidBranches(Player p) {
         boolean removed = false;
-        for (Node node : catalog.nodes()) if (!node.automatic() && !node.exclusiveGroup().isEmpty() && p.learned.contains(node.id()) && !unlocked(p, node)) removed |= p.learned.remove(node.id());
+        for (Node node : catalog.nodes()) if (!node.automatic() && (!node.exclusiveGroup().isEmpty() || SkillTreeCatalog.isFootworkTechnique(node.effect()))
+                && p.learned.contains(node.id()) && !unlocked(p, node)) removed |= p.learned.remove(node.id());
         return removed;
+    }
+    private int footworkSelectionsUsed(Player p) {
+        return (int) catalog.nodes().stream().filter(n -> SkillTreeCatalog.isFootworkTechnique(n.effect()) && p.learned.contains(n.id())).count();
     }
     private void unlockFootwork(Player p) { if (p.mindUnlocked && p.bodyUnlocked && p.body.total() >= catalog.rules().training().footworkUnlockBodyTotal()) p.footworkUnlocked = true; }
     private void gain(Player p, String key, long base) {

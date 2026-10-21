@@ -306,6 +306,121 @@
             }
           }
         },
+        "footwork": {
+          "type": "object",
+          "description": "Optional for pre-0.8.6 files. Defaults preserve the implemented 0.1.1 movement rules; metres, m/s, and 20 server ticks/s.",
+          "additionalProperties": false,
+          "required": [
+            "selectionPoints",
+            "rabbitDistance",
+            "rabbitInvulnerabilityTicks",
+            "rabbitCooldownTicks",
+            "flyingSwanCurveLinear",
+            "flyingSwanCooldownTicks",
+            "flyingSwanWindowTicks",
+            "jumpIntervalTicks",
+            "chargedJumpHeightMultiplier",
+            "wallRange",
+            "targetRange",
+            "targetDamageShare",
+            "specialCooldownTicks",
+            "airDragFactor",
+            "jumpImpulseMps",
+            "lightThirdRemovesCooldown",
+            "combinationCooldownTicks",
+            "flashThrustDamageShare"
+          ],
+          "properties": {
+            "selectionPoints": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 1000000000
+            },
+            "rabbitDistance": {
+              "type": "number",
+              "minimum": 0.01,
+              "maximum": 64
+            },
+            "rabbitInvulnerabilityTicks": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 72000
+            },
+            "rabbitCooldownTicks": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 72000
+            },
+            "flyingSwanCurveLinear": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 100
+            },
+            "flyingSwanCooldownTicks": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 72000
+            },
+            "flyingSwanWindowTicks": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 72000
+            },
+            "jumpIntervalTicks": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 72000
+            },
+            "chargedJumpHeightMultiplier": {
+              "type": "number",
+              "minimum": 1,
+              "maximum": 100
+            },
+            "wallRange": {
+              "type": "number",
+              "minimum": 0.01,
+              "maximum": 64
+            },
+            "targetRange": {
+              "type": "number",
+              "minimum": 0.01,
+              "maximum": 64
+            },
+            "targetDamageShare": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1
+            },
+            "specialCooldownTicks": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 72000
+            },
+            "airDragFactor": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1
+            },
+            "jumpImpulseMps": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 100
+            },
+            "lightThirdRemovesCooldown": {
+              "type": "boolean"
+            },
+            "combinationCooldownTicks": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 72000
+            },
+            "flashThrustDamageShare": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1
+            }
+          }
+        },
         "longTerm": {
           "type": "object",
           "additionalProperties": false,
@@ -398,7 +513,8 @@
             "enum": [
               "rapier",
               "dual_blade",
-              "bow"
+              "bow",
+              "footwork"
             ]
           },
           "label": {
@@ -499,6 +615,14 @@
               "BOW_SCOPE",
               "BOW_TRAJECTORY",
               "CHUAN_TANG_FENG",
+              "RABBIT",
+              "FLYING_SWAN",
+              "CLOUD_STEP",
+              "CLOUD_STEP_II",
+              "CLOUD_STEP_III",
+              "LIGHT_BODY",
+              "LIGHT_BODY_II",
+              "LIGHT_BODY_III",
               "DUAL_COMBO_CAP",
               "NIE_SHI",
               "RAPIER_EXECUTION",
@@ -538,7 +662,15 @@
                     "RU_SUO",
                     "NIE_SHI",
                     "YAN_XIA_DIAN",
-                    "CHUAN_TANG_FENG"
+                    "CHUAN_TANG_FENG",
+                    "RABBIT",
+                    "FLYING_SWAN",
+                    "CLOUD_STEP",
+                    "CLOUD_STEP_II",
+                    "CLOUD_STEP_III",
+                    "LIGHT_BODY",
+                    "LIGHT_BODY_II",
+                    "LIGHT_BODY_III"
                   ]
                 }
               }
@@ -608,9 +740,28 @@
                 }
               },
               "else": {
-                "properties": {
-                  "exclusiveGroup": {
-                    "const": ""
+                "if": {
+                  "properties": {
+                    "effect": {
+                      "enum": [
+                        "RABBIT",
+                        "FLYING_SWAN"
+                      ]
+                    }
+                  }
+                },
+                "then": {
+                  "properties": {
+                    "exclusiveGroup": {
+                      "const": "footwork_style"
+                    }
+                  }
+                },
+                "else": {
+                  "properties": {
+                    "exclusiveGroup": {
+                      "const": ""
+                    }
                   }
                 }
               }

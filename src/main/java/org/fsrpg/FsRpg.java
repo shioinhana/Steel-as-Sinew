@@ -15,7 +15,7 @@ public final class FsRpg {
         RpgServer.register(NeoForge.EVENT_BUS);
     }
     private static void network(RegisterPayloadHandlersEvent event) {
-        var registrar = event.registrar("11");
+        var registrar = event.registrar("12");
         registrar.playToClient(RpgGuardImpactPayload.TYPE,RpgGuardImpactPayload.CODEC);
         registrar.playToClient(RpgBurstDashPayload.TYPE,RpgBurstDashPayload.CODEC);
         registrar.playToClient(RpgSnapshotPayload.TYPE, RpgSnapshotPayload.CODEC);
@@ -23,6 +23,7 @@ public final class FsRpg {
         registrar.playToClient(RpgTargetLockPayload.TYPE, RpgTargetLockPayload.CODEC);
         registrar.playToClient(RpgCreatureAttackPayload.TYPE, RpgCreatureAttackPayload.CODEC);
         registrar.playToClient(RpgGuardCuePayload.TYPE,RpgGuardCuePayload.CODEC);
+        registrar.playToClient(RpgFootworkMotionPayload.TYPE,RpgFootworkMotionPayload.CODEC);
         registrar.playToServer(RpgActionPayload.TYPE, RpgActionPayload.CODEC, (payload, context) -> {
             if (context.player() instanceof ServerPlayer player && RpgServer.instance() != null)
                 RpgServer.instance().action(player, payload.action(), payload.argument());

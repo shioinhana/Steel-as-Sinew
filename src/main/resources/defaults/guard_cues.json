@@ -6,5 +6,6 @@
   "guardCancelsActive": true,
   "timingMode": "windup_fraction",
   "flashAtFraction": 0.2,
-  "windowOpenFraction": 0.6
+  "windowOpenFraction": 0.6,
+  "windowCloseFraction": 0.8
 }

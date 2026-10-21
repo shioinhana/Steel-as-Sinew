@@ -90,6 +90,8 @@ public final class CombatActor {
     private int guardContacts;
     private boolean heavyGuard;
     private boolean guardHeld;
+    /** This physical hold yielded to an accepted swing; renewals cannot reclaim its action. */
+    private long guardYieldedToSwing;
     private int heldPerfectGuards;
     private boolean guardAutoRearmed;
     private long finishedClashSequence = -1;
@@ -169,7 +171,7 @@ public final class CombatActor {
         if (!sameStyle && phase != CombatPhase.SHEATHED && phase != CombatPhase.READY) return ActionResult.BUSY;
         if (style != null && !style.techniques().equals(replacement.techniques())) clearTechniques();
         style = replacement;
-        if (!sameStyle) { resetCombo(); clearTechniques(); clearCounter(); heavyGuard = guardHeld = false; resetGuardChain(); resetDualHandsAndStreaks(); }
+        if (!sameStyle) { resetCombo(); clearTechniques(); clearCounter(); heavyGuard = guardHeld = false; guardYieldedToSwing = 0; resetGuardChain(); resetDualHandsAndStreaks(); }
         return ActionResult.ACCEPTED;
     }
 
@@ -391,6 +393,7 @@ public final class CombatActor {
         pendingHitStun = 0;
         heavyGuard = false;
         guardHeld = false;
+        guardYieldedToSwing = 0;
         resetGuardChain();
         dodgeElapsed = 0;
         phaseRemaining = 0;
@@ -485,6 +488,7 @@ public final class CombatActor {
         }
         skillElapsed = 0;
         swingSequence++;
+        guardYieldedToSwing=guardHeld?swingSequence:0;
         swingVictims.clear();
         // Cooldown is measured from acceptance; action phases impose their own separate lock.
         skillReadyAt.put(requested.id(), tick + requested.cooldownTicks());
@@ -640,6 +644,7 @@ public final class CombatActor {
     public ActionResult setGuarding(boolean guarding, boolean heavy) {
         if (!guarding) {
             guardHeld = false;
+            guardYieldedToSwing=0;
             resetGuardChain();
             if (phase == CombatPhase.GUARDING) phase = drawn ? CombatPhase.READY : CombatPhase.SHEATHED;
             heavyGuard = false;
@@ -648,9 +653,9 @@ public final class CombatActor {
         if (!drawn) return ActionResult.NOT_DRAWN;
         if (heavy && (style == null || style.heavyGuard() == null)) return ActionResult.UNSUPPORTED_INPUT;
         if (phase == CombatPhase.GUARDING) { guardHeld = true; heavyGuard = heavy; return ActionResult.ACCEPTED; }
-        // A stale automatic renewal can arrive after a counter attack was accepted. Track the
-        // actual release edge on the server, so network latency cannot cancel the enhanced swing.
-        if (guardHeld && skill != null && attackDamageMultiplier > 1) return ActionResult.ACCEPTED;
+        // An accepted attack wins over renewals from the same held C, including right attacks
+        // and attacks after the bonus expires. A real release restores intentional guard input.
+        if (guardHeld && skill != null && guardYieldedToSwing==swingSequence) return ActionResult.ACCEPTED;
         boolean cancel = phase == CombatPhase.WINDUP && cancels().windupGuard()
                 || phase == CombatPhase.RECOVERY && cancels().recoveryGuard();
         if (phase != CombatPhase.READY && !cancel || pendingHitStun > 0) return ActionResult.BUSY;
@@ -897,5 +902,5 @@ public final class CombatActor {
     }
     private void finishDraw() { drawn = true; phase = CombatPhase.READY; phaseRemaining = 0; }
     private void resetDualHandsAndStreaks() { leftRest=rightRest=-1; leftSwingStreak=rightSwingStreak=0; }
-    private void finishSheath() { drawn = false; phase = CombatPhase.SHEATHED; phaseRemaining = 0; clearTechniques(); clearCounter(); heavyGuard = guardHeld = false; resetGuardChain(); resetDualHandsAndStreaks(); }
+    private void finishSheath() { drawn = false; phase = CombatPhase.SHEATHED; phaseRemaining = 0; clearTechniques(); clearCounter(); heavyGuard = guardHeld = false; guardYieldedToSwing = 0; resetGuardChain(); resetDualHandsAndStreaks(); }
 }

@@ -20,5 +20,8 @@
   "item.fsrpg.cobalt_adventurer_badge": "Cobalt Adventurer Badge",
   "item.fsrpg.copper_adventurer_badge": "Copper Adventurer Badge",
   "item.fsrpg.silver_adventurer_badge": "Silver Adventurer Badge",
-  "key.fsrpg.art_gallery": "Creature and HUD Gallery"
+  "key.fsrpg.art_gallery": "Creature and HUD Gallery",
+  "key.fsrpg.footwork": "Footwork school (Rabbit / Flying Swan)",
+  "key.fsrpg.footwork_special": "Cloud step special: stomp / wall kick, or charged jump with Space",
+  "death.attack.fsrpg.flash_thrust": "%1$s was pierced by a flash thrust"
 }

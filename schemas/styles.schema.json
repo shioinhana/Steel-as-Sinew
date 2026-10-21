@@ -84,7 +84,8 @@
           "description": "可选的重格挡规则；Shift+C。缺省时只支持旧版轻格挡。切换模式不刷新拨挡窗口或连续受击历史。perfectGuardTicks=0的既有重格挡保持不授予完美格挡；启用时采用配置窗口。"
         },
         "techniques": {
-          "$ref": "#/$defs/techniques"
+          "$ref": "#/$defs/techniques",
+          "description": "默认西洋剑启用拨挡还击 rapier_riposte（20tick）与闪步回刺 rapier_reprise（12tick），与完美格挡后的左键×1.5反击并存；技能ID为空串且窗口为0时关闭。0.9.0一次性迁移只为空配置填入默认，自定义非空配置原样保留。"
         },
         "cancels": {
           "$ref": "#/$defs/cancels"

@@ -26,6 +26,7 @@ import org.fsrpg.network.RpgTargetLockPayload;
 import org.fsrpg.network.RpgCreatureAttackPayload;
 import org.fsrpg.network.RpgGuardCuePayload;
 import org.fsrpg.network.RpgBurstDashPayload;
+import org.fsrpg.network.RpgFootworkMotionPayload;
 import org.lwjgl.glfw.GLFW;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -44,6 +45,8 @@ public final class ClientHooks {
     private static final KeyMapping SKILL = key("skill", GLFW.GLFW_KEY_Z);
     private static final KeyMapping ART = key("art_gallery", GLFW.GLFW_KEY_F8);
     private static final KeyMapping TREE = key("skill_tree", GLFW.GLFW_KEY_P);
+    private static final KeyMapping FOOTWORK = key("footwork", GLFW.GLFW_KEY_B);
+    private static final KeyMapping FOOTWORK_SPECIAL = key("footwork_special", GLFW.GLFW_KEY_G);
     private static boolean bowCharging, rapierCharging, bowAuto, dualTogether;
     private static final GuardKeyIntent guardKeyIntent=new GuardKeyIntent();
     private static final ShiftBurstIntent shiftBurstIntent=new ShiftBurstIntent();
@@ -106,6 +109,7 @@ public final class ClientHooks {
         NeoForge.EVENT_BUS.addListener(CombatCamera::angles);
         NeoForge.EVENT_BUS.addListener(CombatCamera::movement);
         NeoForge.EVENT_BUS.addListener(ClientHooks::burstSprintInput);
+        NeoForge.EVENT_BUS.addListener(ClientHooks::footworkInput);
         NeoForge.EVENT_BUS.addListener(ClientHooks::interaction);
         NeoForge.EVENT_BUS.addListener(ClientHooks::hud);
         NeoForge.EVENT_BUS.addListener(RpgHud::beforeLayer);
@@ -114,7 +118,7 @@ public final class ClientHooks {
     }
     private static void keys(RegisterKeyMappingsEvent event) {
         event.registerCategory(CATEGORY);
-        for (KeyMapping key : new KeyMapping[]{DRAW, LEFT, RIGHT, GUARD, DODGE, EDITOR, JOURNAL, SKILL, STYLE, TREE, ART}) event.register(key);
+        for (KeyMapping key : new KeyMapping[]{DRAW, LEFT, RIGHT, GUARD, DODGE, EDITOR, JOURNAL, SKILL, STYLE, TREE, ART, FOOTWORK, FOOTWORK_SPECIAL}) event.register(key);
     }
     private static void payloads(RegisterClientPayloadHandlersEvent event) {
         event.register(org.fsrpg.network.RpgGuardImpactPayload.TYPE,(payload,context)->GuardImpactPresentation.accept(payload));
@@ -132,6 +136,7 @@ public final class ClientHooks {
             catch(RuntimeException error){LOG.warn("Ignored invalid target lock update",error);}
         });
         event.register(RpgSnapshotPayload.TYPE, (payload, context) -> acceptSnapshot(payload.json()));
+        event.register(RpgFootworkMotionPayload.TYPE, (payload, context) -> FootworkClient.accept(payload));
         event.register(RpgAnimationPayload.TYPE, (payload, context) -> {
             PlayerAnimations.accept(payload);
             var player = Minecraft.getInstance().player;
@@ -318,8 +323,42 @@ public final class ClientHooks {
                 gui.drawString(game.font, info, 10, 29, queued ? 0xff91e0ba : 0xffffd486);
             }
         }
+        var footworkView = ClientState.object(ClientState.object(state, "progression"), "footwork");
+        if (ClientState.bool(footworkView, "enabled", false)) {
+            var footworkMotion = ClientState.object(state, "footworkMotion");
+            String footworkStyle = ClientState.text(footworkView, "style", "NONE");
+            int cloud = (int) ClientState.number(footworkView, "cloudTier", 0);
+            int light = (int) ClientState.number(footworkView, "lightTier", 0);
+            int earnedSelections = (int) ClientState.number(footworkView, "selectionsEarned", 0);
+            int availableSelections = (int) ClientState.number(footworkView, "selectionsAvailable", 0);
+            if (!footworkStyle.equals("NONE") || cloud > 0 || light > 0 || earnedSelections > 0) {
+                long elapsed = game.level == null ? 0 : Math.max(0, game.level.getGameTime() - snapshotClientTick);
+                int jumpsUsed = (int) ClientState.number(footworkMotion, "jumpsUsed", 0);
+                long cooldown = (long) (footworkStyle.equals("RABBIT") ? ClientState.number(footworkMotion, "rabbitCooldownTicks", 0)
+                        : footworkStyle.equals("FLYING_SWAN") ? ClientState.number(footworkMotion, "swanCooldownTicks", 0) : 0);
+                cooldown = Math.max(0, cooldown - elapsed);
+                String info = "步法 " + switch (footworkStyle) {
+                    case "RABBIT" -> "脱兔";
+                    case "FLYING_SWAN" -> "飞鸿";
+                    default -> "未选流派";
+                };
+                if (cooldown > 0) info += " · 冷却 " + String.format(java.util.Locale.ROOT, "%.1fs", cooldown / 20.0);
+                long specialCooldown = Math.max(0, (long) ClientState.number(footworkMotion, "specialCooldownTicks", 0) - elapsed);
+                if (specialCooldown > 0) info += " · 特技冷却 " + String.format(java.util.Locale.ROOT, "%.1fs", specialCooldown / 20.0);
+                if (cloud > 0) info += " · 空中跳 " + Math.max(0, cloud - jumpsUsed) + "/" + cloud;
+                if (light > 0) info += " · 若轻" + "一二三".charAt(Math.min(3, light) - 1);
+                if (light >= 2) info += " · 摔落免疫";
+                if (earnedSelections > 0) info += " · 选学 " + availableSelections + "/" + earnedSelections;
+                gui.fill(6, 63, Math.min(gui.guiWidth() - 6, 15 + game.font.width(info)), 79, 0xb815202e);
+                gui.drawString(game.font, info, 10, 67, 0xffc7e5ff);
+            }
+        }
     }
     private static boolean shiftSprintRequested;
+    /** B = school trigger; G = airborne stomp / wall kick and charged-jump modifier. */
+    private static void footworkInput(net.neoforged.neoforge.client.event.MovementInputUpdateEvent event) {
+        FootworkClient.input(event, FOOTWORK.isDown(), FOOTWORK_SPECIAL.isDown());
+    }
     /** Offer the ordinary sprint key to vanilla; WASD, hunger, collisions and vanilla travel still decide motion. */
     private static void burstSprintInput(net.neoforged.neoforge.client.event.MovementInputUpdateEvent event) {
         var game=Minecraft.getInstance();if(event.getEntity()!=game.player||game.player==null)return;
@@ -338,6 +377,7 @@ public final class ClientHooks {
         GuardImpactPresentation.reset();
         CreatureCombatAnimation.clear();
         ArcheryPresentation.reset();
+        FootworkClient.reset();
         CombatCamera.reset(); ClientState.clear(); PlayerAnimations.clear(); updateCamera(); bowCharging = rapierCharging = bowAuto = dualTogether = false; statusClock = 0;
         guardKeyIntent.reset();sampledGuardBinding=null;physicalScanKeys.clear();
         shiftBurstIntent.reset();

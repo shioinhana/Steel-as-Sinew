@@ -64,6 +64,26 @@
       "decayTicks": 100,
       "linkedSlashCooldownTicks": 100
     },
+    "footwork": {
+      "selectionPoints": 150,
+      "rabbitDistance": 3,
+      "rabbitInvulnerabilityTicks": 8,
+      "rabbitCooldownTicks": 12,
+      "flyingSwanCurveLinear": 0.5,
+      "flyingSwanCooldownTicks": 30,
+      "flyingSwanWindowTicks": 8,
+      "jumpIntervalTicks": 4,
+      "chargedJumpHeightMultiplier": 2,
+      "wallRange": 2,
+      "targetRange": 4,
+      "targetDamageShare": 0.02,
+      "specialCooldownTicks": 24,
+      "airDragFactor": 0.5,
+      "jumpImpulseMps": 10,
+      "lightThirdRemovesCooldown": true,
+      "combinationCooldownTicks": 100,
+      "flashThrustDamageShare": 0.5
+    },
     "longTerm": {
       "enabled": true,
       "baseDailyDecay": 0.95,
@@ -552,6 +572,214 @@
       ],
       "exclusiveGroup": "",
       "effect": "BOW_SCOPE",
+      "value": 0,
+      "skills": []
+    },
+    {
+      "id": "rabbit",
+      "tree": "footwork",
+      "label": "脱兔",
+      "description": "B发动：沿输入方向瞬移3格（真实碰撞裁剪，不穿墙、不越过未加载区块或世界边界，速度保持不变）并获得8tick无敌；无敌期间可同时攻击。冷却12tick。与飞鸿永久互斥，选择流派不占选学额度。",
+      "automatic": false,
+      "cost": {
+        "mind": 0,
+        "body": 0,
+        "footwork": 0
+      },
+      "requirements": {
+        "mind": 20,
+        "body": 15,
+        "footwork": 100,
+        "score": 0,
+        "trial": false,
+        "dragon": false
+      },
+      "prerequisites": [],
+      "exclusiveGroup": "footwork_style",
+      "effect": "RABBIT",
+      "value": 0,
+      "skills": []
+    },
+    {
+      "id": "flying_swan",
+      "tree": "footwork",
+      "label": "飞鸿",
+      "description": "B发动，地面或空中均可：把沿输入方向的速度分量x（米/秒）变为 x+ln(x)+0.5x（x≤0时变为0.5x），只写一次、之后自然衰减；冷却30tick，并开启8tick闪刺组合窗口。与脱兔永久互斥，不占选学额度。",
+      "automatic": false,
+      "cost": {
+        "mind": 0,
+        "body": 0,
+        "footwork": 0
+      },
+      "requirements": {
+        "mind": 30,
+        "body": 20,
+        "footwork": 200,
+        "score": 0,
+        "trial": false,
+        "dragon": false
+      },
+      "prerequisites": [],
+      "exclusiveGroup": "footwork_style",
+      "effect": "FLYING_SWAN",
+      "value": 0,
+      "skills": []
+    },
+    {
+      "id": "cloud_step",
+      "tree": "footwork",
+      "label": "登云",
+      "description": "Space在空中增加一次跳跃（合计两段跳），连续跳跃间隔4tick；落地才恢复。G+Space在地面高跳，原版起跳但高度翻倍（竖直初速×√2），不消耗空中跳次数。选学占1额度。",
+      "automatic": false,
+      "cost": {
+        "mind": 0,
+        "body": 0,
+        "footwork": 0
+      },
+      "requirements": {
+        "mind": 15,
+        "body": 15,
+        "footwork": 150,
+        "score": 0,
+        "trial": false,
+        "dragon": false
+      },
+      "prerequisites": [],
+      "exclusiveGroup": "",
+      "effect": "CLOUD_STEP",
+      "value": 0,
+      "skills": []
+    },
+    {
+      "id": "cloud_step_ii",
+      "tree": "footwork",
+      "label": "登云二",
+      "description": "增加至两次空中跳跃。空中按G：优先踩准星4格内的目标，造成其最大生命2%向上取整的玩家攻击伤害；没有目标时蹬2格内的墙，并精确反向当前水平速度。与蹬墙共用24tick冷却，不消耗普通空中跳次数。选学占1额度。",
+      "automatic": false,
+      "cost": {
+        "mind": 0,
+        "body": 0,
+        "footwork": 0
+      },
+      "requirements": {
+        "mind": 35,
+        "body": 30,
+        "footwork": 300,
+        "score": 0,
+        "trial": false,
+        "dragon": false
+      },
+      "prerequisites": [
+        "cloud_step"
+      ],
+      "exclusiveGroup": "",
+      "effect": "CLOUD_STEP_II",
+      "value": 0,
+      "skills": []
+    },
+    {
+      "id": "cloud_step_iii",
+      "tree": "footwork",
+      "label": "登云三",
+      "description": "增加至三次空中跳跃，合计最多四段跳；仍保留4tick跳跃间隔，只有真实落地恢复次数。选学占1额度。",
+      "automatic": false,
+      "cost": {
+        "mind": 0,
+        "body": 0,
+        "footwork": 0
+      },
+      "requirements": {
+        "mind": 55,
+        "body": 45,
+        "footwork": 450,
+        "score": 0,
+        "trial": false,
+        "dragon": false
+      },
+      "prerequisites": [
+        "cloud_step_ii"
+      ],
+      "exclusiveGroup": "",
+      "effect": "CLOUD_STEP_III",
+      "value": 0,
+      "skills": []
+    },
+    {
+      "id": "light_body",
+      "tree": "footwork",
+      "label": "若轻",
+      "description": "空中水平阻力减半（只改空气阻力，不改重力）；水中、骑乘、鞘翅与创造飞行不适用。选学占1额度。",
+      "automatic": false,
+      "cost": {
+        "mind": 0,
+        "body": 0,
+        "footwork": 0
+      },
+      "requirements": {
+        "mind": 20,
+        "body": 10,
+        "footwork": 150,
+        "score": 0,
+        "trial": false,
+        "dragon": false
+      },
+      "prerequisites": [],
+      "exclusiveGroup": "",
+      "effect": "LIGHT_BODY",
+      "value": 0,
+      "skills": []
+    },
+    {
+      "id": "light_body_ii",
+      "tree": "footwork",
+      "label": "若轻二",
+      "description": "地面起跳与登云跳跃时沿输入方向追加10米/秒水平冲量（每次跳跃只加一次）；取消摔落伤害（只取消 LivingFallEvent，不改其它无敌）。选学占1额度。",
+      "automatic": false,
+      "cost": {
+        "mind": 0,
+        "body": 0,
+        "footwork": 0
+      },
+      "requirements": {
+        "mind": 40,
+        "body": 20,
+        "footwork": 300,
+        "score": 0,
+        "trial": false,
+        "dragon": false
+      },
+      "prerequisites": [
+        "light_body"
+      ],
+      "exclusiveGroup": "",
+      "effect": "LIGHT_BODY_II",
+      "value": 0,
+      "skills": []
+    },
+    {
+      "id": "light_body_iii",
+      "tree": "footwork",
+      "label": "若轻三",
+      "description": "取消脱兔和飞鸿的发动冷却（12/30tick→0）；登云跳跃间隔与踩头/蹬墙24tick冷却保持不变。选学占1额度。",
+      "automatic": false,
+      "cost": {
+        "mind": 0,
+        "body": 0,
+        "footwork": 0
+      },
+      "requirements": {
+        "mind": 65,
+        "body": 30,
+        "footwork": 450,
+        "score": 0,
+        "trial": false,
+        "dragon": false
+      },
+      "prerequisites": [
+        "light_body_ii"
+      ],
+      "exclusiveGroup": "",
+      "effect": "LIGHT_BODY_III",
       "value": 0,
       "skills": []
     }

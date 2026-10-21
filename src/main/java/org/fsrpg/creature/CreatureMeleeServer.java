@@ -206,7 +206,7 @@ public final class CreatureMeleeServer {
     public Snapshot windowClashCandidate(Entity entity,LivingEntity target,long now) {
         Attack attack=active.get(entity.getUUID());
         if(attack==null||attack.mob!=entity||attack.target!=target||attack.cue==null
-                ||!attack.cue.accepts(now)||now>attack.clock.contactGameTick()
+                ||!attack.cue.acceptsClash(now)||now>attack.clock.contactGameTick()
                 ||attack.contact!=null&&!attack.contact.pending()||!valid(attack)
                 ||stunRemaining.applyAsInt(entity)>0||!attack.mob.isWithinMeleeAttackRange(target)
                 ||!attack.mob.hasLineOfSight(target))return null;

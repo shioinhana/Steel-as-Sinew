@@ -7,12 +7,119 @@ public final class LegacyMeleeTest {
     private static int checks;
     private static final SkillDefinition THRUST = skill("sword_thrust", SkillInput.RIGHT, 7,2,2,20,9,"sword");
     private static final SkillDefinition SLASH = skill("sword_left", SkillInput.LEFT, 2,1,1,0,6,"sword");
-    public static void main(String[] args) {
+    public static void main(String[] args) throws Exception {
         normalCommit(); cancellation(); guiCancellation(); holdAndParry(); forcedInterrupts(); legacyDualRouting();
         legacyDualCadence(); legacyDualBufferedCadence(); legacyDualCadenceResets(); legacyDualBodyAdjustment(); orderedDualCompatibility();
         legacyDualExhaustionAndReturn();
         legacyDualClashReturn();
+        legacySwordBranchAudit(WeaponControlsTest.definitions());
         System.out.println("LegacyMeleeTest passed: " + checks + " checks");
+    }
+    /**
+     * Read-only audit of the released sword/dual data: the four rapier cultivation nodes, the five-stage
+     * fencing chain, the five dual nodes with directional hands and linked slash, and the legacy
+     * riposte/reprise compatibility ids must all survive the 0.8.3-0.8.5 changes. This asserts project
+     * data, not a new design, so a missing/renamed id fails loudly instead of silently disabling a branch.
+     */
+    private static void legacySwordBranchAudit(org.fsrpg.config.RpgConfig.Definitions definitions) {
+        var rapier=definitions.styles().get("rapier");
+        check(rapier!=null&&rapier.enabled(),"Rapier stance remains available");
+        var stages=rapier.leftCombo().stream().map(WeaponStyleDefinition.ComboStage::skillId).toList();
+        equal(List.of("sword_left","rapier_downcut","rapier_crosscut","rapier_light_thrust","rapier_lunge_finish"),stages,
+                "Five-stage fencing keeps its released stable skill ids and order");
+        int[][] fencing={{3,3,3},{3,3,3},{3,3,3},{3,3,3},{4,3,5}};
+        for(int i=0;i<stages.size();i++) {
+            var skill=definitions.skills().get(stages.get(i));
+            check(skill!=null&&skill.input()==SkillInput.LEFT,"Fencing stage uses the physical left chain: "+stages.get(i));
+            equal(fencing[i][0],skill.windupTicks(),"Fencing stage windup: "+stages.get(i));
+            equal(fencing[i][1],skill.activeTicks(),"Fencing stage active: "+stages.get(i));
+            equal(fencing[i][2],skill.recoveryTicks(),"Fencing stage recovery: "+stages.get(i));
+            near(5,skill.staminaCost(),"Fencing stage keeps its released stamina cost: "+stages.get(i));
+        }
+        equal("sword_thrust",rapier.rightSkill(),"Rapier right click keeps the stable thrust skill");
+        var thrust=definitions.skills().get("sword_thrust");
+        check(thrust!=null&&thrust.input()==SkillInput.RIGHT,"Thrust skill remains a right-click action");
+        equal(7,thrust.windupTicks(),"Released thrust windup ticks");
+        equal(2,thrust.activeTicks(),"Released thrust active ticks");
+        equal(2,thrust.recoveryTicks(),"Released thrust recovery ticks");
+        equal(20,thrust.cooldownTicks(),"Released thrust cooldown ticks");
+        near(9,thrust.damage(),"Released thrust damage");
+        var riposte=definitions.skills().get("rapier_riposte");
+        var reprise=definitions.skills().get("rapier_reprise");
+        check(riposte!=null&&reprise!=null&&definitions.skills().containsKey("rapier_wrist_rise"),
+                "Legacy conditional-return ids and the retired fifth clip stay readable for old configs");
+        equal(3,riposte.windupTicks(),"Riposte keeps its documented windup");
+        equal(2,riposte.activeTicks(),"Riposte keeps its documented active frames");
+        equal(8,riposte.recoveryTicks(),"Riposte keeps its documented recovery");
+        equal(16,riposte.cooldownTicks(),"Riposte keeps its documented cooldown");
+        near(6.5,riposte.damage(),"Riposte keeps its documented damage");
+        near(3.4,riposte.reach(),"Riposte keeps its documented reach");
+        equal(5,reprise.windupTicks(),"Reprise keeps its documented windup");
+        equal(3,reprise.activeTicks(),"Reprise keeps its documented active frames");
+        equal(10,reprise.recoveryTicks(),"Reprise keeps its documented recovery");
+        equal(20,reprise.cooldownTicks(),"Reprise keeps its documented cooldown");
+        near(8,reprise.damage(),"Reprise keeps its documented damage");
+        near(3.8,reprise.reach(),"Reprise keeps its documented reach");
+        var techniques=rapier.techniques();
+        if(!techniques.riposteSkill().isEmpty())
+            check(techniques.riposteSkill().equals("rapier_riposte")&&techniques.riposteWindowTicks()==20&&riposte!=null,
+                    "A configured riposte still maps to its stable legacy id and released window");
+        if(!techniques.repriseSkill().isEmpty())
+            check(techniques.repriseSkill().equals("rapier_reprise")&&techniques.repriseWindowTicks()==12&&reprise!=null,
+                    "A configured reprise still maps to its stable legacy id and released window");
+        var dual=definitions.styles().get("dual_blade");
+        check(dual!=null&&dual.enabled(),"Dual stance remains available");
+        var controls=dual.controls();
+        check(controls.legacyDual(),"Released dual stance keeps the directional-handed legacy_dual mode");
+        equal("dual_ll",controls.leftHandLeft(),"Left button, left hand routing");
+        equal("dual_rl",controls.rightHandLeft(),"Left button, right hand routing");
+        equal("dual_rr",controls.rightHandRight(),"Right button, right hand routing");
+        equal("dual_lr",controls.leftHandRight(),"Right button, left hand routing");
+        equal(4,java.util.Set.of(controls.leftHandLeft(),controls.rightHandLeft(),controls.rightHandRight(),controls.leftHandRight()).size(),
+                "Four directional cuts stay distinct");
+        equal(12,controls.comboResetTicks(),"Released stage retention after natural recovery");
+        for(String id:List.of("dual_ll","dual_rl","dual_rr","dual_lr")) {
+            var skill=definitions.skills().get(id);
+            check(skill!=null,"Directional dual cut still defined: "+id);
+            check(skill.input()==(controls.destination(id)==0?SkillInput.LEFT:SkillInput.RIGHT),"Directional dual cut input matches its hand: "+id);
+        }
+        var linked=definitions.skills().get("dual_combined");
+        check(linked!=null&&linked.input()==SkillInput.SPECIAL,"Linked slash keeps its special input");
+        equal(100,linked.cooldownTicks(),"Linked slash keeps its released cooldown");
+        near(8,linked.damage(),"Linked slash keeps its released damage");
+        var nodes=new java.util.LinkedHashMap<String,org.fsrpg.progression.SkillTreeCatalog.Node>();
+        for(var node:definitions.skillTrees().nodes())nodes.put(node.id(),node);
+        for(String id:List.of("rapier","rapier_thrust","rapier_parry_thrust","rapier_execution"))
+            check(nodes.containsKey(id),"Rapier cultivation node survives: "+id);
+        equal(org.fsrpg.progression.SkillTreeCatalog.Effect.ROOT_RAPIER,nodes.get("rapier").effect(),"Rapier root unlock effect");
+        equal(org.fsrpg.progression.SkillTreeCatalog.Effect.RAPIER_THRUST,nodes.get("rapier_thrust").effect(),"Thrust node effect");
+        equal(org.fsrpg.progression.SkillTreeCatalog.Effect.RAPIER_PARRY,nodes.get("rapier_parry_thrust").effect(),"Parry-thrust node effect");
+        equal(org.fsrpg.progression.SkillTreeCatalog.Effect.RAPIER_EXECUTION,nodes.get("rapier_execution").effect(),"Execution node effect");
+        check(nodes.get("rapier_parry_thrust").skills().contains("rapier_riposte"),"Parry node still grants the riposte id");
+        for(String id:List.of("dual_sword","dual_combo","dual_tier250","dual_tier400","dual_trial"))
+            check(nodes.containsKey(id),"Dual cultivation node survives: "+id);
+        equal(org.fsrpg.progression.SkillTreeCatalog.Effect.ROOT_DUAL,nodes.get("dual_sword").effect(),"Dual root unlock effect");
+        equal(3,nodes.get("dual_combo").value(),"Dual three-layer combo cap");
+        equal(4,nodes.get("dual_tier250").value(),"Dual four-layer combo cap");
+        equal(5,nodes.get("dual_tier400").value(),"Dual five-layer combo cap");
+        equal(6,nodes.get("dual_trial").value(),"Dual six-layer trial cap");
+        for(String id:List.of("dual_combo","dual_tier250","dual_tier400","dual_trial"))
+            equal(org.fsrpg.progression.SkillTreeCatalog.Effect.DUAL_COMBO_CAP,nodes.get(id).effect(),"Dual node keeps the combo-cap effect: "+id);
+        var rules=definitions.skillTrees().rules();
+        equal(7,rules.rapier().windupTicks(),"Charged rapier thrust windup rule");
+        equal(2,rules.rapier().activeTicks(),"Charged rapier thrust active rule");
+        equal(2,rules.rapier().recoveryTicks(),"Charged rapier thrust recovery rule");
+        equal(20,rules.rapier().cooldownTicks(),"Charged rapier thrust cooldown rule");
+        equal(16,rules.rapier().fullChargeTicks(),"Full-charge commitment tick");
+        equal(200,rules.rapier().guardBreakCooldownTicks(),"Full-charge guard-break cooldown");
+        near(1.5,rules.rapier().thrustMultiplier(),"Thrust damage multiplier");
+        near(3,rules.rapier().parriedMultiplier(),"Parried thrust damage multiplier");
+        near(.1,rules.rapier().executionMissingHealthShare(),"Execution missing-health share");
+        near(.15,rules.dual().holdMoveBonus(),"Dual holding move bonus");
+        near(.35,rules.dual().swingMovePenalty(),"Dual swing move penalty");
+        near(.15,rules.dual().layerSwingBonus(),"Dual combo-layer move bonus");
+        equal(100,rules.dual().decayTicks(),"Dual combo layer decay ticks");
+        equal(100,rules.dual().linkedSlashCooldownTicks(),"Dual linked slash cooldown rule");
     }
     private static void normalCommit() {
         CombatActor a=ready(null); AttackAim aim=AttackAim.at(25,-30);
@@ -290,5 +397,6 @@ public final class LegacyMeleeTest {
     }
     private static void tick(CombatActor a,int count){for(int i=0;i<count;i++)a.tick();}
     private static void equal(Object expected,Object actual,String message){check(Objects.equals(expected,actual),message+" expected="+expected+" actual="+actual);}
+    private static void near(double expected,double actual,String message){check(Math.abs(expected-actual)<1e-8,message+" expected="+expected+" actual="+actual);}
     private static void check(boolean value,String message){checks++;if(!value)throw new AssertionError(message);}
 }

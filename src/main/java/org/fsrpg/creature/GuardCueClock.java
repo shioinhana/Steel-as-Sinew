@@ -8,7 +8,7 @@ public final class GuardCueClock {
         public Message {
             if (sequence < 0 || phase == null || !java.util.Set.of("BEGIN", "CONTACT", "CANCEL", "END").contains(phase)
                     || startedGameTime < 0 || serverGameTime < startedGameTime || flashGameTime < startedGameTime
-                    || openGameTime < flashGameTime || closeGameTime < openGameTime || contactGameTime < closeGameTime
+                    || openGameTime < flashGameTime || closeGameTime < flashGameTime || contactGameTime < openGameTime || contactGameTime < closeGameTime
                     || contactGameTime - startedGameTime > 600 || flashDurationMillis < 1 || flashDurationMillis > 1000)
                 throw new IllegalArgumentException("Invalid authoritative guard cue schedule");
         }
@@ -50,7 +50,10 @@ public final class GuardCueClock {
         double rawNow = localGameTime + Math.clamp(partialTick, 0, 1);
         double durationTicks = current.flashDurationMillis() / 50.0;
         // The end of the success window is also a hard cosmetic deadline. Late packets never create a late flash.
-        double end = Math.min(current.flashGameTime() + durationTicks, current.closeGameTime());
+        // An empty short-windup input window still has one quantized warning tick,
+        // bounded by actual contact. It never grants server guard authorization.
+        double deadline=Math.min(current.contactGameTime(),Math.max(current.flashGameTime()+1,current.closeGameTime()));
+        double end = Math.min(current.flashGameTime() + durationTicks, deadline);
         // A late packet can never rewind the synchronized world clock past an already expired visual/window deadline.
         if (rawNow >= end) { expired = true; return null; }
         double now = Math.max(lastServerTime, rawNow + clockOffset);

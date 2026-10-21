@@ -33,7 +33,7 @@ public final class ProgressionTest {
         near(0,GroundTrainingRules.distance(true,true,true,1,false,Double.NaN,0,1,0),"nonfinitepositioncannottrain");
     }
     private static void strictCatalog(SkillTreeCatalog c) {
-        equal(17, c.nodes().size(), "complete migrated weapon trees");
+        equal(25, c.nodes().size(), "complete migrated weapon and footwork trees");
         equal(new SkillTreeCatalog.Cost(2,3,4), c.node("rapier").cost(), "old single sword costs");
         equal(new SkillTreeCatalog.Cost(1,5,3), c.node("dual_sword").cost(), "old double sword costs");
         equal(new SkillTreeCatalog.Cost(3,4,1), c.node("archery").cost(), "old bow costs");
@@ -60,6 +60,14 @@ public final class ProgressionTest {
         JsonObject autoCost = base.deepCopy(); node(autoCost,"dual_combo").getAsJsonObject("cost").addProperty("mind",1); invalid(autoCost,"automatic node cannot deduct points");
         JsonObject wrongGroup = base.deepCopy(); node(wrongGroup,"archery_ru_suo").addProperty("exclusiveGroup",""); invalid(wrongGroup,"branch cannot bypass exclusive group");
         JsonObject bypassRoot = base.deepCopy(); node(bypassRoot,"rapier_thrust").add("prerequisites",new JsonArray()); invalid(bypassRoot,"effect cannot bypass learned weapon root");
+        equal(8L, c.nodes().stream().filter(n->n.tree().equals("footwork")).count(), "eight legacy footwork nodes");
+        for(String id:List.of("rabbit","flying_swan","cloud_step","cloud_step_ii","cloud_step_iii","light_body","light_body_ii","light_body_iii"))
+            check(c.find(id).isPresent()&&c.node(id).tree().equals("footwork"),"footwork node present: "+id);
+        equal(FootworkRules.defaults(),c.rules().footwork(),"footwork rule block carries the published legacy parameters");
+        equal("footwork_style",c.node("rabbit").exclusiveGroup(),"schools are exclusive");
+        equal(c.node("rabbit").exclusiveGroup(),c.node("flying_swan").exclusiveGroup(),"both schools share one exclusive group");
+        check(!c.node("cloud_step").automatic()&&!c.node("light_body").automatic(),"techniques are manual choices");
+        equal(new SkillTreeCatalog.Cost(0,0,0),c.node("cloud_step").cost(),"techniques cost selection credits, not resource points");
     }
     private static void firstCharacter(SkillTreeCatalog c) {
         ProgressionService s = new ProgressionService(c); s.initializeAptitudes(A,0,0,DAY);

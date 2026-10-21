@@ -74,6 +74,8 @@ public final class RpgConfig {
         if(defenseFlowMigration!=null)defenseFlowMigration.apply();
         if (staminaLevelMigration != null) staminaLevelMigration.apply();
         RapierFencingMigration.migrate(directory);
+        RapierTechniquesMigration.migrate(directory);
+        FootworkSkillMigration.migrate(directory);
     }
     private JsonElement read(String name) throws IOException {
         Path path = directory.resolve(name);

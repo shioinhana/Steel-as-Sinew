@@ -49,10 +49,10 @@
       "perfectGuardRequiresBlockable": true
     },
     "techniques": {
-      "riposteSkill": "",
-      "riposteWindowTicks": 0,
-      "repriseSkill": "",
-      "repriseWindowTicks": 0
+      "riposteSkill": "rapier_riposte",
+      "riposteWindowTicks": 20,
+      "repriseSkill": "rapier_reprise",
+      "repriseWindowTicks": 12
     },
     "cancels": {
       "windupAttack": true,

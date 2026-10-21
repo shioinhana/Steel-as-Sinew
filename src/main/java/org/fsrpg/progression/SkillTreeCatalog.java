@@ -13,7 +13,9 @@ public final class SkillTreeCatalog {
     public enum Effect {
         ROOT_RAPIER, ROOT_DUAL, ROOT_BOW, RAPIER_THRUST, RAPIER_PARRY, RAPIER_EXECUTION,
         DUAL_COMBO_CAP, BOW_AUTO_CHARGE, BOW_TRAJECTORY, BOW_SCOPE,
-        RU_SUO, NIE_SHI, YAN_XIA_DIAN, CHUAN_TANG_FENG
+        RU_SUO, NIE_SHI, YAN_XIA_DIAN, CHUAN_TANG_FENG,
+        RABBIT, FLYING_SWAN, CLOUD_STEP, CLOUD_STEP_II, CLOUD_STEP_III,
+        LIGHT_BODY, LIGHT_BODY_II, LIGHT_BODY_III
     }
     public record Cost(int mind, int body, int footwork) {
         public Cost { points(mind); points(body); points(footwork); }
@@ -38,14 +40,17 @@ public final class SkillTreeCatalog {
             String branch = switch (effect) {
                 case RU_SUO, NIE_SHI -> "archery_150";
                 case YAN_XIA_DIAN, CHUAN_TANG_FENG -> "archery_250";
+                case RABBIT, FLYING_SWAN -> "footwork_style";
                 default -> "";
             };
             if (!exclusiveGroup.equals(branch)) throw bad("incorrect exclusive group for effect: " + effect);
-            boolean manual = !branch.isEmpty() || Set.of(Effect.ROOT_RAPIER, Effect.ROOT_DUAL, Effect.ROOT_BOW).contains(effect);
+            boolean manual = !branch.isEmpty() || isFootwork(effect) || Set.of(Effect.ROOT_RAPIER, Effect.ROOT_DUAL, Effect.ROOT_BOW).contains(effect);
             if (automatic == manual) throw bad("effect has incorrect manual/automatic learning mode: " + effect);
             String expected = switch (effect) {
                 case ROOT_RAPIER, RAPIER_THRUST, RAPIER_PARRY, RAPIER_EXECUTION -> "rapier";
                 case ROOT_DUAL, DUAL_COMBO_CAP -> "dual_blade";
+                case RABBIT, FLYING_SWAN, CLOUD_STEP, CLOUD_STEP_II, CLOUD_STEP_III,
+                     LIGHT_BODY, LIGHT_BODY_II, LIGHT_BODY_III -> "footwork";
                 default -> "bow";
             };
             if (!tree.equals(expected)) throw bad("effect does not belong to node tree: " + id);
@@ -106,8 +111,11 @@ public final class SkillTreeCatalog {
             integer(bossInsightBonusCap, 0, 1000, "boss insight cap"); integer(efficiencyPercentCap, 0, 1000, "efficiency cap");
         }
     }
-    public record Rules(TrainingRules training, RapierRules rapier, DualRules dual, LongTermRules longTerm) {
-        public Rules { Objects.requireNonNull(training); Objects.requireNonNull(rapier); Objects.requireNonNull(dual); Objects.requireNonNull(longTerm); }
+    public record Rules(TrainingRules training, RapierRules rapier, DualRules dual, LongTermRules longTerm, FootworkRules footwork) {
+        public Rules { Objects.requireNonNull(training); Objects.requireNonNull(rapier); Objects.requireNonNull(dual); Objects.requireNonNull(longTerm); Objects.requireNonNull(footwork); }
+        public Rules(TrainingRules training, RapierRules rapier, DualRules dual, LongTermRules longTerm) {
+            this(training, rapier, dual, longTerm, FootworkRules.defaults());
+        }
     }
     private static final Pattern ID = Pattern.compile("[a-z0-9_.:-]{1,100}");
     private final Rules rules;
@@ -132,7 +140,7 @@ public final class SkillTreeCatalog {
         }
         byId = Collections.unmodifiableMap(map);
         Set<String> visited = new HashSet<>(); for (Node node : nodes) visit(node.id(), new HashSet<>(), visited);
-        for (Node node : nodes) if (!Set.of(Effect.ROOT_RAPIER, Effect.ROOT_DUAL, Effect.ROOT_BOW).contains(node.effect()) && !reachesRoot(node))
+        for (Node node : nodes) if (!isFootwork(node.effect()) && !Set.of(Effect.ROOT_RAPIER, Effect.ROOT_DUAL, Effect.ROOT_BOW).contains(node.effect()) && !reachesRoot(node))
             throw bad("node must depend on its learned weapon root: " + node.id());
     }
     public Rules rules() { return rules; }
@@ -143,7 +151,7 @@ public final class SkillTreeCatalog {
         for (Node node : nodes) {
             if (node.tree().equals("bow")) {
                 if (!styleExists.test("bow_rapid") || !styleExists.test("bow_snipe")) throw bad("bow tree needs bow_rapid and bow_snipe styles");
-            } else if (!styleExists.test(node.tree())) throw bad("unknown node style: " + node.tree());
+            } else if (!node.tree().equals("footwork") && !styleExists.test(node.tree())) throw bad("unknown node style: " + node.tree());
             for (String skill : node.skills()) if (!skillExists.test(skill)) throw bad("unknown node skill: " + skill);
         }
     }
@@ -157,9 +165,12 @@ public final class SkillTreeCatalog {
         Objects.requireNonNull(gson); JsonObject root = object(json, "skill trees");
         fields(root, Set.of("schemaVersion", "rules", "nodes"));
         if (integer(root.get("schemaVersion"), "schemaVersion") != SCHEMA_VERSION) throw bad("unsupported skill tree schema");
-        JsonObject r = object(root.get("rules"), "rules"); fields(r, Set.of("training", "rapier", "dual", "longTerm"));
+        JsonObject r = object(root.get("rules"), "rules");
+        Set<String> ruleFields = new HashSet<>(Set.of("training", "rapier", "dual", "longTerm"));
+        if (r.has("footwork")) ruleFields.add("footwork"); fields(r, ruleFields);
         Rules rules = new Rules(record(r.get("training"), TrainingRules.class, gson), record(r.get("rapier"), RapierRules.class, gson),
-                record(r.get("dual"), DualRules.class, gson), record(r.get("longTerm"), LongTermRules.class, gson));
+                record(r.get("dual"), DualRules.class, gson), record(r.get("longTerm"), LongTermRules.class, gson),
+                r.has("footwork") ? record(r.get("footwork"), FootworkRules.class, gson) : FootworkRules.defaults());
         List<Node> nodes = new ArrayList<>(); JsonArray array = array(root.get("nodes"), "nodes");
         if (array.size() > 256) throw bad("too many nodes");
         for (JsonElement element : array) {
@@ -206,7 +217,17 @@ public final class SkillTreeCatalog {
     private static List<String> strings(JsonElement e) { List<String> result = new ArrayList<>(); for (JsonElement entry : array(e, "reference list")) result.add(string(entry, "reference")); if (new HashSet<>(result).size() != result.size()) throw bad("duplicate references"); return result; }
     private static List<Integer> thresholds(List<Integer> values) { values = List.copyOf(values); if (values.isEmpty() || values.size() > 32) throw bad("invalid threshold count"); int previous = -1; for (int value : values) { points(value); if (value <= previous) throw bad("thresholds must increase"); previous = value; } return values; }
     static void validId(String id) { if (id == null || !ID.matcher(id).matches()) throw bad("invalid ID: " + id); }
-    private static void validTree(String id) { if (!Set.of("rapier", "dual_blade", "bow").contains(id)) throw bad("invalid tree: " + id); }
+    public static boolean isFootwork(Effect effect) {
+        return switch (effect) {
+            case RABBIT, FLYING_SWAN, CLOUD_STEP, CLOUD_STEP_II, CLOUD_STEP_III,
+                 LIGHT_BODY, LIGHT_BODY_II, LIGHT_BODY_III -> true;
+            default -> false;
+        };
+    }
+    public static boolean isFootworkTechnique(Effect effect) {
+        return isFootwork(effect) && effect != Effect.RABBIT && effect != Effect.FLYING_SWAN;
+    }
+    private static void validTree(String id) { if (!Set.of("rapier", "dual_blade", "bow", "footwork").contains(id)) throw bad("invalid tree: " + id); }
     private static String visible(String value, int length) { if (value == null || value.isBlank() || value.length() > length) throw bad("invalid visible text"); return value; }
     private static void points(int n) { integer(n, 0, 1_000_000_000, "points"); }
     private static void ticks(int n) { integer(n, 1, 72_000, "ticks"); }

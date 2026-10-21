@@ -12,6 +12,7 @@ public final class PerfectGuardCounterTest {
         perfectGuardBoundaries(); counterBoundaries(); physicalInputRoutes(); failedInputAndSingleUse();
         interruptCleanup(); attackerStunBoundaries(); staleGuardRenewal(); independentAcceptedLeftCounter();
         successfulDefenseCleanup(); clashClearsExistingReactions(); delayedClashRewardOwnership(); heldProjectileReflection();
+        heldRenewalYieldsTheAcceptedSwing();
         System.out.println("PerfectGuardCounterTest passed: " + checks + " checks");
     }
 
@@ -267,6 +268,185 @@ public final class PerfectGuardCounterTest {
         var reflected=CombatResolver.receiveIncoming(null,actor,0,8,0,true,true,true);
         check(reflected.reflectProjectile()&&actor.heldPerfectGuards()==1,"Fresh reflection ignores prior ordinary pressure while preserving the new cap");
     }
+
+    /**
+     * Real reports describe the attack after a perfect guard as very sluggish. The server accepts the
+     * next left click immediately, and a physical C hold that was renewed by the client must never
+     * interpret its renewed packet as a fresh guard intent: it yields to the accepted swing for the
+     * whole windup/active/recovery lifecycle. Only an actual release can turn the same key into a
+     * new intentional guard action.
+     */
+    private static void heldRenewalYieldsTheAcceptedSwing() {
+        immediateLeftCounterSurvivesHeldRenewals();
+        normalAttackAfterCounterExpirySurvivesHeldRenewals();
+        rightThrustSurvivesHeldRenewals();
+        namedSkillSurvivesHeldRenewals();
+        dualAndSpearSurviveHeldRenewals();
+        releaseStillAllowsIntentionalGuardCancel();
+        heldRenewalsNeverRaiseGuardDuringTheSwing();
+    }
+
+    private static void immediateLeftCounterSurvivesHeldRenewals() {
+        CombatActor actor = parried(style("rapier", false));
+        check(actor.phase() == CombatPhase.GUARDING && actor.guardHeld() && actor.guardAutoRearmed(),
+                "perfect success reopens the held guard without recovery");
+        equal(4, actor.counterRemainingTicks(), "the immediate left counter window is still granted");
+        var left = skill("left", SkillInput.LEFT, 3, 3, 3, 0, 5);
+        check(actor.aimedInput(SkillInput.LEFT, Map.of("left", left, "right", RIGHT), AttackAim.at(0, 0)).started(),
+                "the next tick left attack is accepted while C is still held");
+        SkillDefinition accepted = actor.currentSkill();
+        equal(1, actor.drainStartedSkills().size(), "the accepted counter emits exactly one start event");
+        equal(CombatPhase.WINDUP, actor.phase(), "the accepted counter enters windup");
+        near(1.5, actor.attackDamageMultiplier(), "the accepted counter keeps the x1.5 reward");
+        equal(ActionResult.ACCEPTED, actor.setGuarding(true), "same-tick held renewal is accepted idempotently");
+        check(actor.currentSkill() == accepted && actor.phase() == CombatPhase.WINDUP,
+                "same-tick held renewal cannot cancel the accepted counter");
+        near(1.5, actor.attackDamageMultiplier(), "same-tick held renewal keeps the counter damage");
+        while (actor.phase() != CombatPhase.READY) {
+            equal(ActionResult.ACCEPTED, actor.setGuarding(true), "each held renewal inside the swing yields");
+            check(actor.currentSkill() == accepted, "each held renewal keeps the accepted swing");
+            actor.tick();
+        }
+        check(actor.currentSkill() == null, "the swing completes naturally instead of being canceled into guard");
+        check(actor.drainStartedSkills().size() == 0 && !actor.comboSnapshot().queued(),
+                "held renewals neither replay nor queue a stale attack");
+        // The real monster cue path uses the same successful-defense transition.
+        CombatActor telegraphed = ready(style("rapier", false));
+        telegraphed.setGuarding(true);
+        check(CombatResolver.receiveTelegraphed(null, telegraphed, 0, 8, 0, true, true, false, true).outcome() == HitOutcome.PARRIED,
+                "an authorized telegraph still performs a real perfect guard");
+        check(telegraphed.aimedInput(SkillInput.LEFT, Map.of("left", left, "right", RIGHT), AttackAim.at(0, 0)).started(),
+                "the telegraphed perfect guard accepts the very next left attack");
+        SkillDefinition telegraphSkill = telegraphed.currentSkill();
+        equal(ActionResult.ACCEPTED, telegraphed.setGuarding(true), "telegraphed held renewal yields to the new swing");
+        check(telegraphed.currentSkill() == telegraphSkill && telegraphed.phase() == CombatPhase.WINDUP,
+                "telegraphed perfect guard plus held renewal cannot delay the counter");
+    }
+
+    private static void normalAttackAfterCounterExpirySurvivesHeldRenewals() {
+        CombatActor actor = parried(style("rapier", false));
+        ticks(actor, 6);
+        equal(0, actor.counterRemainingTicks(), "human reaction beyond the four-tick counter boundary");
+        var left = skill("left", SkillInput.LEFT, 3, 3, 3, 0, 5);
+        check(actor.aimedInput(SkillInput.LEFT, Map.of("left", left, "right", RIGHT), AttackAim.at(0, 0)).started(),
+                "ordinary left attack after the counter expires is accepted");
+        SkillDefinition accepted = actor.currentSkill();
+        equal(1, actor.drainStartedSkills().size(), "the ordinary attack emits exactly one start event");
+        near(1, actor.attackDamageMultiplier(), "an expired counter is an ordinary attack");
+        while (actor.phase() != CombatPhase.READY) {
+            equal(ActionResult.ACCEPTED, actor.setGuarding(true), "held renewal must not become a new guard intent");
+            equal(ActionResult.ACCEPTED, actor.setGuarding(true, false), "light held renewal also yields");
+            check(actor.currentSkill() == accepted, "ordinary attack keeps its identity through every renewal");
+            actor.tick();
+        }
+        check(actor.drainStartedSkills().size() == 0 && !actor.comboSnapshot().queued(),
+                "ordinary attack has no queued replay after renewals");
+    }
+
+    private static void rightThrustSurvivesHeldRenewals() {
+        CombatActor actor = parried(style("rapier", false));
+        ticks(actor, 6);
+        var thrust = skill("right_thrust", SkillInput.RIGHT, 7, 2, 2, 20, 5);
+        var charged = skill("charged", SkillInput.RIGHT, 10, 2, 4, 20, 5);
+        check(actor.aimedInput(SkillInput.RIGHT, Map.of("left", LEFT, "right", thrust, "charged", charged), AttackAim.at(5, 2)).started(),
+                "right thrust after a perfect guard is accepted");
+        SkillDefinition accepted = actor.currentSkill();
+        equal(1, actor.drainStartedSkills().size(), "right thrust emits exactly one start event");
+        int guardTicks = 0;
+        while (actor.phase() != CombatPhase.READY) {
+            equal(ActionResult.ACCEPTED, actor.setGuarding(true), "right thrust windup/recovery renewal yields");
+            check(actor.currentSkill() == accepted, "right thrust is never canceled by a held renewal");
+            actor.tick();
+            if (++guardTicks > 20) throw new AssertionError("right thrust failed to complete");
+        }
+        CombatActor holding = parried(style("rapier", false));
+        ticks(holding, 6);
+        equal(ActionResult.ACCEPTED, holding.beginChargedAttack(charged, AttackAim.at(0, 0), true, true, 10, 20),
+                "charged thrust starts from the held guard");
+        check(holding.chargeSnapshot().active() && holding.phase() == CombatPhase.WINDUP, "charged thrust winds up");
+        equal(ActionResult.ACCEPTED, holding.setGuarding(true), "held renewal cannot cancel an uncommitted charge");
+        check(holding.chargeSnapshot().active() && holding.currentSkill() == charged,
+                "held renewal keeps the charged attack intact");
+        ticks(holding, 9);
+        equal(CombatPhase.WINDUP, holding.phase(), "charge stays in windup without an early commit");
+        equal(ActionResult.ACCEPTED, holding.setGuarding(true, false), "renewal during charge does not clear it");
+        check(holding.chargeSnapshot().active(), "renewal during charge does not disarm it");
+    }
+
+    private static void namedSkillSurvivesHeldRenewals() {
+        CombatActor actor = parried(style("rapier", false));
+        ticks(actor, 6);
+        var named = skill("named", SkillInput.LEFT, 8, 3, 4, 0, 5);
+        equal(ActionResult.ACCEPTED, actor.requestAttack(named), "named skill is accepted from the held guard");
+        SkillDefinition accepted = actor.currentSkill();
+        equal(1, actor.drainStartedSkills().size(), "named skill emits exactly one start event");
+        while (actor.phase() != CombatPhase.READY) {
+            equal(ActionResult.ACCEPTED, actor.setGuarding(true), "named skill renewal yields");
+            check(actor.currentSkill() == accepted, "named skill cannot be canceled by a held renewal");
+            actor.tick();
+        }
+        check(actor.drainStartedSkills().size() == 0 && !actor.comboSnapshot().queued(),
+                "named skill leaves no stale replay after renewals");
+    }
+
+    private static void dualAndSpearSurviveHeldRenewals() {
+        CombatActor dual = parried(style("dual", true));
+        ticks(dual, 6);
+        var catalog = catalog();
+        check(dual.aimedInput(SkillInput.LEFT, catalog, AttackAim.at(0, 0)).started(), "dual left cut is accepted while C is held");
+        SkillDefinition acceptedDual = dual.currentSkill();
+        equal(1, dual.drainStartedSkills().size(), "dual cut emits exactly one start event");
+        while (dual.phase() != CombatPhase.READY) {
+            equal(ActionResult.ACCEPTED, dual.setGuarding(true), "dual held renewal yields");
+            check(dual.currentSkill() == acceptedDual, "dual cut is never canceled by a held renewal");
+            dual.tick();
+        }
+        CombatActor spear = parried(style("spear", false));
+        ticks(spear, 6);
+        var thrust = new SkillDefinition("spear", "spear", "spear", SkillInput.LEFT, 1, 1, 4, 0, 5, 0, 8, 3, 90, 0, true, true, true, "", "");
+        equal(ActionResult.ACCEPTED, spear.aimedLeftSkill(thrust, AttackAim.at(20, 4)), "spear press after a perfect guard is accepted");
+        SkillDefinition acceptedSpear = spear.currentSkill();
+        equal(1, spear.drainStartedSkills().size(), "spear press emits exactly one start event");
+        equal(CombatPhase.WINDUP, spear.phase(), "spear press starts its short windup");
+        equal(ActionResult.ACCEPTED, spear.setGuarding(true), "held renewal cannot cancel the spear press");
+        check(spear.currentSkill() == acceptedSpear && spear.phase() == CombatPhase.WINDUP,
+                "spear press survives the renewal");
+        spear.setSpearAttackHeld(true, AttackAim.at(20, 4));
+        equal(ActionResult.ACCEPTED, spear.setGuarding(true), "held renewal cannot cancel a held spear contact");
+        check(spear.spearAttackHeld() && spear.currentSkill() == acceptedSpear,
+                "held spear contact stays under the player's own hold");
+    }
+
+    private static void releaseStillAllowsIntentionalGuardCancel() {
+        CombatActor actor = parried(style("rapier", false));
+        var left = skill("left", SkillInput.LEFT, 3, 3, 3, 0, 5);
+        check(actor.aimedInput(SkillInput.LEFT, Map.of("left", left, "right", RIGHT), AttackAim.at(0, 0)).started(),
+                "counter attack starts before the intentional release");
+        SkillDefinition accepted = actor.currentSkill();
+        equal(ActionResult.ACCEPTED, actor.setGuarding(false), "physical release clears the yielded hold");
+        equal(CombatPhase.WINDUP, actor.phase(), "release alone does not interrupt the swing");
+        equal(ActionResult.ACCEPTED, actor.setGuarding(true), "a real re-press is a new intentional guard action");
+        equal(CombatPhase.GUARDING, actor.phase(), "the new physical press actually raises guard");
+        check(actor.currentSkill() != accepted, "a genuinely new guard press keeps its ordinary windup-cancel rule");
+    }
+
+    private static void heldRenewalsNeverRaiseGuardDuringTheSwing() {
+        CombatActor actor = parried(style("rapier", false));
+        var left = skill("left", SkillInput.LEFT, 6, 4, 6, 0, 5);
+        check(actor.aimedInput(SkillInput.LEFT, Map.of("left", left, "right", RIGHT), AttackAim.at(0, 0)).started(),
+                "long swing accepted while C is held");
+        int tick = 0;
+        while (actor.phase() != CombatPhase.READY && tick < 30) {
+            check(actor.phase() != CombatPhase.GUARDING, "a held renewal never re-opens guard inside the swing at tick " + tick);
+            equal(ActionResult.ACCEPTED, actor.setGuarding(true), "renewal accepted without changing the action at tick " + tick);
+            actor.tick();
+            tick++;
+        }
+        equal(CombatPhase.READY, actor.phase(), "long swing completes after all renewals");
+        equal(ActionResult.ACCEPTED, actor.setGuarding(true), "after the swing, the still-held C raises guard again");
+        equal(CombatPhase.GUARDING, actor.phase(), "post-swing guard restoration remains available");
+    }
+
 
     private static CombatActor ready(WeaponStyleDefinition style) { CombatActor actor=new CombatActor(UUID.randomUUID(),CombatRules.defaults());actor.setStyle(style);actor.requestDrawn();ticks(actor,actor.rules().drawTicks());return actor; }
     private static CombatActor parried(WeaponStyleDefinition style) { CombatActor actor=ready(style);actor.setGuarding(true);equal(HitOutcome.PARRIED,incoming(actor).outcome(),"perfect contact");return actor; }

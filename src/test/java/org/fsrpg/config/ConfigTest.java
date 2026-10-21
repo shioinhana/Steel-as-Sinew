@@ -13,6 +13,7 @@ import java.util.Comparator;
 import java.util.List;
 import org.fsrpg.combat.CombatRules;
 import org.fsrpg.combat.WeaponClashRules;
+import org.fsrpg.progression.FootworkRules;
 
 /** Config edits are tested independently of registries, network packets, or Minecraft. */
 public final class ConfigTest {
@@ -265,7 +266,10 @@ public final class ConfigTest {
         check(definitions.weapons().matches("unarmed", "minecraft:air", "minecraft:air"), "unarmed group matches an empty main hand");
         equal("sword_thrust", definitions.styles().get("rapier").rightSkill(), "right click selects charged thrust rather than legacy right swing");
         equal(14.0, definitions.styles().get("rapier").heavyGuard().staminaCost(), "reduced heavy guard configuration loaded");
-        equal("", definitions.styles().get("rapier").techniques().riposteSkill(), "legacy charge parry replaces default conditional right-click window");
+        equal("rapier_riposte", definitions.styles().get("rapier").techniques().riposteSkill(), "default rapier enables the released riposte window beside the charged thrust");
+        equal(20, definitions.styles().get("rapier").techniques().riposteWindowTicks(), "released riposte window ticks");
+        equal("rapier_reprise", definitions.styles().get("rapier").techniques().repriseSkill(), "default rapier enables the released reprise window");
+        equal(12, definitions.styles().get("rapier").techniques().repriseWindowTicks(), "released reprise window ticks");
         rejects(() -> definitions.styles().clear(), "style definitions immutable");
         JsonElement changed = styles.deepCopy(); changed.getAsJsonArray().add(changed.getAsJsonArray().get(0).deepCopy());
         invalidStyleParse(combat, skills, quests, weapons, changed, "duplicate style id rejected");
@@ -335,7 +339,10 @@ public final class ConfigTest {
             equal(1, legacy.styles().get("rapier").leftCombo().size(), "missing new stages create a one-stage compatibility style");
             equal(0, legacy.styles().get("rapier").leftCombo().getFirst().chainTick(), "compatibility final stage gate cleared");
             equal("sword_thrust", legacy.styles().get("rapier").rightSkill(), "legacy SPECIAL input retained as right action");
-            equal("", legacy.styles().get("rapier").techniques().riposteSkill(), "legacy catalog missing conditional skills seeds them as disabled");
+            equal("rapier_riposte", legacy.styles().get("rapier").techniques().riposteSkill(), "legacy catalog gains the conditional skill ids and then the released riposte window");
+            equal(20, legacy.styles().get("rapier").techniques().riposteWindowTicks(), "legacy seed uses the released riposte window");
+            equal("rapier_reprise", legacy.styles().get("rapier").techniques().repriseSkill(), "legacy seed enables the released reprise pair");
+            equal(12, legacy.styles().get("rapier").techniques().repriseWindowTicks(), "legacy seed uses the released reprise window");
             String firstStyleText = Files.readString(directory.resolve("styles.json"));
             config.seed();
             equal(firstStyleText, Files.readString(directory.resolve("styles.json")), "existing style configuration never reseeded");
@@ -497,7 +504,24 @@ public final class ConfigTest {
         JsonElement combat = resource("combat.json"), skills = resource("skills.json"), quests = resource("quests.json"), weapons = resource("weapons.json"), styles = resource("styles.json"), collections = resource("collections.json");
         JsonObject trees = resource("skill_trees.json").getAsJsonObject(), archery = resource("archery.json").getAsJsonObject();
         var defaults = RpgConfig.parse(combat, skills, quests, weapons, styles, collections, trees, archery);
-        equal(17, defaults.skillTrees().nodes().size(), "eight-file parser loads all migrated skill-tree nodes");
+        equal(25, defaults.skillTrees().nodes().size(), "eight-file parser loads all migrated weapon and footwork nodes");
+        equal(FootworkRules.defaults(), defaults.skillTrees().rules().footwork(), "eight-file parser carries the legacy footwork rules");
+        equal(8L, defaults.skillTrees().nodes().stream().filter(n -> n.tree().equals("footwork")).count(), "eight-file parser loads eight footwork nodes");
+        JsonObject customFootwork = trees.deepCopy();
+        customFootwork.getAsJsonObject("rules").getAsJsonObject("footwork").addProperty("jumpIntervalTicks", 5);
+        equal(5, RpgConfig.parse(combat, skills, quests, weapons, styles, collections, customFootwork, archery)
+                .skillTrees().rules().footwork().jumpIntervalTicks(), "custom footwork interval accepted and preserved");
+        JsonObject invalidFootwork = trees.deepCopy();
+        invalidFootwork.getAsJsonObject("rules").getAsJsonObject("footwork").addProperty("rabbitDistance", 0);
+        rejects(() -> RpgConfig.parse(combat, skills, quests, weapons, styles, collections, invalidFootwork, archery),
+                "invalid footwork distance rejected");
+        JsonObject oldFootwork = trees.deepCopy();
+        oldFootwork.getAsJsonObject("rules").remove("footwork");
+        removeFootworkNodes(oldFootwork);
+        var oldParser = RpgConfig.parse(combat, skills, quests, weapons, styles, collections, oldFootwork, archery);
+        equal(FootworkRules.defaults(), oldParser.skillTrees().rules().footwork(),
+                "pre-0.9 skill-tree file without footwork keeps loading with the legacy defaults");
+        equal(17, oldParser.skillTrees().nodes().size(), "pre-0.9 skill-tree file keeps its seventeen nodes");
         String[][] milestones = {{"archery_auto_charge", "autoChargeScore"}, {"archery_trajectory", "trajectoryScore"}, {"archery_scope", "scopeScore"}};
         for (String[] milestone : milestones) {
             String nodeId = milestone[0], rule = milestone[1];
@@ -516,6 +540,11 @@ public final class ConfigTest {
             };
             equal(original + 1, configured, nodeId + " keeps combat and unlock threshold synchronized");
         }
+    }
+    private static void removeFootworkNodes(JsonObject trees) {
+        JsonArray nodes = trees.getAsJsonArray("nodes");
+        for (int index = nodes.size() - 1; index >= 0; index--)
+            if (nodes.get(index).getAsJsonObject().get("tree").getAsString().equals("footwork")) nodes.remove(index);
     }
     private static JsonObject treeNode(JsonObject trees, String id) {
         for (JsonElement value : trees.getAsJsonArray("nodes")) {

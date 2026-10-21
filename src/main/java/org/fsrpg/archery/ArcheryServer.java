@@ -19,6 +19,7 @@ import net.minecraft.world.entity.projectile.Projectile;
 import net.minecraft.world.entity.projectile.arrow.AbstractArrow;
 import net.minecraft.world.item.*;
 import net.minecraft.world.item.enchantment.EnchantmentHelper;
+import net.minecraft.world.level.gameevent.GameEvent;
 import net.minecraft.world.phys.*;
 import net.neoforged.neoforge.event.entity.ProjectileImpactEvent;
 import net.neoforged.neoforge.event.entity.living.*;
@@ -91,7 +92,7 @@ public final class ArcheryServer {
     }
     /** Held is an input intention. Elapsed time and shot power are never accepted from a client. */
     public ActionResult charge(ServerPlayer p,CombatActor a,ArcheryProgress progress,boolean held) {
-        if(!usable(p,a,progress)) { controller(p.getUUID()).cancelCharge(); manualHeld.remove(p.getUUID()); return a.drawn()?ActionResult.BUSY:ActionResult.NOT_DRAWN; }
+        if(!usable(p,a,progress)) { cancelCharge(p); return a.drawn()?ActionResult.BUSY:ActionResult.NOT_DRAWN; }
         var c=controller(p.getUUID()); long now=p.level().getGameTime();
         if(held) {
             manualHeld.add(p.getUUID());
@@ -103,7 +104,14 @@ public final class ArcheryServer {
         ActionResult result=shot==null?ActionResult.ACCEPTED:fire(p,a,progress,shot);
         sink.changed(p); return result;
     }
-    /** Legacy 50-score hold-to-fire, additionally available on the left-button input. */
+    /**
+     * The 0.5-migration automatic intent, kept from the shipped 0.8.x behaviour: from 50 score a held
+     * left button keeps drawing and firing in the rapid stance, exactly like the held right-button
+     * charge which auto-releases at full draw in {@link #tick}. A left press still runs the bow bash
+     * first and interrupts any draw, so the intent only starts drawing after the bash animation;
+     * releasing the left button clears it. Without the automatic-charge unlock the intent is refused
+     * instead of silently drawing.
+     */
     public ActionResult auto(ServerPlayer p,CombatActor a,ArcheryProgress progress,boolean held) {
         if(!held) {
             reconcile(p,a,progress); var c=controller(p.getUUID());
@@ -113,14 +121,15 @@ public final class ArcheryServer {
         }
         if(!usable(p,a,progress)) return a.drawn()?ActionResult.BUSY:ActionResult.NOT_DRAWN;
         var c=controller(p.getUUID());
-        if(held&&(progress.score()<rules.autoChargeScore()||c.stance()!=ArcheryController.Stance.RAPID)) return ActionResult.TECHNIQUE_NOT_READY;
-        c.automatic(held,p.level().getGameTime(),rules,progress);
+        if(progress.score()<rules.autoChargeScore()||c.stance()!=ArcheryController.Stance.RAPID)
+            return ActionResult.TECHNIQUE_NOT_READY;
+        c.automatic(true,p.level().getGameTime(),rules,progress);
         sink.changed(p); return ActionResult.ACCEPTED;
     }
     /** Left click interrupts drawing even while the independent bash cooldown is running. */
     public ActionResult bash(ServerPlayer p,CombatActor a,ArcheryProgress progress) {
         if(!usable(p,a,progress)) return a.drawn()?ActionResult.BUSY:ActionResult.NOT_DRAWN;
-        var c=controller(p.getUUID()); c.cancelCharge(); manualHeld.remove(p.getUUID());
+        var c=controller(p.getUUID()); cancelCharge(p);
         if(a.stamina()+1e-9<rules.bashStaminaCost()) { sink.changed(p); return ActionResult.INSUFFICIENT_STAMINA; }
         if(!c.bash(p.level().getGameTime(),rules)) { sink.changed(p); return ActionResult.COOLDOWN; }
         long reservation=a.reserveAttackStamina(rules.bashStaminaCost());
@@ -150,7 +159,7 @@ public final class ArcheryServer {
         p.level().sendParticles(ParticleTypes.SWEEP_ATTACK,p.getX()+direction.x,p.getY()+1.1,p.getZ()+direction.z,4,.4,.3,.4,0);
         sink.skillUsed(p.getUUID(),"bow_bash"); sink.changed(p); return ActionResult.ACCEPTED;
     }
-    public void cancelCharge(ServerPlayer p) { controller(p.getUUID()).cancelCharge(); manualHeld.remove(p.getUUID()); }
+    public void cancelCharge(ServerPlayer p) { controller(p.getUUID()).interruptHeld(); manualHeld.remove(p.getUUID()); }
     /** Keep persistent charge/capture cooldown on logout; clear only the equipped/animation state. */
     public void remove(UUID player) {
         for(var pending:List.copyOf(pendingArrows.values())) if(pending.actor.id().equals(player))settleProjectile(pending.arrow);
@@ -160,7 +169,9 @@ public final class ArcheryServer {
         boolean changed=reconcile(p,a,progress);
         var c=controller(p.getUUID()); long now=p.level().getGameTime();
         changed|=c.recover(now,rules,progress);
-        if(a.phase()!=CombatPhase.READY&&c.charging()) { c.cancelCharge(); changed=true; }
+        if(a.phase()!=CombatPhase.READY&&(c.charging()||c.automaticHeld()||manualHeld.contains(p.getUUID()))) {
+            cancelCharge(p); changed=true;
+        }
         if(a.phase()==CombatPhase.READY) {
             changed|=c.maintainAutomatic(now);
             if(manualHeld.contains(p.getUUID())) changed|=c.beginCharge(now);
@@ -178,6 +189,10 @@ public final class ArcheryServer {
         double stamina=ArcheryScores.shotStaminaCost(rules,shot.stance()==ArcheryController.Stance.SNIPE,shot.power());
         if(actor.stamina()+1e-9<stamina) return ActionResult.INSUFFICIENT_STAMINA;
         if(actor.spirit()+1e-9<rules.shotSpiritCost()) return ActionResult.INSUFFICIENT_SPIRIT;
+        // A shot that cannot pay its durability is refused before ammo, stamina or spirit move; the
+        // shot that exactly exhausts the bow still fires and breaks it, exactly like the legacy one.
+        if(weapon.isDamageableItem()&&weapon.getMaxDamage()-weapon.getDamageValue()<shot.durability())
+            return ActionResult.SKILL_NOT_FOUND;
         ItemStack ammo=p.getProjectile(weapon);
         if(ammo.isEmpty()&&p.hasInfiniteMaterials()) ammo=bowItem.getDefaultCreativeAmmo(p,weapon);
         if(ammo.isEmpty()||!(ammo.getItem() instanceof ArrowItem arrowItem)) return ActionResult.SKILL_NOT_FOUND;
@@ -218,7 +233,13 @@ public final class ArcheryServer {
         return ActionResult.ACCEPTED;
     }
     public ArcheryController.Snapshot snapshot(ServerPlayer p,ArcheryProgress progress) { return controller(p.getUUID()).snapshot(p.level().getGameTime(),rules,progress); }
-    public JsonObject snapshotJson(ServerPlayer p,ArcheryProgress progress) { return RpgConfig.JSON.toJsonTree(snapshot(p,progress)).getAsJsonObject(); }
+    public JsonObject snapshotJson(ServerPlayer p,ArcheryProgress progress) {
+        var json=RpgConfig.JSON.toJsonTree(snapshot(p,progress)).getAsJsonObject();
+        boolean piercing=progress.branch250()==ArcheryProgress.Branch250.CHUAN_TANG_FENG;
+        json.addProperty("blockPierce",piercing?rules.chuanTangFengBlockPierce():0);
+        json.addProperty("blockSlow",piercing?rules.chuanTangFengBlockSlow():0);
+        return json;
+    }
     public boolean active(ServerPlayer p) { return controller(p.getUUID()).active(); }
     /** Called after a real hit/block/parry, never for the player's dodge immunity. */
     public boolean markProjectileContact(Projectile projectile) {
@@ -301,17 +322,39 @@ public final class ArcheryServer {
         }
         return true;
     }
-    /** Block penetration retains the old three impacts and per-block speed reduction. */
+    /**
+     * Count actual traversed block shapes, including connected walls and oblique shots. The client
+     * landing preview calls the same {@link ArcheryBlockPiercing#trace}, so the predicted stop and
+     * the authoritative stop use one geometry.
+     */
     public boolean onProjectileImpact(ProjectileImpactEvent event) {
         if(event.isCanceled()||!(event.getProjectile() instanceof AbstractArrow arrow)||arrow.level().isClientSide()
-                ||!isArcheryArrow(arrow)||!(event.getRayTraceResult() instanceof BlockHitResult)) return false;
+                ||!isArcheryArrow(arrow)||!(event.getRayTraceResult() instanceof BlockHitResult hit)) return false;
+        // World-border behaviour remains vanilla (the arrow sticks at the border) and is a flight end,
+        // never a pierced block; the unspent stamina share is settled here just like any wall hit.
+        if(hit.isWorldBorderHit()) {settleProjectile(arrow);return false;}
         var tag=arrow.getPersistentData(); int remaining=tag.getIntOr(BLOCKS,0);
         if(remaining<=0) {settleProjectile(arrow);return false;}
         Vec3 velocity=arrow.getDeltaMovement();
         double slow=Math.max(0,Math.min(1,tag.getDoubleOr(SLOW,0)));
-        tag.putInt(BLOCKS,remaining-1); arrow.setDeltaMovement(velocity.scale(1-slow));
+        if(!Double.isFinite(slow))slow=0;
         Vec3 direction=velocity.lengthSqr()>1e-8?velocity.normalize():Vec3.directionFromRotation(arrow.getXRot(),arrow.getYRot());
-        arrow.setPos(arrow.position().add(direction.scale(1.05))); event.setCanceled(true); return true;
+        var crossing=ArcheryBlockPiercing.trace(arrow.level(),arrow,hit,direction,
+                Math.min(ArcheryBallistics.MAX_BLOCKS,remaining),slow);
+        if(crossing.blocks()==0) {settleProjectile(arrow);return false;}
+        tag.putInt(BLOCKS,remaining-crossing.blocks());
+        arrow.setPos(crossing.position());arrow.setDeltaMovement(velocity.scale(crossing.speedFactor()));
+        arrow.needsSync=true;event.setCanceled(true);
+        if(crossing.stoppedAt()!=null) {
+            // The cancelled impact never reaches vanilla onHit, so settle the terminal block exactly
+            // once with vanilla AbstractArrow state so no damage or landing event can repeat.
+            BlockHitResult stopped=crossing.stoppedAt();
+            ((ArcheryArrowInvoker)(Object)arrow).fsrpg$onHitBlock(stopped);
+            arrow.level().gameEvent(GameEvent.PROJECTILE_LAND,stopped.getBlockPos(),
+                    GameEvent.Context.of(arrow,arrow.level().getBlockState(stopped.getBlockPos())));
+            settleProjectile(arrow);
+        }
+        return true;
     }
     public static boolean isArcheryArrow(AbstractArrow arrow) { return arrow.getPersistentData().getBooleanOr(TAG,false); }
     public void save(Path target) throws IOException {

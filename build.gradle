@@ -596,3 +596,26 @@ tasks.register('stage085Config',JavaExec) {
     dependsOn testClasses;classpath=sourceSets.test.runtimeClasspath;mainClass='org.fsrpg.config.Stage085Config'
     doFirst {args file(project.property('releaseStageDirectory')).absolutePath,file(project.property('releaseStageReport')).absolutePath}
 }
+
+// Generic runner for parallel 0.9.0 branch work. Run one pure-Java test class without editing this file:
+//   .\gradlew.bat rpgTest -PrpgTestClass=org.fsrpg.movement.FootworkTest --offline
+// Permanent task + check wiring is added by the Lead at release.
+tasks.register('rpgTest', JavaExec) {
+    dependsOn testClasses
+    classpath = sourceSets.test.runtimeClasspath
+    if (!project.hasProperty('rpgTestClass')) throw new GradleException('rpgTest requires -PrpgTestClass=<fully.qualified.TestClass>')
+    mainClass = project.property('rpgTestClass').toString()
+    jvmArgs '-Dfile.encoding=UTF-8'
+    if (project.hasProperty('rpgTestArgs')) args project.property('rpgTestArgs').toString().split(' ')
+}
+tasks.register('stage090Config', JavaExec) {
+    dependsOn testClasses;classpath=sourceSets.test.runtimeClasspath;mainClass='org.fsrpg.config.Stage090Config'
+    doFirst {args file(project.property('releaseStageDirectory')).absolutePath,file(project.property('releaseStageReport')).absolutePath}
+}
+['footworkTest':'org.fsrpg.movement.FootworkTest',
+ 'footworkProgressionTest':'org.fsrpg.progression.FootworkProgressionTest',
+ 'footworkSkillMigrationTest':'org.fsrpg.config.FootworkSkillMigrationTest',
+ 'rapierTechniquesMigrationTest':'org.fsrpg.config.RapierTechniquesMigrationTest'].each { taskName, className ->
+    tasks.register(taskName, JavaExec) { dependsOn testClasses; classpath = sourceSets.test.runtimeClasspath; mainClass = className; jvmArgs '-Dfile.encoding=UTF-8' }
+    tasks.named('check') { dependsOn taskName }
+}
