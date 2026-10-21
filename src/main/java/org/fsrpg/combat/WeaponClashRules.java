@@ -7,5 +7,5 @@ public record WeaponClashRules(int contactWindowTicks, double damageTolerance) {
             throw new IllegalArgumentException("weapon clash contactWindowTicks must be between 0 and 10");
         SkillDefinition.checkNumber(damageTolerance, "weapon clash damageTolerance", 0, 1_000_000);
     }
-    public static WeaponClashRules defaults() { return new WeaponClashRules(2, 3); }
+    public static WeaponClashRules defaults() { return new WeaponClashRules(3, 3); }
 }

@@ -1,7 +1,10 @@
 {
   "enabled": true,
-  "flashLeadTicks": 6,
-  "inputWindowTicks": 6,
+  "flashLeadTicks": 7,
+  "inputWindowTicks": 7,
   "flashDurationMillis": 120,
-  "guardCancelsActive": true
+  "guardCancelsActive": true,
+  "timingMode": "windup_fraction",
+  "flashAtFraction": 0.2,
+  "windowOpenFraction": 0.6
 }

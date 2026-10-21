@@ -71,7 +71,7 @@ public final class CreatureMeleeServer {
             contact=new CreatureContactDelay(contactTick,windowTicks,true);
         }
     }
-    private record Invocation(Attack attack, NativeAttack nativeAttack, long contactTick, boolean deferred) {
+    private record Invocation(Attack attack, NativeAttack nativeAttack, long contactTick, boolean deferred, boolean windowClash) {
         Mob mob(){return attack!=null?attack.mob:nativeAttack.mob;}
         LivingEntity target(){return attack!=null?attack.target:nativeAttack.target;}
         double damageMultiplier(){return attack!=null?attack.damageMultiplier:nativeAttack.damageMultiplier;}
@@ -137,7 +137,9 @@ public final class CreatureMeleeServer {
                 if (attack.mob.isWithinMeleeAttackRange(attack.target) && attack.mob.hasLineOfSight(attack.target)) {
                     RpgServer server=RpgServer.instance();
                     boolean wait=server!=null&&server.deferCreatureContact(attack.mob,attack.target);
-                    int window=server==null?0:server.config().current().combat().weaponClash().contactWindowTicks();
+                    // Authored attacks allow a first ACTIVE on this inclusive contact tick, then
+                    // commit any unanswered native damage in the same tick after the player scan.
+                    int window=0;
                     attack.contact=new CreatureContactDelay(now,window,wait);
                     // Expiry is deliberately checked by flushContacts after this tick's player
                     // contacts, so the inclusive final tick cannot lose to world iteration order.
@@ -164,7 +166,7 @@ public final class CreatureMeleeServer {
             if (!attack.contact.claimExecution(now,reverse)) continue;
             Invocation previous=invocation;
             // The native contact occurred at interception, even when dispatch follows in the same tick.
-            invocation=new Invocation(null,attack,attack.contactTick,true);
+            invocation=new Invocation(null,attack,attack.contactTick,true,false);
             try { attack.mob.doHurtTarget(attack.level,attack.target); }
             finally { invocation=previous;finish(attack,false); }
         }
@@ -179,7 +181,7 @@ public final class CreatureMeleeServer {
         // Invoke the complete original virtual method exactly once. Delaying only a replacement
         // hurtServer call would discard poison, enchantment hooks and other mob-specific effects.
         Invocation previous=invocation;
-        invocation=new Invocation(attack,null,contact.contactTick(),contact.deferred());
+        invocation=new Invocation(attack,null,contact.contactTick(),contact.deferred(),false);
         try { attack.mob.doHurtTarget(attack.level,attack.target); }
         finally { invocation=previous; }
         if (stunRemaining.applyAsInt(attack.mob)>0) {
@@ -197,8 +199,40 @@ public final class CreatureMeleeServer {
         return source==invocation.mob() && direct==invocation.mob() && target==invocation.target() ? invocation.contactTick() : null;
     }
     public boolean invocationDeferred() { return invocation!=null && invocation.deferred(); }
+    public boolean invocationWindowClash() { return invocation!=null && invocation.windowClash(); }
     /** Counter power belongs to this accepted native invocation, even after a long authored windup. */
     public double invocationDamageMultiplier() { return invocation==null ? 1 : invocation.damageMultiplier(); }
+    /** An authored attack can meet only a new ACTIVE inside its own current cue window. */
+    public Snapshot windowClashCandidate(Entity entity,LivingEntity target,long now) {
+        Attack attack=active.get(entity.getUUID());
+        if(attack==null||attack.mob!=entity||attack.target!=target||attack.cue==null
+                ||!attack.cue.accepts(now)||now>attack.clock.contactGameTick()
+                ||attack.contact!=null&&!attack.contact.pending()||!valid(attack)
+                ||stunRemaining.applyAsInt(entity)>0||!attack.mob.isWithinMeleeAttackRange(target)
+                ||!attack.mob.hasLineOfSight(target))return null;
+        return snapshot(entity);
+    }
+    /** Invoke the original virtual native attack once to obtain its full real incoming damage. */
+    public boolean executeWindowClash(Mob mob,LivingEntity target,long expectedSequence) {
+        long now=mob.level().getGameTime();Snapshot candidate=windowClashCandidate(mob,target,now);
+        if(candidate==null||candidate.sequence()!=expectedSequence)return false;
+        Attack attack=active.get(mob.getUUID());
+        if(attack.contact==null){
+            contactAttempts++;send(attack,"CONTACT",null);
+            attack.contact=new CreatureContactDelay(now,0,false);
+        }
+        if(!attack.contact.claimExecution(now,true))return false;
+        Invocation previous=invocation;
+        invocation=new Invocation(attack,null,attack.clock.contactGameTick(),false,true);
+        try {mob.doHurtTarget(attack.level,target);}
+        finally {
+            invocation=previous;
+            // The one original call already happened; its future animation contact is canceled
+            // even if another native hook canceled damage before the RPG incoming adapter.
+            finish(attack,true);
+        }
+        return true;
+    }
     private boolean valid(Attack attack) {
         return canContinue(attack.mob) && attack.mob.isAlive() && !attack.mob.isRemoved() && attack.target.isAlive() && !attack.target.isRemoved()
                 && attack.mob.level()==attack.level && attack.target.level()==attack.level

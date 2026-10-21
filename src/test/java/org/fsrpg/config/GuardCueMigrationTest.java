@@ -29,7 +29,7 @@ public final class GuardCueMigrationTest {
         Path dir = Files.createTempDirectory("fsrpg-guard-cue-fresh-");
         try {
             var config = new RpgConfig(dir); var definitions = config.reload();
-            equal(6, definitions.combat().perfectGuardTicks(), "fresh six-tick project window");
+            equal(7, definitions.combat().perfectGuardTicks(), "fresh seven-tick project window after the 0.8.4 extension");
             equal(CombatRules.defaults(), definitions.combat(), "fallback and bundled combat agree");
             equal(GuardCueSettings.defaults(), GuardCueSettings.read(dir.resolve("guard_cues.json")), "fresh cue settings are exact defaults");
             check(Files.exists(dir.resolve(GuardCueMigration.MARKER)), "fresh upgrade marked complete");

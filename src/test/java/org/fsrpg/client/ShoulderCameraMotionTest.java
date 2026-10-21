@@ -21,6 +21,14 @@ public final class ShoulderCameraMotionTest {
         var after=motion.sample(true,.51,side,.5,.12);
         check(after.x()<.65&&after.x()>-.65&&after.z()>-3&&after.z()<-1,"Shoulder switches and collision distance changes are smoothed without overshoot");
         for(int i=2;i<100;i++){after=motion.sample(true,.5+i*.01,side,.5,.12);check(after.x()>=-.65&&after.x()<=.65,"Side transition stays bounded");}
+        for(int rate:new int[]{30,60,144}){
+            var retained=new ShoulderCameraMotion();retained.sample(true,0,goal,.5,.12);retained.sample(true,.5,goal,.5,.12);
+            var turned=new ShoulderCameraMotion.Offset(3,.12,.65);
+            var sample=goal;
+            for(int i=1;i<=rate;i++)sample=retained.sample(true,.5+i/(double)rate,turned,.5,.12);
+            near(turned.x()+(goal.x()-turned.x())*Math.exp(-1/.12),sample.x(),"Original 0.12-second follow is frame-rate independent at "+rate+" Hz");
+            check(sample.x()<turned.x(),"Removing free-cursor aiming retains finite position lag after a turn");
+        }
         System.out.println("ShoulderCameraMotionTest passed: "+checks+" checks");
     }
 }

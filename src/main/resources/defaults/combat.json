@@ -24,14 +24,14 @@
   "guardArcDegrees": 120,
   "guardDamageMultiplier": 0.25,
   "guardStaminaCost": 10.0,
-  "perfectGuardTicks": 6,
+  "perfectGuardTicks": 7,
   "perfectGuardStaminaCost": 10.0,
   "parryStunTicks": 4,
   "guardBreakStunTicks": 10,
   "hitStunTicks": 2,
   "clashFacingArcDegrees": 120,
   "weaponClash": {
-    "contactWindowTicks": 2,
+    "contactWindowTicks": 3,
     "damageTolerance": 3.0
   },
   "dodgeDurationTicks": 12,

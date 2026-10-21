@@ -35,7 +35,7 @@ public final class ConfigTest {
     private static void weaponClashValidation() throws Exception {
         JsonObject combat=resource("combat.json").getAsJsonObject();
         var skills=resource("skills.json");var quests=resource("quests.json");var weapons=resource("weapons.json");
-        equal(new WeaponClashRules(2,3),RpgConfig.parse(combat,skills,quests,weapons).combat().weaponClash(),"bundled weapon clash defaults use two ticks and three damage points");
+        equal(new WeaponClashRules(3,3),RpgConfig.parse(combat,skills,quests,weapons).combat().weaponClash(),"bundled weapon clash defaults use three ticks and three damage points");
         JsonObject old=combat.deepCopy();old.remove("weaponClash");String oldText=RpgConfig.JSON.toJson(old);
         equal(WeaponClashRules.defaults(),RpgConfig.parse(old,skills,quests,weapons).combat().weaponClash(),"old combat JSON can omit the entire clash extension");
         equal(oldText,RpgConfig.JSON.toJson(old),"parsing old combat rules does not insert or rewrite source fields");

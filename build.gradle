@@ -136,6 +136,24 @@ neoForge {
                 jvmArgument "-Dfsrpg.weaponClashWorld=${project.property('smokeWorld')}"
                 jvmArgument "-Dfsrpg.smokeEvidence=${file(project.property('smokeEvidence')).absolutePath}"
             }
+            if(project.hasProperty('spearShoulderSmoke')) {
+                if(!project.hasProperty('smokeWorld'))throw new GradleException('spearShoulderSmoke requires a copied marked world')
+                jvmArgument '-Dfsrpg.spearShoulderSmoke=true'
+                jvmArgument "-Dfsrpg.spearShoulderWorld=${project.property('smokeWorld')}"
+                jvmArgument "-Dfsrpg.smokeEvidence=${file(project.property('smokeEvidence')).absolutePath}"
+            }
+            if(project.hasProperty('defenseFlowSmoke')) {
+                if(!project.hasProperty('smokeWorld'))throw new GradleException('defenseFlowSmoke requires a copied marked world')
+                jvmArgument '-Dfsrpg.defenseFlowSmoke=true'
+                jvmArgument "-Dfsrpg.defenseFlowWorld=${project.property('smokeWorld')}"
+                jvmArgument "-Dfsrpg.smokeEvidence=${file(project.property('smokeEvidence')).absolutePath}"
+            }
+            if(project.hasProperty('rapierMotionSmoke')) {
+                if(!project.hasProperty('smokeWorld'))throw new GradleException('rapierMotionSmoke requires a copied marked world')
+                jvmArgument '-Dfsrpg.rapierMotionSmoke=true'
+                jvmArgument "-Dfsrpg.rapierMotionWorld=${project.property('smokeWorld')}"
+                jvmArgument "-Dfsrpg.smokeEvidence=${file(project.property('smokeEvidence')).absolutePath}"
+            }
             if(project.hasProperty('inspectionCarrySmoke')) {
                 if(!project.hasProperty('smokeWorld'))throw new GradleException('inspectionCarrySmoke requires a copied marked world')
                 jvmArgument '-Dfsrpg.inspectionCarrySmoke=true'
@@ -191,7 +209,7 @@ neoForge {
     }
     mods { fsrpg {
         if (project.hasProperty('rpgJarSmoke')) sourceSet sourceSets.packagedSmoke
-        else { sourceSet sourceSets.main; if (project.hasProperty('weaponClashSmoke') || project.hasProperty('runAirSmoke') || project.hasProperty('inspectionCarrySmoke') || project.hasProperty('groundImpulseSmoke') || project.hasProperty('burstSwipeSmoke') || project.hasProperty('shoulderCombatSmoke') || project.hasProperty('spearGestureSmoke') || project.hasProperty('combatRevisionSmoke') || project.hasProperty('dualSourceSmoke') || project.hasProperty('guardComboSmoke') || project.hasProperty('creatureCombatSmoke') || project.hasProperty('combatBalanceSmoke') || project.hasProperty('whiteAdventurerSmoke') || project.hasProperty('spearPerformanceSmoke') || project.hasProperty('rapierLockSmoke') || project.hasProperty('artSmoke') || project.hasProperty('rpgSmoke') || project.hasProperty('poseSmoke') || project.hasProperty('hudSmoke') || project.hasProperty('collectionSmoke') || project.hasProperty('legacySkillSmoke') || project.hasProperty('spearSolverSmoke') || project.hasProperty('actionLimitsSmoke')) sourceSet sourceSets.smoke }
+        else { sourceSet sourceSets.main; if (project.hasProperty('spearShoulderSmoke') || project.hasProperty('defenseFlowSmoke') || project.hasProperty('rapierMotionSmoke') || project.hasProperty('weaponClashSmoke') || project.hasProperty('runAirSmoke') || project.hasProperty('inspectionCarrySmoke') || project.hasProperty('groundImpulseSmoke') || project.hasProperty('burstSwipeSmoke') || project.hasProperty('shoulderCombatSmoke') || project.hasProperty('spearGestureSmoke') || project.hasProperty('combatRevisionSmoke') || project.hasProperty('dualSourceSmoke') || project.hasProperty('guardComboSmoke') || project.hasProperty('creatureCombatSmoke') || project.hasProperty('combatBalanceSmoke') || project.hasProperty('whiteAdventurerSmoke') || project.hasProperty('spearPerformanceSmoke') || project.hasProperty('rapierLockSmoke') || project.hasProperty('artSmoke') || project.hasProperty('rpgSmoke') || project.hasProperty('poseSmoke') || project.hasProperty('hudSmoke') || project.hasProperty('collectionSmoke') || project.hasProperty('legacySkillSmoke') || project.hasProperty('spearSolverSmoke') || project.hasProperty('actionLimitsSmoke')) sourceSet sourceSets.smoke }
     } }
 }
 tasks.named('runClient') { dependsOn monitorAgentJar }
@@ -528,6 +546,9 @@ tasks.register('stage077Config',JavaExec) {
  'airPoseJoinTest':'org.fsrpg.client.AirPoseJoinTest',
  'playerShoulderFitTest':'org.fsrpg.client.PlayerShoulderFitTest',
  'shoulderCameraMotionTest':'org.fsrpg.client.ShoulderCameraMotionTest',
+ 'guardHurtMotionTest':'org.fsrpg.client.GuardHurtMotionTest',
+ 'defenseFlowMigrationTest':'org.fsrpg.config.DefenseFlowMigrationTest',
+ 'rapierMotionTest':'org.fsrpg.client.RapierMotionTest',
  'shiftBurstIntentTest':'org.fsrpg.client.ShiftBurstIntentTest',
  'burstDashTest':'org.fsrpg.combat.BurstDashTest',
  'burstDashMigrationTest':'org.fsrpg.config.BurstDashMigrationTest',
@@ -556,3 +577,7 @@ tasks.register('stage079Config',JavaExec) {
 
 tasks.register('airInertiaTest',JavaExec){dependsOn testClasses;classpath=sourceSets.test.runtimeClasspath;mainClass='org.fsrpg.client.AirInertiaTest';jvmArgs '-Dfile.encoding=UTF-8'}
 tasks.named('check'){dependsOn 'airInertiaTest'}
+tasks.register('stage084Config',JavaExec) {
+    dependsOn testClasses;classpath=sourceSets.test.runtimeClasspath;mainClass='org.fsrpg.config.Stage084Config'
+    doFirst {args file(project.property('releaseStageDirectory')).absolutePath,file(project.property('releaseStageReport')).absolutePath}
+}

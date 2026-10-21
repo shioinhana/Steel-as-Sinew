@@ -20,7 +20,8 @@ final class ClientOptions {
     static final ModConfigSpec.DoubleValue SPEAR_CARRY_DOWN, SPEAR_CARRY_BACK, SPEAR_CARRY_SIDE, SPEAR_PELVIS_RESPONSE, SPEAR_TURN_STEP_TIME, SPEAR_TURN_STEP_ANGLE, SPEAR_TURN_STEP_LIFT, SPEAR_AIM_CROUCH;
     static final ModConfigSpec.DoubleValue WAIST_TWIST_LIMIT, TURN_ROOT_FOLLOW;
     static final ModConfigSpec.DoubleValue SPEAR_READY_RETRACT;
-    static final ModConfigSpec.DoubleValue CAMERA_DISTANCE,CAMERA_HEIGHT,CAMERA_TRANSITION,CAMERA_RESPONSE;
+    static final ModConfigSpec.DoubleValue CAMERA_DISTANCE,CAMERA_HEIGHT,CAMERA_TRANSITION,CAMERA_RESPONSE,CAMERA_ROLL;
+    static final ModConfigSpec.DoubleValue SPEAR_LOCKED_RANGE;
     static final ModConfigSpec.BooleanValue IDLE_INSPECTIONS;
     static final ModConfigSpec.DoubleValue INSPECT_MIN, INSPECT_MAX, INSPECT_BLEND, ACTION_BLEND;
     static {
@@ -95,7 +96,9 @@ final class ClientOptions {
         CAMERA_HEIGHT=builder.comment("Additional over-shoulder camera height, in blocks.").defineInRange("shoulderCameraHeight",.12,-.5,1);
         CAMERA_TRANSITION=builder.comment("Seconds for a smooth eye-to-shoulder entry or return before restoring the previous camera type.").defineInRange("shoulderCameraTransitionSeconds",.5,.15,1.5);
         CAMERA_RESPONSE=builder.comment("Render-time position response for camera side, heading and wall-distance changes, in seconds. Final wall safety is applied after smoothing.").defineInRange("shoulderCameraResponseSeconds",.12,.02,.5);
-        SPEAR_RECT_W=builder.comment("Baseline spear cursor width fraction, expanded 3x at runtime (height 2x), capped at 96% of the viewport. The visible/input field shrinks with FOV, pitch and camera parallax to keep aim within +/-45 yaw and +/-40 pitch ahead of the player.").defineInRange("spearCursorWidth",.56,.2,.9);
+        CAMERA_ROLL=builder.comment("Small over-shoulder camera roll in degrees, faded with the existing eye-to-shoulder transition. Zero keeps the horizon level.").defineInRange("shoulderCameraRollDegrees",2.0,-6,6);
+        SPEAR_LOCKED_RANGE=builder.comment("Physical spear yaw/pitch range while target-locked, relative to the original 45/40 degree limits. The invisible full viewport maps to this envelope; 0.7 reduces actual motion by 30 percent.").defineInRange("spearLockedAimRangeScale",.7,.1,1);
+        SPEAR_RECT_W=builder.comment("Legacy region-aim preference retained for compatibility. Live spear aiming always uses the shoulder camera center; this field no longer affects controls or HUD.").defineInRange("spearCursorWidth",.56,.2,.9);
         SPEAR_RECT_H=builder.defineInRange("spearCursorHeight",.5,.2,.85);
         SPEAR_DRAG=builder.comment("Minimum angular path length in degrees for a sweep.").defineInRange("spearDragDegrees",5.0,1,30);
         SPEAR_HOLD=builder.comment("Minimum held ticks before a dragged gesture becomes a sweep.").defineInRange("spearHoldTicks",3,1,20);

@@ -4,7 +4,7 @@ import java.util.Collection;
 import java.util.Comparator;
 import java.util.UUID;
 
-/** Pure server selection policy. Clients supply neither a target nor its priority. */
+/** Pure server eligibility and explicit target-selection policy. */
 public final class RapierTargeting {
     private RapierTargeting() {}
 
@@ -25,6 +25,13 @@ public final class RapierTargeting {
                     && distanceSquared <= rules.range() * rules.range()
                     && (hostile || rules.allowPassive()) && (visible || !rules.requireLineOfSight());
         }
+    }
+
+    /** Spear shares explicit selection, while its live weapon aim remains independently player controlled. */
+    public static boolean eligibleActor(CombatActor actor,boolean weaponEquipped,boolean alive,boolean spectator) {
+        return actor.rules().rapierTargetLock().enabled() && alive && !spectator && weaponEquipped
+                && actor.drawn() && actor.phase()!=CombatPhase.SHEATHING && actor.style()!=null
+                && !actor.style().weaponGroup().equals("unarmed");
     }
 
     /** A nearer same-priority arrival never steals a valid lock. A hostile can replace a passive. */

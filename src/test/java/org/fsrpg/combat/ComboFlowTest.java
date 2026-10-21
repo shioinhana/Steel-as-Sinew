@@ -94,11 +94,11 @@ public final class ComboFlowTest {
             int duration=actor.currentSkill().durationTicks();
             for(int elapsed=0;elapsed<duration;elapsed++) {
                 double stamina=actor.stamina(),spirit=actor.spirit();long sequence=actor.snapshot().swingSequence();
-                actor.perfectGuardSucceeded();int counter=actor.counterRemainingTicks();
+                int counter=actor.counterRemainingTicks();
                 var rejected=actor.requestStyledAttack(input,d.skills());
                 equal(ActionResult.DIRECTION_EXHAUSTED,rejected.rejection(),"third cut rejects through windup, active and full recovery "+elapsed);
                 near(stamina,actor.stamina(),"blocked third cut spends no stamina");near(spirit,actor.spirit(),"blocked third cut spends no spirit");
-                equal(counter,actor.counterRemainingTicks(),"blocked third cut preserves earned counter window");
+                equal(counter,actor.counterRemainingTicks(),"blocked third cut does not invent or consume a counter");
                 equal(sequence,actor.snapshot().swingSequence(),"blocked third cut issues no extra attack");
                 check(actor.drainStartedSkills().isEmpty()&&!actor.comboSnapshot().queued(),"blocked third cut never enters the next slot");
                 actor.tick();

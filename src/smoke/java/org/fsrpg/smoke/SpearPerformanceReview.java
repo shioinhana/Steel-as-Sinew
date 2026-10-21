@@ -91,6 +91,8 @@ final class SpearPerformanceReview {
     private long scenePreparationStarted;
     private double scenePreparationSeconds;
     private long cursorSamples, cachedPoseFrames;
+    private long lastCenterAimTraceNanos;
+    private final JsonArray centerAimInputTrace=new JsonArray();
     private long qualityFrames, shaftFailures, badGripFrames, lastQuality, qualityNanos, gcCountStart, gcMillisStart, duplicateSolveFrames;
     private long poseJumpsOver25Degrees;
     private double maximumNativePoseGapTicks;
@@ -223,6 +225,7 @@ final class SpearPerformanceReview {
         sceneSetupComplete = sceneServerReady = false; sceneServerPhase = sceneServerStyle = "";
         sampleStart = lastPost = 0; screenshotTaken = false;
         changedPosePairs = distinctSubtickPairs = attackFrames = cursorSamples = cachedPoseFrames = 0;
+        lastCenterAimTraceNanos=0;centerAimInputTrace.asList().clear();
         qualityFrames = shaftFailures = badGripFrames = qualityNanos = lastQuality = duplicateSolveFrames = 0;
         maximumGripAxisError = maximumGripSpacing = 0; minimumGripSpacing = Double.POSITIVE_INFINITY;
         previousSolveCalls = previousNativeFrame = -1;
@@ -270,7 +273,12 @@ final class SpearPerformanceReview {
                 if (waited < 250_000_000L || !sceneServerPhase.equals("READY") || activeServerSequence >= 0
                         || !ClientState.text(ClientState.snapshot(), "phase", "").equals("READY") || !clientSceneReady(game)) return;
                 visualPending = false; visualActive = true; sceneStarted = System.nanoTime(); sceneTick = 0;
-                visualCapture.start("spear-short-thrust-native", "Separate untimed 5-second local-player boundary aim / rapid 0.2-second thrust visual acceptance; each real RenderFrameEvent.Post", RenderObservations.submittedSampler(game.player));
+                var submitted=RenderObservations.submittedSampler(game.player);
+                visualCapture.start("spear-short-thrust-native", "Separate untimed 5-second local-player center aim / rapid 0.2-second thrust visual acceptance; each real RenderFrameEvent.Post", ()->{
+                    var observed=submitted.get();observed.addProperty("aimInputMode","center-reticle-camera-angle");
+                    observed.addProperty("cameraYaw",CombatCamera.yaw());observed.addProperty("cameraPitch",CombatCamera.pitch());
+                    observed.add("centerRayWorld",RpgConfig.JSON.toJsonTree(new org.joml.Vector3f(0,0,-1).rotate(game.gameRenderer.getMainCamera().rotation())));return observed;
+                });
                 return;
             }
             if (visualActive) {
@@ -350,12 +358,22 @@ final class SpearPerformanceReview {
         try {
             if (actualScene() >= 2 && actualScene() != 3 && CombatCamera.active()) {
                 var game = Minecraft.getInstance(); double seconds = (renderStarted - sceneStarted) / 1e9;
-                var field = CombatCamera.spearFrame();
-                double x = field.left() + (.5 + .495 * Math.sin(seconds * (actualScene() == 5 ? 5.1 : 1.7))) * (field.right() - field.left());
-                double y = field.top() + (.5 + .495 * Math.sin(seconds * (actualScene() == 5 ? 7.3 : 2.3))) * (field.bottom() - field.top());
+                double desiredYaw=60*Math.sin(seconds*(actualScene()==5?5.1:1.7));
+                double desiredPitch=22*Math.sin(seconds*(actualScene()==5?7.3:2.3));
+                double beforeYaw=CombatCamera.yaw(),beforePitch=CombatCamera.pitch();
                 double gain = Math.pow(game.options.sensitivity().get() * .6 + .2, 3) * 8;
-                require(CombatCamera.mouse((x - CombatCamera.cursorX()) / gain * (game.options.invertMouseX().get() ? -1 : 1),
-                        (y - CombatCamera.cursorY()) / gain * (game.options.invertMouseY().get() ? -1 : 1)), "Native spear mouse input was rejected");
+                double dx=AttackAim.wrap(desiredYaw-beforeYaw)/(gain*.15)*(game.options.invertMouseX().get()?-1:1);
+                double dy=(desiredPitch-beforePitch)/(gain*.15)*(game.options.invertMouseY().get()?-1:1);
+                require(CombatCamera.mouse(dx,dy), "Native direct center-aim mouse input was rejected");
+                require(Math.abs(AttackAim.wrap(CombatCamera.yaw()-desiredYaw))<.001&&Math.abs(CombatCamera.pitch()-desiredPitch)<.001,"Native center-aim camera missed its requested angles");
+                require(Math.abs(AttackAim.wrap(game.player.getYRot()-CombatCamera.yaw()))<.001&&CombatCamera.cursorX()==0&&CombatCamera.cursorY()==0,"Native center aiming must turn the actor and retain a fixed reticle");
+                // Sample input evidence at 4 Hz rather than allocating a full trace on every timed frame.
+                if(renderStarted-lastCenterAimTraceNanos>=250_000_000L){
+                    lastCenterAimTraceNanos=renderStarted;var trace=new JsonObject();trace.addProperty("sceneSeconds",seconds);
+                    trace.addProperty("desiredCameraYaw",desiredYaw);trace.addProperty("desiredCameraPitch",desiredPitch);trace.addProperty("mouseInputDx",dx);trace.addProperty("mouseInputDy",dy);
+                    trace.addProperty("actualCameraYaw",CombatCamera.yaw());trace.addProperty("actualCameraPitch",CombatCamera.pitch());trace.addProperty("actorYaw",game.player.getYRot());
+                    trace.add("centerRayWorld",RpgConfig.JSON.toJsonTree(new org.joml.Vector3f(0,0,-1).rotate(game.gameRenderer.getMainCamera().rotation())));centerAimInputTrace.add(trace);
+                }
                 cursorSamples++;
             }
         } catch (Throwable error) { failure = error; }
@@ -491,6 +509,7 @@ final class SpearPerformanceReview {
         result.addProperty("changedCachedPosePairs", changedPosePairs); result.addProperty("nativeSubtickPosePairs", distinctSubtickPairs);
         result.addProperty("observedRenderedRigFrames", cachedPoseFrames);
         result.addProperty("actualMouseSamples", cursorSamples); result.addProperty("attackFrames", attackFrames);
+        result.addProperty("aimInputMode","center-reticle-camera-angle");result.add("centerAimInputTrace",centerAimInputTrace.deepCopy());
         result.addProperty("officialHeldItemSubmissions", OfficialHeldItems.submissions() - officialStart);
         result.addProperty("qualityFrames", qualityFrames); result.addProperty("qualityObservedHz", qualityFrames / duration);
         result.addProperty("qualityObserverTimeMs", qualityNanos / 1e6); result.addProperty("completeShaftClearFailures", shaftFailures);
@@ -526,8 +545,8 @@ final class SpearPerformanceReview {
                 error = new AssertionError("At least eight completed real server thrusts must be timed");
             var report = new JsonObject(); report.addProperty("passed", error == null); report.addProperty("error", error == null ? null : error.toString());
             report.addProperty("capturedAtUtc", Instant.now().toString()); report.addProperty("captureEvent", "RenderFrameEvent.Post, native System.nanoTime timestamps");
-            report.addProperty("method", "Same local player, 1000x680, distance 3, VSync off, uncapped active render; 3-second warmup + 8-second measurement for five scenes, then optional 30-second continuous boundary aim, movement and 4 Hz attack pressure (one intent per five client ticks). Native Pre/Post timings, P99/max and slow-frame phase. Read-only submitted FK quality at about 60 Hz, included observer overhead; no video or detached solves. Screenshots only in discarded warmup.");
-            if (USER_SETTINGS) report.addProperty("method", "Official video settings confirmation in isolated development instance: same packaged JAR and copied world, VSync enabled, 120 FPS cap, render/simulation distance 12, 1000x680. Control: 8-second warmup + 8-second sample; spear boundary aim / movement / 4 Hz short thrust / iron-armor stress: 8-second warmup + 30-second sample. Native Pre/Post timestamps and read-only submitted FK; official options/config/worlds untouched.");
+            report.addProperty("method", "Same local player, 1000x680, distance 3, VSync off, uncapped active render; 3-second warmup + 8-second measurement for five scenes, then optional 30-second direct camera-angle center aiming, movement and 4 Hz attack pressure (one intent per five client ticks). Native Pre/Post timings, P99/max and slow-frame phase. Read-only submitted FK quality at about 60 Hz, included observer overhead; no video or detached solves. Screenshots only in discarded warmup.");
+            if (USER_SETTINGS) report.addProperty("method", "Official video settings confirmation in isolated development instance: same packaged JAR and copied world, VSync enabled, 120 FPS cap, render/simulation distance 12, 1000x680. Control: 8-second warmup + 8-second sample; spear direct center aim / movement / 4 Hz short thrust / iron-armor stress: 8-second warmup + 30-second sample. Native Pre/Post timestamps and read-only submitted FK; official options/config/worlds untouched.");
             report.addProperty("officialVideoSettingsConfirmation", USER_SETTINGS); report.addProperty("configuredVsync", USER_SETTINGS);
             report.addProperty("configuredFpsCap", USER_SETTINGS ? 120 : 260); report.addProperty("configuredRenderDistance", USER_SETTINGS ? 12 : 3);
             report.addProperty("completedScenes", results.size()); report.addProperty("copiedWorld", System.getProperty("fsrpg.spearPerformanceWorld"));

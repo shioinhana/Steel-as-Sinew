@@ -25,8 +25,8 @@ public final class CombatResolver {
             attacker.finishClash();
             defender.finishClash();
             attacker.recordGuardContact(); defender.recordGuardContact();
-            if (exchange.winner() > 0) { defender.stun(attacker.guardRules().parryStunTicks()); attacker.perfectGuardSucceeded(); }
-            if (exchange.winner() < 0) { attacker.stun(defender.guardRules().parryStunTicks()); defender.perfectGuardSucceeded(); }
+            if (exchange.winner() > 0) attacker.perfectGuardSucceeded();
+            if (exchange.winner() < 0) defender.perfectGuardSucceeded();
             return new HitResult(HitOutcome.CLASH, exchange.firstDamage(), 0, false, 0, skill.id());
         }
         attacker.markHit(defender.id());
@@ -49,7 +49,7 @@ public final class CombatResolver {
                 && withinArc(defenderFacingAngleDegrees, counter.arcDegrees());
     }
 
-    /** Capture a real contact without stunning away a return hit in the following two ticks.
+    /** Capture a real contact without stunning away a return hit in the configured contact window.
      * Guard and dodge are evaluated now, so later input cannot defend a contact retroactively. */
     public static HitResult captureMelee(CombatActor attacker, CombatActor defender, double distance,
                                          double attackerFacing, double defenderFacing) {
@@ -99,13 +99,12 @@ public final class CombatResolver {
         CombatRules rules = defender.rules();
         var guard = defender.guardRules();
         if (defender.phase() == CombatPhase.GUARDING && withinArc(defenderFacingAngleDegrees, guard.arcDegrees())) {
-            // Repeated pressure and heavy strikes are checked before the perfect-guard window.
-            // E release/repress does not clear contact history, so it cannot bypass either rule.
-            if (defender.defenseLimitReached() || (guard.heavyBreaksGuard() && !blockable)) {
+            // An unblockable heavy strike still breaks guard, including a fresh perfect window.
+            if (guard.heavyBreaksGuard() && !blockable) {
                 defender.breakGuard(guard.guardBreakStunTicks());
                 return new HitResult(HitOutcome.GUARD_BROKEN, damage, knockback, false, guard.guardBreakStunTicks(), skillId);
             }
-            boolean precise=perfectGuardAuthorized==null?defender.inPerfectGuardWindow():perfectGuardAuthorized&&guard.perfectGuardTicks()>0;
+            boolean precise=defender.guardPerfectAgainst(perfectGuardAuthorized);
             if (parryable && (!guard.perfectGuardRequiresBlockable() || blockable) && precise) {
                 if (defender.consumeStamina(guard.perfectGuardStaminaCost())) {
                     defender.recordGuardContact();
@@ -114,6 +113,11 @@ public final class CombatResolver {
                     return new HitResult(HitOutcome.PARRIED, 0, 0, projectile, 0, skillId);
                 }
                 // If perfect guard is too expensive, a cheaper ordinary block may still succeed.
+            }
+            // A genuine perfect can answer repeated pressure; ordinary blocks retain their limit.
+            if (defender.defenseLimitReached()) {
+                defender.breakGuard(guard.guardBreakStunTicks());
+                return new HitResult(HitOutcome.GUARD_BROKEN, damage, knockback, false, guard.guardBreakStunTicks(), skillId);
             }
             if (blockable) {
                 if (defender.consumeStamina(guard.staminaCost())) {

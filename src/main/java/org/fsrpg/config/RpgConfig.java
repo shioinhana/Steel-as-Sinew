@@ -38,6 +38,7 @@ public final class RpgConfig {
     }
     public void seed() throws IOException {
         Files.createDirectories(directory);
+        DefenseFlowMigration defenseFlowMigration=DefenseFlowMigration.capture(directory);
         GroundImpulseMigration groundImpulseMigration=GroundImpulseMigration.capture(directory);
         BurstDashMigration burstDashMigration=BurstDashMigration.capture(directory);
         StaminaCombatMigration staminaCombatMigration = StaminaCombatMigration.capture(directory);
@@ -67,6 +68,7 @@ public final class RpgConfig {
         WeaponStaminaBalanceMigration.migrate(directory);
         PerfectGuardMigration.migrate(directory);
         GuardCueMigration.migrate(directory);
+        if(defenseFlowMigration!=null)defenseFlowMigration.apply();
         if (staminaLevelMigration != null) staminaLevelMigration.apply();
     }
     private JsonElement read(String name) throws IOException {

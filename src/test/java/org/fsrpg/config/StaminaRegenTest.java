@@ -145,6 +145,7 @@ public final class StaminaRegenTest {
         // Guard releases have their own exact-field suites. Keep this historical x3 fixture guard-neutral.
         Files.writeString(directory.resolve(PerfectGuardMigration.MARKER), "{}");
         Files.writeString(directory.resolve(GuardCueMigration.MARKER), "{}");
+        Files.writeString(directory.resolve(DefenseFlowMigration.MARKER), "{}");
         return directory;
     }
     private static void copyDefaults(Path directory) throws Exception {

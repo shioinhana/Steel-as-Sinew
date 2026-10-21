@@ -7,13 +7,14 @@ public final class WeaponClashTest {
     private static final UUID A=new UUID(0,1), B=new UUID(0,2), C=new UUID(0,3);
     public static void main(String[] args) {
         var rules=WeaponClashRules.defaults();
-        for (int gap=0;gap<=3;gap++) for (boolean reverse:List.of(false,true)) {
+        check(rules.contactWindowTicks()==3,"default real-contact window is three ticks");
+        for (int gap=0;gap<=4;gap++) for (boolean reverse:List.of(false,true)) {
             var buffer=new WeaponClash<String>();
             var first=contact(A,B,1,100,10);var second=contact(B,A,2,100+gap,6);
             if(reverse){buffer.offer(second);buffer.offer(first);}else{buffer.offer(first);buffer.offer(second);}
             var batch=buffer.resolve(100+gap,rules);
-            check(batch.pairs().size()==(gap<=2?1:0),"inclusive window, gap="+gap+" reverse="+reverse);
-            if(gap<=2){near(batch.pairs().getFirst().exchange().firstDamage(),1,"10 versus 6 leaves one");check(buffer.size()==0,"pair consumed once");}
+            check(batch.pairs().size()==(gap<=3?1:0),"inclusive window, gap="+gap+" reverse="+reverse);
+            if(gap<=3){near(batch.pairs().getFirst().exchange().firstDamage(),1,"10 versus 6 leaves one");check(buffer.size()==0,"pair consumed once");}
         }
         for(double delta:List.of(0.,2.9999,3.,3.0001,10.)) {
             var exchange=WeaponClash.compare(20+delta,20,3);
@@ -25,8 +26,9 @@ public final class WeaponClashTest {
         check(buffer.offer(contact(A,B,1,10,6)),"initial contact accepted");
         check(!buffer.offer(contact(A,B,1,10,6)),"same swing-target contact deduplicated");
         check(buffer.resolve(11,rules).expired().isEmpty(),"wait through one tick");
-        check(buffer.resolve(12,rules).expired().size()==1,"unanswered hit released after two ticks");
-        check(buffer.resolve(13,rules).expired().isEmpty(),"ordinary damage released exactly once");
+        check(buffer.resolve(12,rules).expired().isEmpty(),"wait through two ticks");
+        check(buffer.resolve(13,rules).expired().size()==1,"unanswered hit released after three ticks");
+        check(buffer.resolve(14,rules).expired().isEmpty(),"ordinary damage released exactly once");
         buffer.offer(contact(A,C,2,20,10));buffer.offer(contact(A,B,2,20,10));buffer.offer(contact(B,A,3,21,10));
         var batch=buffer.resolve(21,rules);
         check(batch.pairs().size()==1&&batch.expired().isEmpty()&&buffer.size()==0,"clashed swing cannot hit bystander");
@@ -60,7 +62,8 @@ public final class WeaponClashTest {
             check(defender.phase()==(dodge?CombatPhase.DODGING:CombatPhase.GUARDING),"captured ordinary contact does not prematurely queue hit stun");
             near(attacker.stamina(),paid,"one-active-tick real contact keeps its full attack fee at natural completion");
             check(buffer.resolve(101,WeaponClashRules.defaults()).expired().isEmpty(),"ordinary contact waits for the return-contact window");
-            var expired=buffer.resolve(102,WeaponClashRules.defaults()).expired();
+            check(buffer.resolve(102,WeaponClashRules.defaults()).expired().isEmpty(),"new three-tick return window includes the second following tick");
+            var expired=buffer.resolve(103,WeaponClashRules.defaults()).expired();
             check(expired.size()==1&&expired.getFirst().value()==captured,"unanswered hit releases the exact captured outcome once");
             check(expired.getFirst().value().outcome()==HitOutcome.HIT,"new C or dodge cannot turn the prior contact into block, parry or dodge");
             near(expired.getFirst().value().damage(),6,"later defense cannot alter frozen incoming damage");
@@ -90,9 +93,9 @@ public final class WeaponClashTest {
         near(captured.damage(),12,"completed attack cannot erase its frozen counter damage");
         defender.requestAttack(cut("counter_return",6,1));var response=CombatResolver.captureMelee(defender,attacker,2,0,0);
         var counterBuffer=new WeaponClash<HitResult>();counterBuffer.offer(counterContact);
-        counterBuffer.offer(new WeaponClash.Contact<>(defender.id(),attacker.id(),defender.snapshot().swingSequence(),102,response.damage(),response));
-        var counterPair=counterBuffer.resolve(102,WeaponClashRules.defaults()).pairs();
-        check(counterPair.size()==1,"completed counter attack still pairs with a return at the inclusive two-tick limit");
+        counterBuffer.offer(new WeaponClash.Contact<>(defender.id(),attacker.id(),defender.snapshot().swingSequence(),103,response.damage(),response));
+        var counterPair=counterBuffer.resolve(103,WeaponClashRules.defaults()).pairs();
+        check(counterPair.size()==1,"completed counter attack still pairs with a return at the inclusive three-tick limit");
         near(counterPair.getFirst().exchange().firstDamage(),3,"residual clash damage uses frozen twelve versus six minus three tolerance");
         var miss=actor();miss.requestAttack(cut("genuine_miss",6,1));paid=miss.stamina();miss.tick();
         near(miss.stamina(),paid+4,"an actual empty one-tick attack still receives the existing half-cost refund");
@@ -100,7 +103,7 @@ public final class WeaponClashTest {
     }
 
     private static void realReturnContacts() {
-        for(int gap:List.of(0,1,2,3)) for(boolean reverse:List.of(false,true)) {
+        for(int gap:List.of(0,1,2,3,4)) for(boolean reverse:List.of(false,true)) {
             var first=actor();var second=actor();var cut=cut("return_contact",6,1);var buffer=new WeaponClash<HitResult>();
             first.requestAttack(cut);var outgoing=CombatResolver.captureMelee(first,second,2,0,0);
             var one=new WeaponClash.Contact<>(first.id(),second.id(),first.snapshot().swingSequence(),100,outgoing.damage(),outgoing);
@@ -110,8 +113,8 @@ public final class WeaponClashTest {
             var two=new WeaponClash.Contact<>(second.id(),first.id(),second.snapshot().swingSequence(),100+gap,incoming.damage(),incoming);
             if(reverse){buffer.offer(two);buffer.offer(one);}else{buffer.offer(one);buffer.offer(two);}
             var result=buffer.resolve(100+gap,WeaponClashRules.defaults());
-            check(result.pairs().size()==(gap<=2?1:0),"captured one-tick attacks use real inclusive return gap "+gap+" order="+reverse);
-            if(gap<=2)check(result.pairs().getFirst().exchange().winner()==0,"equal captured return attacks cancel within tolerance");
+            check(result.pairs().size()==(gap<=3?1:0),"captured one-tick attacks use real inclusive return gap "+gap+" order="+reverse);
+            if(gap<=3)check(result.pairs().getFirst().exchange().winner()==0,"equal captured return attacks cancel within tolerance");
         }
     }
 
@@ -120,11 +123,11 @@ public final class WeaponClashTest {
         var captured=CombatResolver.captureMelee(attacker,defender,2,0,180);
         check(captured.outcome()==HitOutcome.HIT,"rear contact bypasses the current guard");
         defender.setGuarding(false);
-        check(defender.requestAttack(cut("rear_return",6,1))==ActionResult.ACCEPTED,"ordinary rear-guard HIT must preserve the same two-tick return opportunity");
+        check(defender.requestAttack(cut("rear_return",6,1))==ActionResult.ACCEPTED,"ordinary rear-guard HIT must preserve the configured return opportunity");
     }
 
     private static void configuredWindowAndValidation() {
-        for(int window:List.of(0,1,2,10)) {
+        for(int window:List.of(0,1,2,3,10)) {
             var buffer=new WeaponClash<String>();buffer.offer(contact(A,B,1,100,8));buffer.offer(contact(B,A,2,100+window,6));
             var result=buffer.resolve(100+window,new WeaponClashRules(window,1));
             check(result.pairs().size()==1,"configured inclusive window works at its exact boundary "+window);
@@ -168,7 +171,7 @@ public final class WeaponClashTest {
         buffer.offer(new WeaponClash.Contact<>(A,B,1,100,6,"overworld"));
         buffer.offer(new WeaponClash.Contact<>(B,A,2,100,6,"the_nether"));
         check(buffer.resolve(100,WeaponClashRules.defaults()).pairs().isEmpty(),"incompatible contact contexts cannot form a clash");
-        check(buffer.resolve(102,WeaponClashRules.defaults()).expired().size()==2,"incompatible contacts still expire as ordinary hits");
+        check(buffer.resolve(103,WeaponClashRules.defaults()).expired().size()==2,"incompatible contacts still expire as ordinary hits");
         buffer.offer(new WeaponClash.Contact<>(A,B,3,200,6,"overworld"));
         buffer.offer(new WeaponClash.Contact<>(B,A,4,201,6,"overworld"));
         check(buffer.resolve(201,WeaponClashRules.defaults()).pairs().size()==1,"matching contact contexts can form a clash");

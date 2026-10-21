@@ -117,6 +117,7 @@ public final class ClientHooks {
         for (KeyMapping key : new KeyMapping[]{DRAW, LEFT, RIGHT, GUARD, DODGE, EDITOR, JOURNAL, SKILL, STYLE, TREE, ART}) event.register(key);
     }
     private static void payloads(RegisterClientPayloadHandlersEvent event) {
+        event.register(org.fsrpg.network.RpgGuardImpactPayload.TYPE,(payload,context)->GuardImpactPresentation.accept(payload));
         event.register(RpgBurstDashPayload.TYPE,(payload,context)->BurstDashMotion.accept(payload));
         event.register(RpgGuardCuePayload.TYPE, (payload, context) -> {
             try { GuardCuePresentation.accept(payload); }
@@ -334,6 +335,7 @@ public final class ClientHooks {
     private static void logout(ClientPlayerNetworkEvent.LoggingOut event) {
         BurstDashMotion.reset();
         GuardCuePresentation.clear();
+        GuardImpactPresentation.reset();
         CreatureCombatAnimation.clear();
         ArcheryPresentation.reset();
         CombatCamera.reset(); ClientState.clear(); PlayerAnimations.clear(); updateCamera(); bowCharging = rapierCharging = bowAuto = dualTogether = false; statusClock = 0;

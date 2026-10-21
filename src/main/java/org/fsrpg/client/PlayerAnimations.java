@@ -66,6 +66,7 @@ public final class PlayerAnimations {
         SpearMotion.State spearMotion = new SpearMotion.State();
         SpearTurn.State spearTurn = new SpearTurn.State();
         SpearTurn.State swordTurn = new SpearTurn.State();
+        RapierMotion.State swordLean = new RapierMotion.State();
         double lastSpearChestTick = Double.NaN;
         double aimTransitionStarted, aimTransitionTicks;
         boolean aimTransitionPending;
@@ -88,7 +89,7 @@ public final class PlayerAnimations {
                     lowerPlayback = new PoseLayers.Playback(lowerAsset.full().rig(), PoseLayers.DEFAULT_STANCE);
                     // The authored motion window and the carry pose are clip properties.
                     var clip = asset.full().rig().clips().get(state.action());
-                    if (clip != null) {
+                    if (clip != null && !RapierMotion.cut(clip)) {
                         swordKnots = PoseRemap.knots(asset.full().rig(), clip);
                     }
                 } catch (Exception failure) { throw new IllegalArgumentException("Unable to load current spear lower-body stance", failure); }
@@ -206,8 +207,10 @@ public final class PlayerAnimations {
                 next.lowerPlayback.inheritMovement(previous.lowerPlayback);
             next.inspection = previous.inspection; next.inspection.interrupt(renderTick);
             next.lastAim = previous.lastAim;
-            if (SwordMotion.applies(asset.full()) && previous.asset == asset)
+            if (SwordMotion.applies(asset.full()) && previous.asset == asset) {
                 next.swordTurn = previous.swordTurn;
+                next.swordLean = previous.swordLean;
+            }
             if (state.style().equals("spear") && previous.state.style().equals("spear") && previous.asset == asset) {
                 next.lastSpearRear = previous.lastSpearRear == null ? null : new Vector3f(previous.lastSpearRear);
                 next.lastSpearSourceRear = previous.lastSpearSourceRear == null ? null : new Vector3f(previous.lastSpearSourceRear);
@@ -380,7 +383,11 @@ public final class PlayerAnimations {
             var upper = SwordMotion.sampleUpper(binding.asset.full(), clip, seconds, breathSeconds, entity.getXRot(), state.yRot);
             // Retiming changes only the source clock. Do not add the 0.6 counter-pose,
             // strike lean or locomotion sway to the authored torso/hand/item chain.
-            if (elapsed >= 0 && binding.swordKnots != null) {
+            if(elapsed>=0&&RapierMotion.cut(clip)) {
+                double cutSeconds=RapierMotion.clipTime(clip,elapsed,server.windupTicks(),server.activeTicks(),server.recoveryTicks());
+                upper=SwordMotion.sampleUpper(binding.asset.full(),clip,cutSeconds,breathSeconds,entity.getXRot(),state.yRot);
+                binding.sampledClipSeconds=cutSeconds;
+            } else if (elapsed >= 0 && binding.swordKnots != null) {
                 var attack = PoseRemap.plan(binding.swordKnots, clip, elapsed, server.windupTicks(), server.activeTicks(), server.recoveryTicks());
                 upper = SwordMotion.sampleUpper(binding.asset.full(), clip, attack.clipTime(), breathSeconds, entity.getXRot(), state.yRot);
                 binding.sampledClipSeconds = attack.clipTime();
@@ -455,8 +462,14 @@ public final class PlayerAnimations {
         // layer is capped. Authored attack/stance rotations remain source-faithful.
         float leanDegrees = Math.min(ClientOptions.MOVEMENT_LEAN.get().floatValue(), SwordMotion.MAXIMUM_MOVEMENT_LEAN);
         float hipShift = ClientOptions.HIP_SHIFT.get().floatValue();
-        if (!sword) pose = binding.motion.applyLean(pose, leanDegrees, leanStrength, ClientOptions.HEAD_LEAN_FOLLOW.get().floatValue());
-        var balance = sword ? new PresentationMotion.Balance(0, 0, 0) : binding.motion.balance(hipShift, leanStrength);
+        RapierMotion.Lean swordLean=null;
+        if(sword){
+            var target=RapierMotion.combine(binding.motion.lateralLean(),binding.motion.forwardLean(),leanDegrees,leanStrength,
+                    elapsed>=0?RapierMotion.reaction(clip,binding.sampledClipSeconds):0);
+            swordLean=binding.swordLean.advance(renderTick,target,ClientOptions.MOTION_RESPONSE.get());
+            pose=PresentationMotion.lean(pose,swordLean.lateral(),swordLean.forward(),ClientOptions.HEAD_LEAN_FOLLOW.get().floatValue());
+        } else pose = binding.motion.applyLean(pose, leanDegrees, leanStrength, ClientOptions.HEAD_LEAN_FOLLOW.get().floatValue());
+        var balance = sword ? RapierMotion.balance(swordLean,hipShift) : binding.motion.balance(hipShift, leanStrength);
         var hipBalance = balance;
         var restBody = sword ? SwordMotion.waistRest() : binding.asset.full().rig().parts().get("body").rest().position();
         hipBalance = PresentationMotion.withAuthoredHipShift(pose, restBody, balance);
@@ -685,7 +698,8 @@ public final class PlayerAnimations {
         double renderTick=now(),elapsed=PoseLayers.attackElapsed(b.state.phase(),b.state.phaseRemaining(),b.state.windupTicks(),b.state.activeTicks(),b.state.recoveryTicks());
         if(elapsed>=0)elapsed=b.attackClock.sample(renderTick);
         var clip=b.asset.full().rig().clips().get(b.state.action());
-        return LegacyMotion.actionSeconds(clip,b.state,elapsed,Math.max(0,renderTick-b.started)/20,firstPerson);
+        return elapsed>=0&&RapierMotion.cut(clip)?RapierMotion.clipTime(clip,elapsed,b.state.windupTicks(),b.state.activeTicks(),b.state.recoveryTicks())
+                :LegacyMotion.actionSeconds(clip,b.state,elapsed,Math.max(0,renderTick-b.started)/20,firstPerson);
     }
     /** Velocity-preserving bridge for the imported clips, which hand held poses to each other. */
     private static Map<String, Pose> legacyTransition(Binding binding, Map<String, Pose> pose, double renderTick) {

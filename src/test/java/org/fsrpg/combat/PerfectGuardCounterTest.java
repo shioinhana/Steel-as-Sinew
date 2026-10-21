@@ -11,6 +11,7 @@ public final class PerfectGuardCounterTest {
     public static void main(String[] args) {
         perfectGuardBoundaries(); counterBoundaries(); physicalInputRoutes(); failedInputAndSingleUse();
         interruptCleanup(); attackerStunBoundaries(); staleGuardRenewal(); independentAcceptedLeftCounter();
+        successfulDefenseCleanup(); clashClearsExistingReactions(); delayedClashRewardOwnership(); heldProjectileReflection();
         System.out.println("PerfectGuardCounterTest passed: " + checks + " checks");
     }
 
@@ -162,6 +163,109 @@ public final class PerfectGuardCounterTest {
         equal(ActionResult.ACCEPTED,actor.setGuarding(true),"real release then re-press retains intentional recovery cancel");
         equal(CombatPhase.GUARDING,actor.phase(),"new guard press actually starts guarding");
         near(1,actor.attackDamageMultiplier(),"intentional guard cancellation clears enhanced swing");
+    }
+
+    private static void successfulDefenseCleanup() {
+        var paid=skill("paid",SkillInput.LEFT,2,2,6,20,5);
+        for(int elapsed:new int[]{0,2,4,8}) {
+            var actor=ready(style("rapier",false));actor.aimedLeftSkill(paid,AttackAim.at(10,5));ticks(actor,elapsed);
+            if(elapsed<4)actor.requestStyledAttack(SkillInput.RIGHT,catalog());
+            actor.queueHitStun(9);
+            double stamina=actor.stamina();int cooldown=actor.cooldownRemaining(paid.id());
+            actor.perfectGuardSucceeded();
+            equal(CombatPhase.READY,actor.phase(),"real perfect cancels every accepted attack phase "+elapsed);
+            equal(0,actor.snapshot().phaseTicksRemaining(),"perfect clears prior recovery duration");
+            check(actor.currentSkill()==null&&!actor.comboSnapshot().queued()&&actor.attackAim()==null,"perfect clears skill, aim and buffered next action");
+            check(actor.drainStartedSkills().isEmpty(),"perfect removes unconsumed canceled attack events");
+            near(stamina,actor.stamina(),"successful cleanup does not refund an accepted attack");
+            equal(cooldown,actor.cooldownRemaining(paid.id()),"successful cleanup keeps accepted cooldown");
+            equal(4,actor.counterRemainingTicks(),"perfect grants a fresh counter after clearing old state");
+            equal(ActionResult.ACCEPTED,actor.aimedLeftSkill(LEFT,AttackAim.at(0,0)),"counter starts immediately after successful cleanup");
+            near(1.5,actor.attackDamageMultiplier(),"immediate new physical left consumes the fresh reward");
+            actor.tick();equal(CombatPhase.READY,actor.phase(),"old queued hurt stun cannot return after the new action");
+        }
+        for(boolean held:List.of(false,true)) {
+            var actor=ready(style("rapier",false));if(held)actor.setGuarding(true);
+            actor.stun(12);actor.queueHitStun(9);
+            equal(ActionResult.BUSY,actor.setGuarding(true),"a normal guard request cannot escape existing stun");
+            actor.perfectGuardSucceeded();
+            equal(held?CombatPhase.GUARDING:CombatPhase.READY,actor.phase(),"trusted real success clears existing stun and restores held guard");
+            equal(held?1:0,actor.heldPerfectGuards(),"only a held guard consumes the hold's first perfect");
+            check(!held||actor.guardAutoRearmed(),"held success starts its fresh automatic window");
+            actor.tick();check(actor.phase()!=CombatPhase.STUNNED,"cleared pending stun cannot reappear on next tick");
+        }
+        var actor=ready(style("rapier",false));
+        actor.beginChargedAttack(paid,AttackAim.at(0,0),true,true,16,20);actor.perfectGuardSucceeded();
+        check(!actor.chargeSnapshot().active()&&!actor.consumeChargeLunge(),"perfect cancels preparation, charge hold and lunge intent");
+        var spear=new SkillDefinition("spear","spear","spear",SkillInput.LEFT,0,1,4,0,5,0,8,3,90,0,true,true,false,"","");
+        actor=ready(style("spear",false));actor.requestAttack(spear);actor.setSpearAttackHeld(true,AttackAim.at(20,4));
+        actor.perfectGuardSucceeded();check(!actor.spearAttackHeld()&&actor.currentSkill()==null,"perfect cancels an active held spear");
+    }
+
+    private static void clashClearsExistingReactions() {
+        var paid=skill("clash_paid",SkillInput.LEFT,0,1,0,20,5);
+        for(boolean completed:List.of(false,true)) {
+            var actor=ready(style("rapier",false));actor.requestAttack(paid);
+            long sequence=actor.snapshot().swingSequence();actor.markAttackContact(sequence);
+            if(completed)actor.tick();
+            actor.stun(12);actor.queueHitStun(9);double stamina=actor.stamina();int cooldown=actor.cooldownRemaining(paid.id());
+            check(actor.currentSkill()==null&&actor.phase()==CombatPhase.STUNNED,"fixture lost current skill to an existing stun");
+            actor.finishClash();equal(CombatPhase.STUNNED,actor.phase(),"empty no-argument clash cannot clear an unrelated reaction");
+            check(actor.finishClash(sequence),"matching real contact can clear its old reaction even after skill ends");
+            equal(CombatPhase.READY,actor.phase(),"matching clash clears all existing recovery and stun");
+            equal(0,actor.snapshot().phaseTicksRemaining(),"matching clash clears reaction duration");
+            near(stamina,actor.stamina(),"matching clash charges no guard fee and refunds no contact");
+            equal(cooldown,actor.cooldownRemaining(paid.id()),"matching clash preserves cooldown after natural end or stun");
+            actor.perfectGuardSucceeded();equal(4,actor.counterRemainingTicks(),"advantage can award a fresh opening after matching cleanup");
+            check(!actor.finishClash(sequence),"duplicate old contact cannot clear its later reward");
+            equal(4,actor.counterRemainingTicks(),"duplicate clash preserves newly earned counter");
+            actor.aimedLeftSkill(LEFT,AttackAim.at(0,0));long fresh=actor.snapshot().swingSequence();
+            check(!actor.finishClash(sequence),"old contact cannot clear a newer accepted action");
+            equal(fresh,actor.snapshot().swingSequence(),"old contact preserves new sequence");near(1.5,actor.attackDamageMultiplier(),"old contact preserves accepted enhancement");
+            actor.tick();equal(CombatPhase.READY,actor.phase(),"matching success permanently removed the old pending stun");
+        }
+    }
+
+    private static void delayedClashRewardOwnership() {
+        for(boolean charged:List.of(false,true)) {
+            var actor=ready(style("rapier",false));actor.setGuarding(true);actor.requestAttack(LEFT);
+            long old=actor.snapshot().swingSequence();actor.markAttackContact(old);actor.tick();
+            var fresh=charged?skill("held_charge",SkillInput.RIGHT,2,2,6,20,5)
+                    :new SkillDefinition("held_spear","held_spear","spear",SkillInput.LEFT,0,1,4,0,5,0,8,3,90,0,true,true,false,"","");
+            if(charged)actor.beginChargedAttack(fresh,AttackAim.at(15,3),true,true,16,20);
+            else {actor.requestAttack(fresh);actor.setSpearAttackHeld(true,AttackAim.at(15,3));}
+            long sequence=actor.snapshot().swingSequence();var phase=actor.phase();double stamina=actor.stamina();
+            actor.rewardClashAdvantage(old);
+            check(actor.currentSkill()==fresh&&actor.phase()==phase&&actor.snapshot().swingSequence()==sequence,"old advantage reward cannot cancel a newer accepted action");
+            check(actor.guardHeld()&&(charged?actor.chargeSnapshot().holding():actor.spearAttackHeld()),"old reward preserves actual guard and weapon holds");
+            equal(0,actor.heldPerfectGuards(),"old contact reward cannot invent another held-guard success");
+            near(stamina,actor.stamina(),"old reward neither refunds nor charges the new action");
+            near(1,actor.attackDamageMultiplier(),"old reward cannot enhance the action accepted before it arrived");
+            equal(4,actor.counterRemainingTicks(),"old contact reserves its reward for a later new LEFT input");
+            actor.tick();actor.rewardClashAdvantage(old);
+            equal(3,actor.counterRemainingTicks(),"duplicate advantage cannot refresh its own reward window");
+            actor.rewardClashAdvantage(sequence);
+            check(actor.currentSkill()==null&&!actor.chargeSnapshot().active()&&!actor.spearAttackHeld(),"matching new clash success cancels all current skill and hold state");
+            equal(CombatPhase.GUARDING,actor.phase(),"matching success returns immediately to a physically held guard");
+            equal(4,actor.counterRemainingTicks(),"matching new success grants a fresh counter");
+        }
+    }
+
+    private static void heldProjectileReflection() {
+        var actor=ready(style("rapier",false));actor.setGuarding(true);double stamina=actor.stamina();
+        for(int contact=1;contact<=3;contact++) {
+            check(actor.guardPerfectAgainst(null),"Arrow prepass accepts the next real held-C perfect before ordinary pressure checks");
+            var reflected=CombatResolver.receiveIncoming(null,actor,0,8,0,true,true,true);
+            check(reflected.outcome()==HitOutcome.PARRIED&&reflected.reflectProjectile(),"Every one of the three held perfects can reflect its actual projectile");
+            equal(contact,actor.heldPerfectGuards(),"Each reflected projectile consumes exactly one held perfect");
+            near(stamina-contact,actor.stamina(),"Reflection pays its normal perfect-guard fee once");
+            check(actor.defenseLimitReached(),"Ordinary repeat pressure remains recorded alongside legal reflection");
+        }
+        check(!actor.guardPerfectAgainst(null),"A fourth projectile cannot enter the perfect reflection prepass");
+        actor.setGuarding(false);actor.setGuarding(true);
+        check(actor.guardPerfectAgainst(null),"A real release and new C opens reflection again");
+        var reflected=CombatResolver.receiveIncoming(null,actor,0,8,0,true,true,true);
+        check(reflected.reflectProjectile()&&actor.heldPerfectGuards()==1,"Fresh reflection ignores prior ordinary pressure while preserving the new cap");
     }
 
     private static CombatActor ready(WeaponStyleDefinition style) { CombatActor actor=new CombatActor(UUID.randomUUID(),CombatRules.defaults());actor.setStyle(style);actor.requestDrawn();ticks(actor,actor.rules().drawTicks());return actor; }

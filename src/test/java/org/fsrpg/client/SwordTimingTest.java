@@ -28,7 +28,7 @@ public final class SwordTimingTest {
 
         knotsMatchMeasuredMotion(sword);
         contactWindowIsMoving(sword, spear);
-        windupKeepsSourceChamber(sword, spear);
+        windupStartsAuthoredMotion(sword, spear);
         stanceCarriesLowerBody(sword, spear);
         contactKeepsSourceUpper(sword, spear);
         dualHandoffIsContinuous(dual);
@@ -67,7 +67,7 @@ public final class SwordTimingTest {
             double peakTick = -1;
             float peak = 0;
             for (double tick = 0; tick <= stroke.windup() + stroke.active() + stroke.recovery(); tick += 20 / HZ) {
-                var attack = PoseRemap.plan(knots, clip, tick, stroke.windup(), stroke.active(), stroke.recovery());
+                var attack = productionPlan(knots, clip, tick, stroke.windup(), stroke.active(), stroke.recovery());
                 var upper = SwordMotion.waist(sword, SwordMotion.sampleUpper(sword, clip, attack.clipTime(), tick / 20, 0, 0));
                 var lower = lowerPlayback.sample(tick / 20, tick / 20, tick, 0, 0, .25f, 55);
                 var pose = SwordMotion.stance(sword, upper, spear.worldMatrices(lower.pose()), 0);
@@ -103,22 +103,22 @@ public final class SwordTimingTest {
         }
     }
 
-    /** The source chamber is retained, without the additional 0.6 counter-pose. */
-    private static void windupKeepsSourceChamber(ModelDocument sword, ModelDocument spear) {
+    /** Reauthored cuts prepare immediately through their source motion, without an extra counter-pose. */
+    private static void windupStartsAuthoredMotion(ModelDocument sword, ModelDocument spear) {
         var clip = sword.rig().clips().get("legacy_rapier_attack1_upper");
         var knots = PoseRemap.knots(sword.rig(), clip);
         var lowerPlayback = new PoseLayers.Playback(spear.rig(), PoseLayers.DEFAULT_STANCE);
-        var rest = sampleTip(sword, spear, lowerPlayback, clip, knots.start(), 0);
+        var rest = sampleTip(sword, spear, lowerPlayback, clip, 0, 0);
         float deepest = 0;
         for (double tick = 0; tick < 3; tick += 20 / HZ) {
-            var attack = PoseRemap.plan(knots, clip, tick, 3, 4, 1);
+            var attack = productionPlan(knots, clip, tick, 3, 4, 1);
             var upper = SwordMotion.sampleUpper(sword, clip, attack.clipTime(), 0, 0, 0);
             var lower = lowerPlayback.sample(tick / 20, tick / 20, tick, 0, 0, .25f, 55);
             var world = sword.worldMatrices(SwordMotion.stance(sword, SwordMotion.waist(sword, upper), spear.worldMatrices(lower.pose()), 0));
             deepest = Math.max(deepest, world.get("right_item").transformPosition(new Vector3f()).distance(rest));
             samples++;
         }
-        check(deepest < .0003f, "Windup keeps the authored chamber instead of adding a new pose: " + deepest + " cm");
+        check(deepest > .5f, "Windup continuously prepares through the actual source instead of holding its initial frame: " + deepest + " cm");
     }
 
     private static Vector3f sampleTip(ModelDocument sword, ModelDocument spear, PoseLayers.Playback lowerPlayback,
@@ -164,7 +164,7 @@ public final class SwordTimingTest {
         var knots = PoseRemap.knots(sword.rig(), clip);
         var lowerPlayback = new PoseLayers.Playback(spear.rig(), PoseLayers.DEFAULT_STANCE);
         for (double tick = 0; tick <= 8; tick += 20 / HZ) {
-            var attack = PoseRemap.plan(knots, clip, tick, 3, 4, 1);
+            var attack = productionPlan(knots, clip, tick, 3, 4, 1);
             var upper = SwordMotion.waist(sword, SwordMotion.sampleUpper(sword, clip, attack.clipTime(), 0, 0, 0));
             var lower = lowerPlayback.sample(tick / 20, tick / 20, tick, 0, 0, .25f, 55);
             var pose = SwordMotion.lower(sword, upper, spear.worldMatrices(lower.pose()));
@@ -174,6 +174,12 @@ public final class SwordTimingTest {
                 check(sourceWorld.get(bone).equals(finalWorld.get(bone), .0003f), "Contact retains source upper/item world " + bone);
             samples++;
         }
+    }
+
+    /** Mirror the exact production clock selection; untouched thrusts retain their old remap. */
+    private static PoseRemap.Attack productionPlan(PoseRemap.Knots knots,Clip clip,double tick,int windup,int active,int recovery) {
+        return RapierMotion.cut(clip)?new PoseRemap.Attack(RapierMotion.clipTime(clip,tick,windup,active,recovery),0)
+                :PoseRemap.plan(knots,clip,tick,windup,active,recovery);
     }
 
     /** Two clips that disagree on the handoff pose must not show that step on the switch frame. */

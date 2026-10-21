@@ -13,6 +13,8 @@
     "ItemLayerAccess",
     "CombatMouseMixin",
     "CombatCameraMixin",
+    "GuardDamageCameraMixin",
+    "GuardDamagePacketMixin",
     "ClientInputAccess",
     "GameRendererAccess",
     "GuiContextAccess"

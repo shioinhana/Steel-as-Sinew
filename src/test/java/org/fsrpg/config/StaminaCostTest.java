@@ -193,17 +193,18 @@ public final class StaminaCostTest {
         Files.writeString(directory.resolve(WeaponStaminaBalanceMigration.MARKER),"{}");
         Files.writeString(directory.resolve(PerfectGuardMigration.MARKER),"{}");
         Files.writeString(directory.resolve(GuardCueMigration.MARKER),"{}");
+        Files.writeString(directory.resolve(DefenseFlowMigration.MARKER),"{}");
         Files.writeString(directory.resolve(StaminaLevelMigration.MARKER),"{}");
     }
     private static void currentTemplateRules(JsonElement before,String name) {
         if(name.equals("combat.json")) {
-            var o=before.getAsJsonObject();o.addProperty("perfectGuardTicks",6);o.addProperty("parryStunTicks",4);
+            var o=before.getAsJsonObject();o.addProperty("perfectGuardTicks",7);o.addProperty("parryStunTicks",4);
             o.add("perfectGuardCounter",RpgConfig.JSON.toJsonTree(CombatRules.PerfectGuardCounter.defaults()));
             o.addProperty("maxStamina",50);o.add("staminaLevelScaling",RpgConfig.JSON.toJsonTree(StaminaLevelScaling.defaults()));
         } else if(name.equals("styles.json")) {
             for(var entry:before.getAsJsonArray())for(String field:List.of("guard","heavyGuard")) {
                 var o=entry.getAsJsonObject();if(!o.has(field)||!o.get(field).isJsonObject())continue;
-                var guard=o.getAsJsonObject(field);if(guard.get("perfectGuardTicks").getAsInt()>0)guard.addProperty("perfectGuardTicks",6);
+                var guard=o.getAsJsonObject(field);if(guard.get("perfectGuardTicks").getAsInt()>0)guard.addProperty("perfectGuardTicks",7);
                 guard.addProperty("parryStunTicks",4);
             }
         } else if(name.equals("archery.json")) {

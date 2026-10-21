@@ -92,7 +92,36 @@ public final class GuardCueClockTest {
         invalid(() -> new GuardCueClock.Message(1, "BEGIN", 100, 100, 104, 104, 710, 710, 120), "unbounded attack");
         invalid(() -> new GuardCueClock.Message(1, "BEGIN", 100, 100, 104, 104, 110, 110, 0), "empty duration");
         invalid(() -> new GuardCueClock.Message(1, "BEGIN", 100, 100, 104, 104, 110, 110, 1001), "excessive duration");
+        fractionalSchedules();
         System.out.println("GuardCueClockTest passed: " + checks + " checks");
+    }
+
+    private static void fractionalSchedules() {
+        for(int windup:new int[]{1,2,3,5,7,10,15,59,600}) {
+            var window=GuardCueSettings.defaults().window(100,windup);
+            var begin=new GuardCueClock.Message(windup,"BEGIN",100,100,window.flashGameTick(),window.openGameTick(),
+                    window.closeGameTick(),window.contactGameTick(),120);
+            var clock=new GuardCueClock();
+            check(clock.accept(begin,100),"Authored fractional schedule is accepted, including contact-only input windows");
+            if(window.flashGameTick()>100)check(clock.sample(window.flashGameTick()-1,.99f)==null,"Fractional cosmetic flash cannot precede its floor-quantized server tick");
+            near(0,clock.sample(window.flashGameTick(),0).progress(),"Fractional warning begins at its actual server flash tick");
+            check(clock.sample(window.flashGameTick(),.5f)!=null,"A short authored attack still has native sub-tick visual samples");
+            check(clock.sample(window.contactGameTick(),0)==null,"Inclusive input contact does not extend the cosmetic flash beyond contact");
+            check(clock.sample(window.flashGameTick(),0)==null,"Expired short/fractional flash cannot replay after a clock rollback");
+            var late=new GuardCueClock();late.accept(begin,window.contactGameTick());
+            check(late.sample(window.contactGameTick(),0)==null,"Queued old fractional BEGIN cannot create a late flash");
+            var contact=new GuardCueClock();
+            contact.accept(new GuardCueClock.Message(windup,"CONTACT",100,window.contactGameTick(),window.flashGameTick(),window.openGameTick(),
+                    window.closeGameTick(),window.contactGameTick(),120),100);
+            check(contact.sample(100,0)==null,"Contact-only tracking never rewinds to a fractional flash");
+            var canceled=new GuardCueClock();canceled.accept(begin,100);
+            canceled.accept(new GuardCueClock.Message(windup,"CANCEL",100,100,window.flashGameTick(),window.openGameTick(),
+                    window.closeGameTick(),window.contactGameTick(),120),100);
+            check(canceled.sample(window.flashGameTick(),0)==null,"Canceled fractional attack cannot display its scheduled warning");
+        }
+        var point=new GuardCueClock.Message(1,"BEGIN",100,100,100,100,100,100,120);
+        var clock=new GuardCueClock();check(clock.accept(point,100),"Equal flash/open/close schedule remains a valid authoritative message");
+        check(clock.sample(100,0)==null,"A zero cosmetic interval does not invent a late flash");
     }
 
     private static GuardCueClock.Message message(long sequence, String phase, long start, long now) {

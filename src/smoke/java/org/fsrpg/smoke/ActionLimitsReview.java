@@ -176,7 +176,7 @@ final class ActionLimitsReview {
         minimumPreparedAttackForwardDepth=Math.min(minimumPreparedAttackForwardDepth,forward);return point;
     }
     private void update(Minecraft game,int t) {
-        if(scene==4){updateCursor(game,t);return;}
+        if(scene==4){updateCenterAim(game,t);return;}
         if(t==0){var actor=actors[captureProfile];actor.setPos(captureProfile==0?-1.35:1.35,80,0);actor.xo=actor.xOld=actor.getX();actor.yo=actor.yOld=80;actor.zo=actor.zOld=0;}
         game.options.setCameraType(CameraType.FIRST_PERSON);
         double yaw,pitch,velocityX=0,velocityZ=0;boolean sprint=false;
@@ -277,7 +277,7 @@ final class ActionLimitsReview {
         });
         ready(player);
     }
-    private void updateCursor(Minecraft game,int t) {
+    private void updateCenterAim(Minecraft game,int t) {
         if(t==0) {
             for(var actor:actors)if(actor!=null)actor.discard();
             game.options.hideGui=false;game.options.setCameraType(CameraType.THIRD_PERSON_BACK);CombatCamera.reset();
@@ -289,8 +289,7 @@ final class ActionLimitsReview {
         }
         if(t<25)return;
         if(!CombatCamera.active())throw new AssertionError("Local player has no drawn third-person spear camera");
-        // Establish any server correction through the real camera API before the
-        // script reads cursor/frame coordinates for this input.
+        // Establish any server correction before converting target angles into real mouse input.
         CombatCamera.yaw();CombatCamera.pitch();
         game.options.keyUp.setDown(t>=140&&t<165);game.options.keyLeft.setDown(t>=165&&t<185);
         game.options.keyRight.setDown(t>=185&&t<205);game.options.keyDown.setDown(t>=205&&t<230);
@@ -311,35 +310,40 @@ final class ActionLimitsReview {
         if(t==130) {
             int id=nearTargetEntityId;game.getSingleplayerServer().execute(()->{var target=game.getSingleplayerServer().overworld().getEntity(id);if(target!=null)target.discard();});
         }
-        var field=CombatCamera.spearFrame();double fx=(Math.sin(t*Math.PI/50)+1)*.5,fy=(Math.sin(t*Math.PI/35)+1)*.5;
-        double x=field.left()+fx*(field.right()-field.left()),y=field.top()+fy*(field.bottom()-field.top());
-        if(t>=100&&t<=125){x=field.clampX(0);y=field.clampY(0);}
+        double desiredYaw=30*Math.sin(t*Math.PI/50),desiredPitch=18*Math.sin(t*Math.PI/35);
+        // Settle the actual shoulder camera before spawning the near entity, then hold its center ray.
+        if(t>=75&&t<=130){desiredYaw=0;desiredPitch=0;}
         double sensitivity=game.options.sensitivity().get()*.6+.2,gain=sensitivity*sensitivity*sensitivity*8;
-        double beforeX=CombatCamera.cursorX(),beforeY=CombatCamera.cursorY();
-        double dx=(x-beforeX)/gain*(game.options.invertMouseX().get()?-1:1),dy=(y-beforeY)/gain*(game.options.invertMouseY().get()?-1:1);
+        double beforeYaw=CombatCamera.yaw(),beforePitch=CombatCamera.pitch();
+        double dx=AttackAim.wrap(desiredYaw-beforeYaw)/(gain*.15)*(game.options.invertMouseX().get()?-1:1);
+        double dy=(desiredPitch-beforePitch)/(gain*.15)*(game.options.invertMouseY().get()?-1:1);
         var trace=new JsonObject();trace.addProperty("scriptTick",t);trace.addProperty("actorYawBefore",game.player.getYRot());trace.addProperty("bodyYawBefore",game.player.yBodyRot);
-        trace.addProperty("cameraYawBefore",CombatCamera.yaw());trace.addProperty("cameraPitchBefore",CombatCamera.pitch());trace.addProperty("cursorXBefore",beforeX);trace.addProperty("cursorYBefore",beforeY);
-        trace.addProperty("desiredX",x);trace.addProperty("desiredY",y);trace.addProperty("mouseInputDx",dx);trace.addProperty("mouseInputDy",dy);trace.addProperty("sensitivityGain",gain);
-        trace.add("displayedFrameBefore",RpgConfig.JSON.toJsonTree(field));trace.add("predictedMove",RpgConfig.JSON.toJsonTree(org.fsrpg.client.SpearCursorField.move(field,beforeX,beforeY,x-beforeX,y-beforeY)));
-        trace.add("cameraRotationBefore",RpgConfig.JSON.toJsonTree(game.gameRenderer.getMainCamera().rotation()));
+        trace.addProperty("aimInputMode","center-reticle-camera-angle");trace.addProperty("cameraYawBefore",beforeYaw);trace.addProperty("cameraPitchBefore",beforePitch);
+        trace.addProperty("desiredCameraYaw",desiredYaw);trace.addProperty("desiredCameraPitch",desiredPitch);trace.addProperty("mouseInputDx",dx);trace.addProperty("mouseInputDy",dy);trace.addProperty("sensitivityGain",gain);
+        trace.add("renderedCameraRotationAtInput",RpgConfig.JSON.toJsonTree(game.gameRenderer.getMainCamera().rotation()));
         boolean used=CombatCamera.mouse(dx,dy);
         trace.addProperty("actorYawAfter",game.player.getYRot());trace.addProperty("bodyYawAfter",game.player.yBodyRot);trace.addProperty("cursorXAfter",CombatCamera.cursorX());trace.addProperty("cursorYAfter",CombatCamera.cursorY());
-        trace.add("displayedFrameAfter",RpgConfig.JSON.toJsonTree(CombatCamera.spearFrame()));cursorInputTrace.add(trace);
-        if(!used)throw new AssertionError("Actual spear mouse path did not accept in-frame input");
+        trace.addProperty("cameraYawAfter",CombatCamera.yaw());trace.addProperty("cameraPitchAfter",CombatCamera.pitch());trace.add("centerRayWorld",RpgConfig.JSON.toJsonTree(centerRay(game)));cursorInputTrace.add(trace);
+        if(!used)throw new AssertionError("Actual spear mouse path did not accept direct center-aim input");
+        if(Math.abs(AttackAim.wrap(CombatCamera.yaw()-desiredYaw))>.001||Math.abs(CombatCamera.pitch()-desiredPitch)>.001)
+            throw new AssertionError("Actual camera did not reach its directly requested mouse angles");
+        if(Math.abs(AttackAim.wrap(game.player.getYRot()-CombatCamera.yaw()))>.001||Math.abs(AttackAim.wrap(game.player.yBodyRot-CombatCamera.yaw()))>.001)
+            throw new AssertionError("Actual actor and body did not follow the centered camera heading");
+        if(CombatCamera.cursorX()!=0||CombatCamera.cursorY()!=0)throw new AssertionError("Direct center aiming displaced its fixed screen reticle");
         var aim=CombatCamera.aimPoint();double body=Math.abs(AttackAim.wrap(game.player.getYRot()));
         maximumCursorBodyYaw=Math.max(maximumCursorBodyYaw,body);maximumCursorAimYaw=Math.max(maximumCursorAimYaw,Math.abs(AttackAim.wrap(aim.yaw()-game.player.getYRot())));
         maximumCursorAimPitch=Math.max(maximumCursorAimPitch,Math.abs(aim.pitch()));
-        if(body>.02)throw new AssertionError("Moving inside visible spear box changed body yaw "+body);
-        if(!SpearAimField.contains(aim,game.player.getYRot()))throw new AssertionError("Visible spear cursor resolved outside shared aim field "+aim);
+        trace.add("centerAim",RpgConfig.JSON.toJsonTree(aim));
+        if(!SpearAimField.contains(aim,game.player.getYRot()))throw new AssertionError("Centered spear ray resolved outside shared aim field "+aim);
         if(t>=105&&t<=125)verifyNearEntity(game,aim);
         cursorChecks++;
     }
+    private static Vector3f centerRay(Minecraft game){return new Vector3f(0,0,-1).rotate(game.gameRenderer.getMainCamera().rotation());}
     private void verifyNearEntity(Minecraft game,AttackAim.Point aim) {
         var target=game.level.getEntity(nearTargetEntityId);if(target==null)throw new AssertionError("Integrated-server near target did not reach actual client picking");
-        var camera=game.gameRenderer.getMainCamera();double fov=((org.fsrpg.mixin.GameRendererAccess)game.gameRenderer).fsrpg$fov(camera,game.getDeltaTracker().getGameTimeDeltaPartialTick(false),true);
-        var ray=org.fsrpg.client.SpearCursorField.ray(CombatCamera.cursorX(),CombatCamera.cursorY(),game.getWindow().getScreenHeight(),fov,camera.rotation());
+        var camera=game.gameRenderer.getMainCamera();var ray=centerRay(game);
         var hit=target.getBoundingBox().inflate(.08).clip(camera.position(),camera.position().add(new net.minecraft.world.phys.Vec3(ray).scale(64)));
-        if(hit.isEmpty())throw new AssertionError("Center cursor ray missed its actual nearby fixture");
+        if(hit.isEmpty())throw new AssertionError("Centered camera ray missed its actual nearby fixture");
         var delta=hit.get().subtract(game.player.getEyePosition());
         var expected=SpearAimField.target(delta.x,delta.y,delta.z,game.player.getYRot());
         double forwardDepth=aim.distance()*Math.cos(Math.toRadians(AttackAim.wrap(aim.yaw()-game.player.getYRot())))*Math.cos(Math.toRadians(aim.pitch()));
@@ -379,7 +383,7 @@ final class ActionLimitsReview {
         } catch(ReflectiveOperationException error){throw new IllegalStateException("Cannot inspect old sword source through actual sampled frame",error);}
     }
     private JsonObject observe() {
-        if(scene==4){JsonObject cursor=samplers[0].get();cursor.addProperty("fixtureTick",elapsed);cursor.addProperty("fixtureAction","spear_idle");cursor.addProperty("fixturePhase","READY");cursor.addProperty("movementSegment",movementSegment);cursor.addProperty("actorYaw",Minecraft.getInstance().player.getYRot());cursor.addProperty("cursorX",CombatCamera.cursorX());cursor.addProperty("cursorY",CombatCamera.cursorY());cursor.add("cursorFrame",RpgConfig.JSON.toJsonTree(CombatCamera.spearFrame()));cursor.add("cursorAim",RpgConfig.JSON.toJsonTree(CombatCamera.aimPoint()));try{verify(cursor,"local");}catch(Throwable error){try{failureFrame(cursor,error);}catch(Throwable recording){error.addSuppressed(recording);}throw error;}sampledFrames++;return cursor;}
+        if(scene==4){JsonObject cursor=samplers[0].get();cursor.addProperty("fixtureTick",elapsed);cursor.addProperty("fixtureAction","spear_idle");cursor.addProperty("fixturePhase","READY");cursor.addProperty("movementSegment",movementSegment);cursor.addProperty("actorYaw",Minecraft.getInstance().player.getYRot());cursor.addProperty("aimInputMode","center-reticle-camera-angle");cursor.addProperty("cursorX",CombatCamera.cursorX());cursor.addProperty("cursorY",CombatCamera.cursorY());cursor.add("centerRayWorld",RpgConfig.JSON.toJsonTree(centerRay(Minecraft.getInstance())));cursor.add("cursorAim",RpgConfig.JSON.toJsonTree(CombatCamera.aimPoint()));try{verify(cursor,"local");}catch(Throwable error){try{failureFrame(cursor,error);}catch(Throwable recording){error.addSuppressed(recording);}throw error;}sampledFrames++;return cursor;}
         JsonObject stock=samplers[0].get();
         {
             JsonObject value=stock;Fixture actor=actors[captureProfile];
@@ -465,7 +469,7 @@ final class ActionLimitsReview {
             var body=rig.getAsJsonArray("body");double forward=body.get(8).getAsDouble()*axis.x+body.get(10).getAsDouble()*axis.z;
             observation.addProperty("worldTorsoForwardDotActorAim",forward);
             if(forward<=0)throw new AssertionError("Actual local moving torso crossed behind actor aim in "+movementSegment);
-            if(yawError>.02||pitchError>.02)throw new AssertionError("Actual local body rotation changes rendered cursor aim in "+movementSegment+" yawError="+yawError+" bodyYaw="+observation.get("bodyYaw")+" actorYaw="+observation.get("actorYaw"));
+            if(yawError>.02||pitchError>.02)throw new AssertionError("Actual local body rotation changes the rendered center-ray aim in "+movementSegment+" yawError="+yawError+" bodyYaw="+observation.get("bodyYaw")+" actorYaw="+observation.get("actorYaw"));
         }
         for(String joint:JOINTS) {
             var a=rig.getAsJsonArray(joint);var values=new float[16];for(int i=0;i<16;i++) {values[i]=a.get(i).getAsFloat();if(!Float.isFinite(values[i]))throw new AssertionError("Non-finite spear joint "+profile+" "+joint);}
@@ -492,7 +496,7 @@ final class ActionLimitsReview {
                 movies.start(CLIPS.get(scene)+(scene<4&&captureProfile==1?"-slim":""),"single rendered stock/slim profile; authoritative animation packets, actual PlayerAnimations solver and official renderer",this::observe);captureStarted=true;
             }
             if(elapsed==55||elapsed==135)screenshots.add(CLIPS.get(scene)+(scene<4&&captureProfile==1?"-slim":"")+"-"+elapsed);
-            if(scene==4&&elapsed==115)screenshots.add("spear-cursor-near-target-115");
+            if(scene==4&&elapsed==115)screenshots.add("spear-center-aim-near-target-115");
             if(++elapsed>=(scene==4?250:210)){movies.stop();captureStarted=false;elapsed=0;if(scene<4&&captureProfile==0)captureProfile=1;else{captureProfile=0;scene++;}previousJoints.clear();}
         }catch(Throwable error){try{report(false,error.toString());}catch(Exception ignored){}error.printStackTrace();restore(game);done=true;game.stop();}
     }
@@ -578,7 +582,7 @@ final class ActionLimitsReview {
         report.add("peakAdjacentRenderedJointStepsDegrees",RpgConfig.JSON.toJsonTree(peakSteps));report.add("images",images);RpgSmoke.windowEnvironment(report);
         if(importedAssets!=null){report.add("importedItems",importedAssets.observations);report.addProperty("importedItemRenderedFrames",importedAssets.drawnFrames());}
         var aimField=new JsonObject();aimField.addProperty("maxYawDegrees",SpearAimField.MAX_YAW_DEGREES);aimField.addProperty("maxPitchDegrees",SpearAimField.MAX_PITCH_DEGREES);aimField.addProperty("cameraPitchDegrees",SpearAimField.CAMERA_PITCH_DEGREES);aimField.addProperty("minForwardDistanceMeters",SpearAimField.MIN_FORWARD_DISTANCE);report.add("aimField",aimField);report.addProperty("minimumPreparedAttackAimForwardDepthMeters",Double.isFinite(minimumPreparedAttackForwardDepth)?minimumPreparedAttackForwardDepth:0);
-        report.add("movementValidation",movementValidation);report.add("swordMovementValidation",swordMovementValidation);report.addProperty("swordSourceComparisons",swordSourceComparisons);report.addProperty("maximumSwordSourceArmDifferenceDegrees",maximumSwordSourceArmDifference);report.add("serverStamina",serverStamina);report.addProperty("cursorChecks",cursorChecks);report.add("cursorInputTrace",cursorInputTrace);report.addProperty("nearEntityChecks",nearEntityChecks);report.add("nearEntityMeasurements",nearEntityMeasurements);report.addProperty("nearTargetSemantics","Actual near entity retains eye-to-hit yaw/pitch; returned scalar target distance extends along that exact direction to safe forward depth");report.addProperty("maximumCursorAimYawDegrees",maximumCursorAimYaw);report.addProperty("maximumCursorAimPitchDegrees",maximumCursorAimPitch);report.addProperty("maximumCursorBodyYawDegrees",maximumCursorBodyYaw);report.addProperty("maximumSwordReadyTiltDegrees",maximumSwordReadyTilt);
+        report.add("movementValidation",movementValidation);report.add("swordMovementValidation",swordMovementValidation);report.addProperty("swordSourceComparisons",swordSourceComparisons);report.addProperty("maximumSwordSourceArmDifferenceDegrees",maximumSwordSourceArmDifference);report.add("serverStamina",serverStamina);report.addProperty("aimInputMode","center-reticle-camera-angle");report.addProperty("cursorChecks",cursorChecks);report.add("cursorInputTrace",cursorInputTrace);report.addProperty("nearEntityChecks",nearEntityChecks);report.add("nearEntityMeasurements",nearEntityMeasurements);report.addProperty("nearTargetSemantics","Actual near entity retains eye-to-hit yaw/pitch; returned scalar target distance extends along that exact direction to safe forward depth");report.addProperty("maximumCursorAimYawDegrees",maximumCursorAimYaw);report.addProperty("maximumCursorAimPitchDegrees",maximumCursorAimPitch);report.addProperty("maximumCursorBodyYawDegrees",maximumCursorBodyYaw);report.addProperty("maximumSwordReadyTiltDegrees",maximumSwordReadyTilt);
         var limits=new JsonObject();
         for(String name:List.of("SPEAR_ELBOW_LIMIT","SPEAR_WRIST_LIMIT","SPEAR_CLEARANCE","SPEAR_NECK_LIMIT","SPEAR_VERTICAL_BANK")) {
             var field=Class.forName("org.fsrpg.client.ClientOptions").getDeclaredField(name);field.setAccessible(true);

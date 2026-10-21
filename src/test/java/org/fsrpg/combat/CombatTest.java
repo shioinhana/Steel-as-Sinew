@@ -141,7 +141,7 @@ public final class CombatTest {
             var result=reverse?hit(b,a,2,0,0):hit(a,b,2,0,0);
             equal(result.outcome(),HitOutcome.CLASH,"SPECIAL and legacy clashable=false do not prohibit a real clash");
             near(result.damage(),reverse?0:1,"only the advantage beyond three becomes residual outgoing damage");
-            equal(a.phase(),CombatPhase.READY,"stronger side recovers immediately");equal(b.phase(),CombatPhase.STUNNED,"weaker side takes configured parry stun");
+            equal(a.phase(),CombatPhase.READY,"stronger side recovers immediately");equal(b.phase(),CombatPhase.READY,"weaker side also clears all clash stun and recovery");
             equal(a.counterRemainingTicks(),4,"stronger side earns the ordinary four-tick counter chance");equal(b.counterRemainingTicks(),0,"weaker side gains no counter chance");
             near(a.stamina(),80,"stronger clash retains paid attack cost without guard fees");near(b.stamina(),80,"weaker clash retains paid attack cost without guard fees");
             equal(a.cooldownRemaining("stronger"),9,"advantage clash preserves the accepted cooldown");
@@ -404,9 +404,11 @@ public final class CombatTest {
         HitResult perfect = CombatResolver.receiveIncoming(null, defender, 0, 10, 0.5, true, true, false);
         equal(perfect.outcome(), HitOutcome.PARRIED, "rapier can perfectly guard first light hit");
         defender.setGuarding(false); defender.setGuarding(true);
-        check(defender.inPerfectGuardWindow(), "E repress refreshes ordinary timing window");
-        equal(CombatResolver.receiveIncoming(null, defender, 0, 10, 0.5, true, true, false).outcome(), HitOutcome.GUARD_BROKEN,
-                "E repress cannot bypass rapid-defense pressure rule");
+        check(defender.inPerfectGuardWindow(), "C repress refreshes the timing window");
+        equal(CombatResolver.receiveIncoming(null, defender, 0, 10, 0.5, true, true, false).outcome(), HitOutcome.PARRIED,
+                "a real fresh perfect can answer pressure from the previous defense");
+        equal(CombatResolver.receiveIncoming(null, defender, 0, 10, 0.5, true, false, false).outcome(), HitOutcome.GUARD_BROKEN,
+                "ordinary non-parryable pressure still breaks guard");
         defender = rapierActor(); defender.setGuarding(true); tick(defender, 4);
         CombatResolver.receiveIncoming(null, defender, 0, 10, 0.5, true, true, false); tick(defender, 12);
         equal(CombatResolver.receiveIncoming(null, defender, 0, 10, 0.5, true, true, false).outcome(), HitOutcome.BLOCKED,

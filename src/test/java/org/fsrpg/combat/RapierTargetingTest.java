@@ -13,6 +13,7 @@ public final class RapierTargetingTest {
         explicitClickLock();
         validityAndRange();
         directionAndActiveTracking();
+        spearEligibilityAndIndependentAim();
         dodgeIntentBounds();
         System.out.println("RapierTargetingTest passed: " + checks + " checks");
     }
@@ -107,6 +108,35 @@ public final class RapierTargetingTest {
                 List.of(new WeaponStyleDefinition.ComboStage("left")),"",WeaponStyleDefinition.GuardRules.from(CombatRules.defaults())));
         nonRapier.trackRapierAim(AttackAim.at(90,0));
         check(nonRapier.attackAim()==null,"tracking does not alter non-rapier styles");
+    }
+
+    private static void spearEligibilityAndIndependentAim() {
+        var rules=CombatRules.defaults();
+        var controls=new WeaponControls("spear","","","","","spear_sweep",.18);
+        var style=new WeaponStyleDefinition("spear","Spear","spear",true,List.of(new WeaponStyleDefinition.ComboStage("thrust")),"",
+                WeaponStyleDefinition.GuardRules.from(rules),null,WeaponStyleDefinition.Techniques.none(),WeaponStyleDefinition.CancelRules.defaults(),controls);
+        var actor=new CombatActor(UUID.randomUUID(),rules);actor.setStyle(style);
+        check(!RapierTargeting.eligibleActor(actor,true,true,false),"An equipped spear cannot lock before its automatic draw completes");
+        actor.requestDrawn();for(int i=0;i<rules.drawTicks();i++)actor.tick();
+        check(RapierTargeting.eligibleActor(actor,true,true,false),"Automatically drawn spear uses the shared explicit target-lock service");
+        check(!RapierTargeting.eligibleActor(actor,false,true,false),"Removing the actual spear disables lock eligibility");
+        check(!RapierTargeting.eligibleActor(actor,true,false,false)&&!RapierTargeting.eligibleActor(actor,true,true,true),"Dead and spectator players cannot retain spear locks");
+        var original=AttackAim.at(31.5,28);
+        var thrust=new SkillDefinition("thrust","Thrust","spear",SkillInput.LEFT,1,3,2,0,5,0,6,3,35,0,true,true,true,"model","attack");
+        check(actor.aimedLeftSkill(thrust,original)==ActionResult.ACCEPTED,"A real accepted spear press owns its independently submitted gun direction");
+        actor.setSpearAttackHeld(true,original);actor.trackLockedAim(AttackAim.at(-45,-20));
+        check(actor.attackAim().equals(original)&&actor.spearAttackHeld(),"Target-facing updates cannot snap the current spear windup or cancel its hold");
+        actor.tick();check(actor.phase()==CombatPhase.ACTIVE,"Spear fixture reaches its actual hit interval");
+        var moved=AttackAim.at(-31.5,-28);actor.setSpearAttackHeld(true,moved);actor.trackLockedAim(AttackAim.at(80,10));
+        check(actor.attackAim().equals(moved)&&actor.spearAttackHeld(),"Player weapon-aim packets keep driving the held active spear while actor facing tracks its lock");
+        var selected=target(900,10,false);var nearer=target(901,1,true);
+        check(RapierTargeting.selected(selected.uuid(),List.of(nearer,selected),rules.rapierTargetLock())==selected,"Spear's explicit ten-block passive selection survives nearer hostile arrivals");
+        check(RapierTargeting.selected(new UUID(0,902),List.of(selected),rules.rapierTargetLock())==null,"Submitted stale or mismatched target UUID cannot select another entity");
+        actor.forceSheathed();check(!RapierTargeting.eligibleActor(actor,true,true,false),"Forced weapon removal clears shared lock eligibility immediately");
+        actor=new CombatActor(UUID.randomUUID(),rules);actor.setStyle(new WeaponStyleDefinition("unarmed","Unarmed","unarmed",true,
+                List.of(new WeaponStyleDefinition.ComboStage("thrust")),"",WeaponStyleDefinition.GuardRules.from(rules)));
+        actor.requestDrawn();for(int i=0;i<rules.drawTicks();i++)actor.tick();
+        check(!RapierTargeting.eligibleActor(actor,true,true,false),"Enabling spear selection does not enable unarmed targeting");
     }
     private static void near(double actual,double expected,String message) {check(Math.abs(actual-expected)<1e-9,message+" "+actual);}
     private static void rejects(Runnable operation,String message) {try{operation.run();throw new AssertionError(message);}catch(IllegalArgumentException expected){checks++;}}

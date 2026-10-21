@@ -27,7 +27,7 @@
     "guardArcDegrees": { "$ref": "#/$defs/angle" },
     "guardDamageMultiplier": { "type": "number", "minimum": 0, "maximum": 1 },
     "guardStaminaCost": { "$ref": "#/$defs/resource", "description": "服务端每次成功格挡的实际体力扣除。0.5.3 升级按原配置乘 0.2，仅迁移一次。" },
-    "perfectGuardTicks": { "$ref": "#/$defs/ticks", "description": "普通来袭的启用完美格挡窗口，0.7.5默认6tick=0.3秒；提示攻击还须在guard_cues.json指定的[open,close)内重新按C，提示前按住不产生完美格挡。持续按住与轻重模式切换不刷新起点。时点为项目可调标定，不宣称未公开的原作帧数。0仍表示关闭。" },
+    "perfectGuardTicks": { "$ref": "#/$defs/ticks", "description": "普通来袭的启用完美格挡窗口，0.8.4默认7tick=0.35秒；提示攻击还须在guard_cues.json指定的[open,close]内新按C（默认怪物前摇3/5到接触），提示前按住不产生完美格挡。初次须新按C；成功后按住自动重开窗口，同一次按住最多3次完美格挡，轻重模式切换不刷新起点。时点为项目可调标定，不宣称未公开的原作帧数。0仍表示关闭。" },
     "perfectGuardStaminaCost": { "$ref": "#/$defs/resource", "description": "服务端每次成功完美格挡的实际体力扣除。" },
     "parryStunTicks": { "$ref": "#/$defs/ticks", "description": "被完美格挡的攻击者僵直时间，默认4tick=0.2秒；NPC同时停止实际AI与攻击。" },
     "guardBreakStunTicks": { "$ref": "#/$defs/ticks" },
@@ -35,10 +35,10 @@
     "clashFacingArcDegrees": { "$ref": "#/$defs/angle" },
     "weaponClash": {
       "type": "object", "additionalProperties": false,
-      "description": "服务端近战相杀的接触时间窗口与伤害容差。旧配置可省略整个对象，兼容默认2tick / 3点；提供对象时两字段必须齐全。",
+      "description": "服务端近战相杀的接触时间窗口与伤害容差。旧配置可省略整个对象，兼容默认3tick / 3点；提供对象时两字段必须齐全。",
       "required": ["contactWindowTicks", "damageTolerance"],
       "properties": {
-        "contactWindowTicks": { "type": "integer", "minimum": 0, "maximum": 10, "default": 2, "description": "两次近战接触允许相差的tick数，每秒20tick；默认2tick=0.1秒，0仅允许同tick接触。" },
+        "contactWindowTicks": { "type": "integer", "minimum": 0, "maximum": 10, "default": 3, "description": "两次近战接触允许相差的tick数，每秒20tick；默认3tick=0.15秒，0仅允许同tick接触。" },
         "damageTolerance": { "type": "number", "minimum": 0, "maximum": 1000000, "default": 3.0, "description": "双方近战攻击用于相杀比较的伤害容差，单位为生命值点，默认3点；必须为有限非负数。" }
       }
     },

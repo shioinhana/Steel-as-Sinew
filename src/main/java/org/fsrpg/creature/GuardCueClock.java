@@ -8,7 +8,7 @@ public final class GuardCueClock {
         public Message {
             if (sequence < 0 || phase == null || !java.util.Set.of("BEGIN", "CONTACT", "CANCEL", "END").contains(phase)
                     || startedGameTime < 0 || serverGameTime < startedGameTime || flashGameTime < startedGameTime
-                    || openGameTime < flashGameTime || closeGameTime <= openGameTime || contactGameTime < closeGameTime
+                    || openGameTime < flashGameTime || closeGameTime < openGameTime || contactGameTime < closeGameTime
                     || contactGameTime - startedGameTime > 600 || flashDurationMillis < 1 || flashDurationMillis > 1000)
                 throw new IllegalArgumentException("Invalid authoritative guard cue schedule");
         }

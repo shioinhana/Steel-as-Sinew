@@ -90,6 +90,10 @@ public final class CombatActor {
     private int guardContacts;
     private boolean heavyGuard;
     private boolean guardHeld;
+    private int heldPerfectGuards;
+    private boolean guardAutoRearmed;
+    private long finishedClashSequence = -1;
+    private long rewardedClashSequence = -1;
     private long riposteUntil, repriseUntil;
     private final Map<String, Long> skillReadyAt = new HashMap<>();
     private final Set<UUID> swingVictims = new HashSet<>();
@@ -165,7 +169,7 @@ public final class CombatActor {
         if (!sameStyle && phase != CombatPhase.SHEATHED && phase != CombatPhase.READY) return ActionResult.BUSY;
         if (style != null && !style.techniques().equals(replacement.techniques())) clearTechniques();
         style = replacement;
-        if (!sameStyle) { resetCombo(); clearTechniques(); clearCounter(); heavyGuard = guardHeld = false; resetDualHandsAndStreaks(); }
+        if (!sameStyle) { resetCombo(); clearTechniques(); clearCounter(); heavyGuard = guardHeld = false; resetGuardChain(); resetDualHandsAndStreaks(); }
         return ActionResult.ACCEPTED;
     }
 
@@ -185,9 +189,45 @@ public final class CombatActor {
         return new TechniqueSnapshot("", "", 0);
     }
     public void perfectGuardSucceeded() {
+        if (!drawn) return;
+        boolean heavy=heavyGuard;
+        // A successful defense cancels an accepted attack without treating its cancellation as a miss.
+        attackReservations.remove(attackStaminaReservation);
+        finishSuccessfulDefense();
+        heavyGuard=guardHeld&&heavy;
+        if (guardHeld) {
+            heldPerfectGuards=Math.min(3,heldPerfectGuards+1);
+            guardAutoRearmed=heldPerfectGuards<3;
+            phase=CombatPhase.GUARDING;
+            guardStarted=tick;
+        }
         counterUntil = tick + rules.perfectGuardCounter().windowTicks();
         if (style != null && !heavyGuard && !style.techniques().riposteSkill().isEmpty())
             riposteUntil = tick + style.techniques().riposteWindowTicks();
+    }
+    /** Frozen old contact may grant the next LEFT opening without canceling a newer action or hold. */
+    public void rewardClashAdvantage(long sequence) {
+        if (!drawn || sequence<=0 || sequence==rewardedClashSequence) return;
+        rewardedClashSequence=sequence;
+        if (sequence==swingSequence) perfectGuardSucceeded();
+        else counterUntil=tick+rules.perfectGuardCounter().windowTicks();
+    }
+    /** Telegraphed attacks require their own press, or a still-fresh automatic rearm after a real perfect. */
+    public boolean guardPerfectAgainst(Boolean cueAuthorized) {
+        if (phase != CombatPhase.GUARDING || !drawn || heldPerfectGuards>=3 || guardRules().perfectGuardTicks()<=0) return false;
+        return cueAuthorized==null ? inPerfectGuardWindow() : cueAuthorized || guardAutoRearmed();
+    }
+    public boolean guardAutoRearmed() { return guardAutoRearmed && guardHeld && inPerfectGuardWindow(); }
+    public int heldPerfectGuards() { return heldPerfectGuards; }
+    private void resetGuardChain() { heldPerfectGuards=0;guardAutoRearmed=false; }
+    private void finishSuccessfulDefense() {
+        burstDash.stopMotion();
+        clearAttack();clearTechniques();clearCounter();
+        startedSkills.clear();inputAim=null;
+        pendingHitStun=0;dodgeElapsed=0;phaseRemaining=0;
+        heavyGuard=false;guardAutoRearmed=false;
+        phase=drawn?CombatPhase.READY:CombatPhase.SHEATHED;
+        if (drawn && style != null && style.controls().legacyDual()) resetDualHandsAndStreaks();
     }
     private void clearTechniques() { riposteUntil = repriseUntil = 0; }
     private void clearCounter() { counterUntil = 0; attackDamageMultiplier = 1; }
@@ -351,6 +391,7 @@ public final class CombatActor {
         pendingHitStun = 0;
         heavyGuard = false;
         guardHeld = false;
+        resetGuardChain();
         dodgeElapsed = 0;
         phaseRemaining = 0;
         drawn = false;
@@ -424,6 +465,7 @@ public final class CombatActor {
         // Any accepted attack commits the opening; a rejected/buffered input never spends it.
         clearTechniques();
         heavyGuard = false;
+        guardAutoRearmed = false;
         resetCombo();
         spearAttackHeld = false;
         skill = timed; attackAim=inputAim;
@@ -567,6 +609,14 @@ public final class CombatActor {
     public ActionResult setGuarding(boolean guarding) {
         return setGuarding(guarding, false);
     }
+    /** GUI/equipment eligibility may suspend the pose while the physical key remains held. */
+    public ActionResult suspendGuarding() {
+        if (!guardHeld) guardStarted=tick-72_001L;
+        guardHeld=true;
+        if (phase == CombatPhase.GUARDING) phase=drawn?CombatPhase.READY:CombatPhase.SHEATHED;
+        heavyGuard=false;guardAutoRearmed=false;
+        return ActionResult.ACCEPTED;
+    }
     /** Only the server's validated fresh flash input may interrupt an already committed contact. */
     public ActionResult requestPrecisionGuard(boolean heavy) {
         if (!drawn) return ActionResult.NOT_DRAWN;
@@ -581,15 +631,16 @@ public final class CombatActor {
         if (phase == CombatPhase.GUARDING) return setGuarding(true,heavy);
         clearAttack();
         phaseRemaining=0;
+        if (!guardHeld) { resetGuardChain();guardStarted=tick; }
         phase=CombatPhase.GUARDING;
         guardHeld=true;
         heavyGuard=heavy;
-        guardStarted=tick;
         return ActionResult.ACCEPTED;
     }
     public ActionResult setGuarding(boolean guarding, boolean heavy) {
         if (!guarding) {
             guardHeld = false;
+            resetGuardChain();
             if (phase == CombatPhase.GUARDING) phase = drawn ? CombatPhase.READY : CombatPhase.SHEATHED;
             heavyGuard = false;
             return ActionResult.ACCEPTED;
@@ -604,15 +655,15 @@ public final class CombatActor {
                 || phase == CombatPhase.RECOVERY && cancels().recoveryGuard();
         if (phase != CombatPhase.READY && !cancel || pendingHitStun > 0) return ActionResult.BUSY;
         clearAttack(); phaseRemaining=0;
+        if (!guardHeld) { resetGuardChain();guardStarted=tick; }
         phase = CombatPhase.GUARDING;
         guardHeld = true;
         heavyGuard = heavy;
-        guardStarted = tick;
         return ActionResult.ACCEPTED;
     }
 
     public boolean inPerfectGuardWindow() {
-        return phase == CombatPhase.GUARDING && tick - guardStarted < guardRules().perfectGuardTicks();
+        return phase == CombatPhase.GUARDING && heldPerfectGuards<3 && tick - guardStarted < guardRules().perfectGuardTicks();
     }
 
     public boolean defenseLimitReached() {
@@ -631,7 +682,9 @@ public final class CombatActor {
 
     public void breakGuard(int stunTicks) {
         clearTechniques();
-        setGuarding(false);
+        // A forced break is not a physical C release and cannot reopen the held perfect chain.
+        if (phase == CombatPhase.GUARDING) phase=drawn?CombatPhase.READY:CombatPhase.SHEATHED;
+        heavyGuard=false;guardAutoRearmed=false;
         stun(stunTicks);
     }
 
@@ -673,6 +726,7 @@ public final class CombatActor {
         clearTechniques();
         clearCounter();
         heavyGuard = false;
+        guardAutoRearmed = false;
         pendingHitStun = 0;
         phase = CombatPhase.STUNNED;
         phaseRemaining = Math.max(remaining, ticks);
@@ -790,19 +844,15 @@ public final class CombatActor {
     /** End the current swing after real blade contact, retaining its paid cost and cooldown without guard fees. */
     public void finishClash() {
         if (skill == null) return;
-        markAttackContact(swingSequence);
-        clearAttack();
-        clearCounter();
-        phase = drawn ? CombatPhase.READY : CombatPhase.SHEATHED;
-        phaseRemaining = 0;
-        // A real clash returns directly to the rendered default carry, with no recovery left to run.
-        if (drawn && style != null && style.controls().legacyDual()) resetDualHandsAndStreaks();
+        finishClash(swingSequence);
     }
 
     /** A delayed contact may finish only the swing that produced it, never a newer accepted attack. */
     public boolean finishClash(long sequence) {
-        if (skill == null || sequence != swingSequence) return false;
-        finishClash();
+        if (!drawn || sequence<=0 || sequence != swingSequence || sequence==finishedClashSequence) return false;
+        markAttackContact(sequence);
+        finishedClashSequence=sequence;
+        finishSuccessfulDefense();
         return true;
     }
 
@@ -847,5 +897,5 @@ public final class CombatActor {
     }
     private void finishDraw() { drawn = true; phase = CombatPhase.READY; phaseRemaining = 0; }
     private void resetDualHandsAndStreaks() { leftRest=rightRest=-1; leftSwingStreak=rightSwingStreak=0; }
-    private void finishSheath() { drawn = false; phase = CombatPhase.SHEATHED; phaseRemaining = 0; clearTechniques(); clearCounter(); heavyGuard = guardHeld = false; resetDualHandsAndStreaks(); }
+    private void finishSheath() { drawn = false; phase = CombatPhase.SHEATHED; phaseRemaining = 0; clearTechniques(); clearCounter(); heavyGuard = guardHeld = false; resetGuardChain(); resetDualHandsAndStreaks(); }
 }

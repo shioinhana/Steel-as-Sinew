@@ -17,6 +17,8 @@ public final class SpearCursorFieldTest {
     public static void main(String[] args) throws Exception {
         check(SpearAimField.MAX_YAW_DEGREES==45 && SpearAimField.MAX_PITCH_DEGREES==40 && SpearAimField.CAMERA_PITCH_DEGREES==24,"requested expanded field is exactly yaw45/pitch40/camera24");
         expandedScreenAllowances();
+        centerReticle();
+        fullViewportMapping();
         for(double yaw:new double[]{-179,0,179})for(double pitch:new double[]{-SpearAimField.CAMERA_PITCH_DEGREES,-SpearAimField.CAMERA_PITCH_DEGREES/2,0,SpearAimField.CAMERA_PITCH_DEGREES/2,SpearAimField.CAMERA_PITCH_DEGREES})
             for(double fov:new double[]{50,70,110})for(double aspect:new double[]{1,16./9,32./9})
                 for(float distance:new float[]{0,1,4})for(float offset:new float[]{0,.65f})
@@ -95,6 +97,49 @@ public final class SpearCursorFieldTest {
         Path path=Path.of(args.length>0?args[0]:"verification/action-limits-20261013/cursor-field-expanded.json");
         Files.createDirectories(path.toAbsolutePath().getParent());Files.writeString(path,new GsonBuilder().setPrettyPrinting().create().toJson(report));
         System.out.println("SpearCursorFieldTest passed: "+checks+" checks / "+frames+" screen frames / "+rayTargets+" finite targets; yaw+/-"+SpearAimField.MAX_YAW_DEGREES+" pitch+/-"+SpearAimField.MAX_PITCH_DEGREES+" camera+/-"+SpearAimField.CAMERA_PITCH_DEGREES+"; "+path.toAbsolutePath());
+    }
+
+    private static void fullViewportMapping(){
+        for(double[] viewport:new double[][]{{854,480},{1000,680},{2560,1440}}){
+            var origin=new SpearAimMapping.Cursor(0,0);
+            var corner=SpearAimMapping.move(origin,viewport[0]/2,viewport[1]/2,viewport[0],viewport[1]);
+            check(corner.x()==1&&corner.y()==1,"a complete virtual half-screen reaches the physical endpoint");
+            var middle=SpearAimMapping.move(origin,viewport[0]/4,-viewport[1]/4,viewport[0],viewport[1]);
+            check(middle.x()==.5&&middle.y()==-.5,"the full viewport maps continuously rather than clipping at the smaller gun range");
+            var same=SpearAimMapping.move(middle,0,0,640,360);check(same.equals(middle),"resizing preserves the normalized aim without a synthetic mouse delta");
+            for(double yaw:new double[]{-179,0,179})for(double centerPitch:new double[]{-80,-10,0,12,80}){
+                var right=SpearAimMapping.direction(corner,yaw,centerPitch,.7);
+                var left=SpearAimMapping.direction(new SpearAimMapping.Cursor(-1,-1),yaw,centerPitch,.7);
+                check(Math.abs(AttackAim.wrap(right.yaw()-yaw)-31.5)<.000001&&Math.abs(AttackAim.wrap(left.yaw()-yaw)+31.5)<.000001,"actual yaw envelope is thirty percent smaller across the seam");
+                check(Math.abs(right.pitch()-28)<.000001&&Math.abs(left.pitch()+28)<.000001,"actual vertical envelope is thirty percent smaller");
+                var center=SpearAimMapping.direction(origin,yaw,centerPitch,.7);
+                check(Math.abs(center.pitch()-Math.clamp(centerPitch,-28,28))<.000001,"virtual center keeps the locked target elevation inside physical limits");
+                for(int x=-10;x<=10;x++)for(int y=-10;y<=10;y++){
+                    var aim=SpearAimMapping.direction(new SpearAimMapping.Cursor(x/10.,y/10.),yaw,centerPitch,.7);
+                    check(SpearAimField.contains(aim,yaw)&&Math.abs(AttackAim.wrap(aim.yaw()-yaw))<=31.500001&&Math.abs(aim.pitch())<=28.000001,"every mapped position stays in the smaller anatomical forward field");
+                }
+            }
+        }
+        var edge=SpearAimMapping.move(new SpearAimMapping.Cursor(1,-1),10000,-10000,1000,680);
+        check(edge.x()==1&&edge.y()==-1,"excess mouse input stops the gun at its physical limit without turning the locked camera");
+    }
+
+    private static void centerReticle() {
+        for(float yaw:new float[]{-179,0,179})for(float pitch:new float[]{-24,0,24})
+            for(float roll:new float[]{-6,0,2,6})for(double fov:new double[]{30,70,110})for(double height:new double[]{480,720,2160}) {
+                var rotation=new Quaternionf().rotationYXZ((float)Math.toRadians(180-yaw),(float)Math.toRadians(-pitch),(float)Math.toRadians(roll));
+                var ray=SpearCursorField.ray(0,0,height,fov,rotation);
+                var expected=new Vector3f((float)(-Math.sin(Math.toRadians(yaw))*Math.cos(Math.toRadians(pitch))),
+                        (float)-Math.sin(Math.toRadians(pitch)),(float)(Math.cos(Math.toRadians(yaw))*Math.cos(Math.toRadians(pitch))));
+                check(ray.distance(expected)<.000001,"fixed center direction agrees with current orbit across roll/FOV/resolution and yaw seam");
+                var origin=new Vector3f(-.65f,.12f,3).rotate(rotation);
+                var hit=new Vector3f(ray).mul(64).add(origin);
+                var target=SpearAimField.target(hit.x,hit.y,hit.z,yaw);
+                check(target!=null&&SpearAimField.contains(target,yaw),"center-camera hit preserves legal eye-to-target parallax");
+                var eyeDirection=new Vector3f((float)(-Math.sin(Math.toRadians(target.yaw()))*Math.cos(Math.toRadians(target.pitch()))),
+                        (float)-Math.sin(Math.toRadians(target.pitch())),(float)(Math.cos(Math.toRadians(target.yaw()))*Math.cos(Math.toRadians(target.pitch()))));
+                check(eyeDirection.distance(new Vector3f(hit).normalize())<.000001,"weapon aims at the actual center-camera hit rather than a parallel eye ray");
+            }
     }
 
     private static void expandedScreenAllowances() {

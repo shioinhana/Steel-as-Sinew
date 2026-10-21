@@ -64,7 +64,19 @@ final class WeaponReview {
     }
     void start(String id) throws Exception {
         var g=Minecraft.getInstance();var observation=RenderObservations.sampler(g.player);
-        movies.start(id,"actual Minecraft render frames / new weapon controls",()->{var o=observation.get();o.addProperty("style",CombatCamera.style());o.addProperty("cameraYaw",CombatCamera.yaw());o.addProperty("actorYaw",g.player.getYRot());o.addProperty("cursorX",CombatCamera.cursorX());o.addProperty("cursorY",CombatCamera.cursorY());observeDualInput(o);return o;});
+        movies.start(id,"actual Minecraft render frames / new weapon controls",()->{var o=observation.get();o.addProperty("style",CombatCamera.style());o.addProperty("cameraYaw",CombatCamera.yaw());o.addProperty("actorYaw",g.player.getYRot());o.addProperty("cursorX",CombatCamera.cursorX());o.addProperty("cursorY",CombatCamera.cursorY());
+            if(CombatCamera.style().equals("spear")){o.addProperty("aimInputMode","center-reticle-camera-angle");o.add("centerRay",RpgConfig.JSON.toJsonTree(new org.joml.Vector3f(0,0,-1).rotate(g.gameRenderer.getMainCamera().rotation())));}
+            observeDualInput(o);return o;});
+    }
+    void centerAimMouse(double dx,double dy) {
+        var g=Minecraft.getInstance();double beforeYaw=CombatCamera.yaw(),beforePitch=CombatCamera.pitch();
+        double gain=Math.pow(g.options.sensitivity().get()*.6+.2,3)*8;
+        double expectedYaw=AttackAim.wrap(beforeYaw+dx*gain*(g.options.invertMouseX().get()?-1:1)*.15);
+        double expectedPitch=Math.clamp(beforePitch+dy*gain*(g.options.invertMouseY().get()?-1:1)*.15,-SpearAimField.CAMERA_PITCH_DEGREES,SpearAimField.CAMERA_PITCH_DEGREES);
+        check(CombatCamera.mouse(dx,dy),"actual spear center-aim mouse input is accepted");
+        check(Math.abs(AttackAim.wrap(CombatCamera.yaw()-expectedYaw))<.001&&Math.abs(CombatCamera.pitch()-expectedPitch)<.001,"every spear mouse sample directly changes camera angles without waiting for an edge");
+        check(Math.abs(AttackAim.wrap(g.player.getYRot()-expectedYaw))<.001,"spear actor follows the center-aim heading immediately");
+        check(CombatCamera.cursorX()==0&&CombatCamera.cursorY()==0,"spear reticle stays at the screen center while turning");
     }
     void render(RenderFrameEvent.Post event){if(done)return;try{movies.frame(event);while(!shots.isEmpty())Screenshot.grab(ROOT.toFile(),shots.poll()+".png",Minecraft.getInstance().getMainRenderTarget(),1,c->{});}catch(Throwable e){failure=e;}}
     void tick(ClientTickEvent.Post event) {
@@ -109,12 +121,13 @@ final class WeaponReview {
             if(t==124){movies.stop();server(p->{action(p,"draw","");});}
             if(t==140)server(p->{p.connection.teleport(.5,80,.5,0,0);p.setItemSlot(EquipmentSlot.MAINHAND,new ItemStack(Items.DIAMOND_SPEAR));p.setItemSlot(EquipmentSlot.OFFHAND,ItemStack.EMPTY);action(p,"weaponStyle","spear");actor(p).setResources(100,100);action(p,"draw","");});
             if(t==160){g.options.setCameraType(CameraType.THIRD_PERSON_BACK);CombatCamera.reset();spearBaseYaw=g.player.getYRot();System.out.println("SPEAR BASE YAW "+spearBaseYaw);start("spear-cursor-boundary");}
-            if(t>=162&&t<170)CombatCamera.mouse(12,-3);
-            if(t==171){System.out.println("SPEAR INSIDE YAW "+g.player.getYRot());check(Math.abs(g.player.getYRot()-spearBaseYaw)<.1,"inside spear rectangle cursor moves without turning player");check(CombatCamera.cursorX()>20,"spear cursor traverses screen rectangle");shots.add("spear-aim-mid");}
-            if(t>=174&&t<184)CombatCamera.mouse(100,0);
-            if(t==186){check(Math.abs(g.player.getYRot()-spearBaseYaw)>20,"continued boundary motion turns spear actor");shots.add("spear-boundary");}
+            // The clip ID remains compatible with historical encoding tools; its live contract is center aiming.
+            if(t>=162&&t<170)centerAimMouse(12,-3);
+            if(t==171){check(Math.abs(AttackAim.wrap(g.player.getYRot()-CombatCamera.yaw()))<.001,"small spear mouse motion already turns the actor with the camera");check(CombatCamera.cursorX()==0&&CombatCamera.cursorY()==0,"small spear mouse motion never displaces the centered reticle");shots.add("spear-center-aim-mid");}
+            if(t>=174&&t<184)centerAimMouse(100,0);
+            if(t==186){check(Math.abs(AttackAim.wrap(g.player.getYRot()-CombatCamera.yaw()))<.001,"continued center-aim turning retains actor-camera heading alignment");shots.add("spear-center-turn");}
             if(t==187){priorActive=g.isWindowActive();g.setWindowActive(true);KeyMapping.set(com.mojang.blaze3d.platform.InputConstants.Type.MOUSE.getOrCreate(0),true);}
-            if(t>=188&&t<197)CombatCamera.mouse(-14,-4);
+            if(t>=188&&t<197)centerAimMouse(-14,-4);
             if(t==197)KeyMapping.set(com.mojang.blaze3d.platform.InputConstants.Type.MOUSE.getOrCreate(0),false);
             if(t==200)server(p->check(actor(p).currentSkill()!=null&&actor(p).currentSkill().id().equals("spear_sweep")&&actor(p).attackAim().points().size()>1,"held client gesture sends sampled path and starts authoritative sweep"));
             if(t==203)g.setWindowActive(priorActive);

@@ -6,7 +6,7 @@ public final class GuardCueWindow {
     private long pressSerial=-1;
     private boolean consumed,canceled;
     public GuardCueWindow(long started,long flash,long open,long close,long contact){
-        if(started<0||flash<started||open<flash||close<=open||contact<close)throw new IllegalArgumentException("Invalid guard opportunity");
+        if(started<0||flash<started||open<flash||close<open||contact<close)throw new IllegalArgumentException("Invalid guard opportunity");
         this.started=started;this.flash=flash;this.open=open;this.close=close;this.contact=contact;
     }
     public long startedGameTick(){return started;}
@@ -14,7 +14,7 @@ public final class GuardCueWindow {
     public long openGameTick(){return open;}
     public long closeGameTick(){return close;}
     public long contactGameTick(){return contact;}
-    public boolean accepts(long now){return !canceled&&!consumed&&now>=open&&now<close;}
+    public boolean accepts(long now){return !canceled&&!consumed&&now>=open&&now<=close;}
     public boolean press(long now,long serial){if(serial<1||!accepts(now))return false;pressSerial=serial;return true;}
     public boolean consume(long now,long currentSerial,boolean held){
         if(canceled||consumed||now<contact||!held||pressSerial<1||pressSerial!=currentSerial)return false;

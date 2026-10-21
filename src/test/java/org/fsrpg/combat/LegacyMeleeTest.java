@@ -118,14 +118,14 @@ public final class LegacyMeleeTest {
                 a.requestStyledAttack(direction,skills);tick(a,3);
                 equal(ComboInputStatus.STARTED,a.requestStyledAttack(direction,skills).status(),"second hand can chain before full return");
                 equal(second,a.currentSkill().id(),"second cut uses the other available hand");tick(a,elapsed);
-                a.drainStartedSkills();a.perfectGuardSucceeded();
+                a.drainStartedSkills();
                 int counter=a.counterRemainingTicks();double stamina=a.stamina(),spirit=a.spirit();long sequence=a.snapshot().swingSequence();
                 var rejected=a.requestStyledAttack(direction,skills);
                 equal(ComboInputStatus.REJECTED,rejected.status(),"third direction rejects in every second-cut phase at "+elapsed);
                 equal(ActionResult.DIRECTION_EXHAUSTED,rejected.rejection(),"both hand destinations are exhausted");
                 equal(ActionResult.DIRECTION_EXHAUSTED,a.aimedLeftSkill(skills.get(first),null),"named physical left input cannot bypass hand occupancy");
                 equal(stamina,a.stamina(),"exhaustion rejection spends no stamina");equal(spirit,a.spirit(),"exhaustion rejection spends no spirit");
-                equal(counter,a.counterRemainingTicks(),"exhaustion rejection preserves the counter opening");
+                equal(counter,a.counterRemainingTicks(),"exhaustion rejection does not invent or spend a counter opening");
                 equal(sequence,a.snapshot().swingSequence(),"exhaustion rejection cannot issue a new swing");
                 check(a.drainStartedSkills().isEmpty()&&!a.comboSnapshot().queued(),"rejection cannot issue a quest event or queue a third cut");
                 tick(a,skills.get(second).durationTicks()-elapsed);
@@ -178,19 +178,21 @@ public final class LegacyMeleeTest {
         }
         var a=exhaustedLeft(skills);long oldSequence=a.snapshot().swingSequence();check(a.finishClash(oldSequence),"fixture closes the first real clash");
         a.requestStyledAttack(SkillInput.LEFT,skills);tick(a,3);a.requestStyledAttack(SkillInput.LEFT,skills);tick(a,2);
-        long newSequence=a.snapshot().swingSequence();var current=a.currentSkill();a.perfectGuardSucceeded();
+        long newSequence=a.snapshot().swingSequence();var current=a.currentSkill();
+        a.rewardClashAdvantage(oldSequence);
         check(!a.finishClash(oldSequence),"old clash sequence cannot end a later accepted cut");
         equal(newSequence,a.snapshot().swingSequence(),"old clash cannot change the new swing sequence");equal(current,a.currentSkill(),"old clash cannot clear the new active cut");
         equal(0,a.leftSide(),"old clash cannot return a new occupied left hand");equal(0,a.rightSide(),"old clash cannot return a new occupied right hand");
         equal(4,a.counterRemainingTicks(),"old clash cannot clear a later earned counter opening");
         equal(ActionResult.DIRECTION_EXHAUSTED,a.requestStyledAttack(SkillInput.LEFT,skills).rejection(),"old clash cannot wash the new pair's third-left restriction");
+        equal(4,a.counterRemainingTicks(),"a truly exhausted new pair preserves its delayed old-contact counter on rejection");
         for(boolean stunned:List.of(false,true)) {
             a=exhaustedLeft(skills);
             if(stunned)a.stun(1);else{a.requestPrecisionGuard(false);a.setGuarding(false);}
-            var before=a.phase();a.perfectGuardSucceeded();a.finishClash();
+            var before=a.phase();a.finishClash();
             equal(before,a.phase(),"an empty no-argument clash cannot invent a state transition after an ordinary interrupt");
             equal(0,a.leftSide(),"an empty no-argument clash cannot wash the interrupted left hand");equal(0,a.rightSide(),"an empty no-argument clash cannot wash the interrupted right hand");
-            equal(4,a.counterRemainingTicks(),"an empty no-argument clash cannot clear a later reward");
+            equal(0,a.counterRemainingTicks(),"an empty no-argument clash cannot invent a reward");
             if(stunned)a.tick();
             equal(ActionResult.DIRECTION_EXHAUSTED,a.requestStyledAttack(SkillInput.LEFT,skills).rejection(),"ordinary guard or stun still requires a real hand return");
         }

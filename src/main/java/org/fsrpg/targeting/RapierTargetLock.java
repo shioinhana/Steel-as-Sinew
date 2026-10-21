@@ -10,7 +10,6 @@ import net.minecraft.world.entity.Mob;
 import net.minecraft.world.entity.TamableAnimal;
 import org.fsrpg.combat.AttackAim;
 import org.fsrpg.combat.CombatActor;
-import org.fsrpg.combat.CombatPhase;
 import org.fsrpg.combat.RapierTargeting;
 import org.fsrpg.progression.MinecraftProgression;
 
@@ -48,9 +47,7 @@ public final class RapierTargetLock {
         return snapshot;
     }
     private static boolean enabled(ServerPlayer player,CombatActor actor,boolean weaponEquipped) {
-        return actor.rules().rapierTargetLock().enabled() && player.isAlive() && !player.isSpectator() && weaponEquipped
-                && actor.drawn() && actor.phase() != CombatPhase.SHEATHING && actor.style() != null
-                && !actor.style().controls().spear() && !actor.style().weaponGroup().equals("unarmed");
+        return RapierTargeting.eligibleActor(actor,weaponEquipped,player.isAlive(),player.isSpectator());
     }
     private static RapierTargeting.Candidate candidate(ServerPlayer player,Mob mob) {
         boolean friendly=player.isAlliedTo(mob)||mob.isAlliedTo(player)||mob instanceof TamableAnimal animal&&animal.isTame();
@@ -61,6 +58,9 @@ public final class RapierTargetLock {
     /** Call only after a real accepted attack; the adapter independently validates the submitted eye ray. */
     public boolean acquire(ServerPlayer player,CombatActor actor,boolean weaponEquipped,LivingEntity target) {
         if(!enabled(player,actor,weaponEquipped)||!(target instanceof Mob mob)||!candidate(player,mob).eligible(actor.rules().rapierTargetLock()))return false;
+        // Even a second valid selected attack may not replace an existing explicit lock.
+        Snapshot retained=update(player,actor,weaponEquipped);
+        if(retained.locked())return retained.targetId()==mob.getId()&&retained.targetUuid().equals(mob.getUUID().toString());
         states.put(player.getUUID(),new Snapshot(true,mob.getId(),mob.getUUID().toString(),player.getYRot(),player.getXRot(),actor.rules().rapierTargetLock().range()));
         update(player,actor,weaponEquipped);return true;
     }
