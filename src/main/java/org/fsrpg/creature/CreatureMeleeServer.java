@@ -41,8 +41,11 @@ public final class CreatureMeleeServer {
         final ItemStack weapon;
         final boolean trackedTarget;
         final long sequence;
-        Attack(Mob mob, LivingEntity target, ServerLevel level, CreatureCombatCatalog.Definition definition, long sequence, GuardCueSettings settings) {
+        final double damageMultiplier;
+        CreatureContactDelay contact;
+        Attack(Mob mob, LivingEntity target, ServerLevel level, CreatureCombatCatalog.Definition definition, long sequence, GuardCueSettings settings, double damageMultiplier) {
             this.mob=mob; this.target=target; this.level=level; this.definition=definition; this.sequence=sequence;
+            this.damageMultiplier=damageMultiplier;
             int windup=target instanceof ServerPlayer?settings.windupTicks(definition.windupTicks()):definition.windupTicks();
             clock=new CreatureAttackTimeline(level.getGameTime(),windup,definition.recoveryTicks());
             cue=settings.enabled()&&target instanceof ServerPlayer?settings.window(level.getGameTime(),windup):null;
@@ -50,8 +53,31 @@ public final class CreatureMeleeServer {
             weapon=mob.getMainHandItem().copy(); trackedTarget=mob.getTarget()==target;
         }
     }
-    private record Invocation(Attack attack) {}
+    /** An unprofiled vanilla attempt already reached its original contact invocation. */
+    private static final class NativeAttack {
+        final Mob mob;
+        final LivingEntity target;
+        final ServerLevel level;
+        final ItemStack weapon;
+        final boolean trackedTarget;
+        final long sequence, contactTick;
+        final double damageMultiplier;
+        final int windowTicks;
+        final CreatureContactDelay contact;
+        NativeAttack(Mob mob,LivingEntity target,ServerLevel level,long sequence,int windowTicks,double damageMultiplier) {
+            this.mob=mob;this.target=target;this.level=level;this.sequence=sequence;this.windowTicks=windowTicks;
+            this.damageMultiplier=damageMultiplier;
+            contactTick=level.getGameTime();weapon=mob.getMainHandItem().copy();trackedTarget=mob.getTarget()==target;
+            contact=new CreatureContactDelay(contactTick,windowTicks,true);
+        }
+    }
+    private record Invocation(Attack attack, NativeAttack nativeAttack, long contactTick, boolean deferred) {
+        Mob mob(){return attack!=null?attack.mob:nativeAttack.mob;}
+        LivingEntity target(){return attack!=null?attack.target:nativeAttack.target;}
+        double damageMultiplier(){return attack!=null?attack.damageMultiplier:nativeAttack.damageMultiplier;}
+    }
     private final Map<UUID,Attack> active = new HashMap<>();
+    private final Map<UUID,NativeAttack> nativeActive = new HashMap<>();
     private final ToIntFunction<Entity> stunRemaining;
     private CreatureCombatCatalog catalog;
     private GuardCueSettings cueSettings;
@@ -70,15 +96,27 @@ public final class CreatureMeleeServer {
         return server!=null && server.creatureMelee()!=null && server.creatureMelee().request(attacker,level,target);
     }
     private boolean request(Mob mob, ServerLevel level, Entity entity) {
-        if (invocation!=null && invocation.attack().mob==mob && invocation.attack().target==entity) return false;
+        if (invocation!=null && invocation.mob()==mob && invocation.target()==entity) return false;
         if (!(entity instanceof LivingEntity target) || mob.level()!=level) return false;
+        if (active.containsKey(mob.getUUID()) || nativeActive.containsKey(mob.getUUID()) || stunRemaining.applyAsInt(mob)>0) return true;
         String entityType=BuiltInRegistries.ENTITY_TYPE.getKey(mob.getType()).toString();
         var chosen=catalog.find(entityType,variant(mob));
-        if (chosen.isEmpty()) return false;
-        if (active.containsKey(mob.getUUID()) || stunRemaining.applyAsInt(mob)>0) return true;
+        if (chosen.isEmpty()) {
+            RpgServer server=RpgServer.instance();
+            if (server==null || !server.deferCreatureContact(mob,target)) return false;
+            if (!canContinue(mob) || !mob.isAlive() || mob.isRemoved() || !target.isAlive() || target.isRemoved()
+                    || target.level()!=level || !mob.isWithinMeleeAttackRange(target) || !mob.hasLineOfSight(target)) return true;
+            double damageMultiplier=server.consumeMeleeCounter(mob);
+            NativeAttack attack=new NativeAttack(mob,target,level,++sequence,server.config().current().combat().weaponClash().contactWindowTicks(),damageMultiplier);
+            nativeActive.put(mob.getUUID(),attack);acceptedAttempts++;contactAttempts++;
+            // No authored clip or cue exists. Keep the complete original virtual invocation only.
+            return true;
+        }
         if (!canContinue(mob) || !mob.isAlive() || mob.isRemoved() || !target.isAlive() || target.isRemoved()
                 || target.level()!=level || !mob.isWithinMeleeAttackRange(target) || !mob.hasLineOfSight(target)) return true;
-        Attack attack=new Attack(mob,target,level,chosen.get(),++sequence,cueSettings);
+        RpgServer server=RpgServer.instance();
+        double damageMultiplier=server==null?1:server.consumeMeleeCounter(mob);
+        Attack attack=new Attack(mob,target,level,chosen.get(),++sequence,cueSettings,damageMultiplier);
         active.put(mob.getUUID(),attack); acceptedAttempts++;
         send(attack,"BEGIN",null); return true;
     }
@@ -88,34 +126,91 @@ public final class CreatureMeleeServer {
     }
     /** Runs once after the world's vanilla AI. Pending attempts never invoke any attack side effects. */
     public void tick() {
+        for (NativeAttack attack:List.copyOf(nativeActive.values()))
+            if (!valid(attack) || stunRemaining.applyAsInt(attack.mob)>0) finish(attack,true);
         for (Attack attack:List.copyOf(active.values())) {
             if (active.get(attack.mob.getUUID())!=attack) continue;
             if (!valid(attack) || stunRemaining.applyAsInt(attack.mob)>0) { finish(attack,true); continue; }
             long now=attack.level.getGameTime();
             if (attack.clock.claimContact(now)) {
                 contactAttempts++; send(attack,"CONTACT",null);
-                // The original virtual dispatch preserves damage, item/enchantment hooks and
-                // mob-specific effects. Incoming damage continues through the real guard resolver.
                 if (attack.mob.isWithinMeleeAttackRange(attack.target) && attack.mob.hasLineOfSight(attack.target)) {
-                    Invocation previous=invocation; invocation=new Invocation(attack);
-                    try { attack.mob.doHurtTarget(attack.level,attack.target); }
-                    finally { invocation=previous; }
-                    if (stunRemaining.applyAsInt(attack.mob)>0) {
-                        attack.mob.getNavigation().stop(); attack.mob.setDeltaMovement(0,0,0); attack.mob.hurtMarked=true;
-                        finish(attack,true);
-                    }
+                    RpgServer server=RpgServer.instance();
+                    boolean wait=server!=null&&server.deferCreatureContact(attack.mob,attack.target);
+                    int window=server==null?0:server.config().current().combat().weaponClash().contactWindowTicks();
+                    attack.contact=new CreatureContactDelay(now,window,wait);
+                    // Expiry is deliberately checked by flushContacts after this tick's player
+                    // contacts, so the inclusive final tick cannot lose to world iteration order.
+                    executeContact(attack,now,false);
                 }
             }
-            if (active.get(attack.mob.getUUID())==attack && attack.clock.phase(now)==CreatureAttackTimeline.Phase.FINISHED)
-                finish(attack,false);
+            finishCompleted(attack,now);
         }
     }
+    /** Run after collecting player contacts, before expiring unmatched player contacts. */
+    public void flushContacts() {
+        for (Attack attack:List.copyOf(active.values())) {
+            if (active.get(attack.mob.getUUID())!=attack || attack.contact==null || !attack.contact.pending()) continue;
+            if (!valid(attack) || stunRemaining.applyAsInt(attack.mob)>0) { finish(attack,true); continue; }
+            long now=attack.level.getGameTime();
+            executeContact(attack,now,true);
+            finishCompleted(attack,now);
+        }
+        for (NativeAttack attack:List.copyOf(nativeActive.values())) {
+            if (nativeActive.get(attack.mob.getUUID())!=attack || !attack.contact.pending()) continue;
+            if (!valid(attack) || stunRemaining.applyAsInt(attack.mob)>0) { finish(attack,true); continue; }
+            RpgServer server=RpgServer.instance();long now=attack.level.getGameTime();
+            boolean reverse=server!=null&&server.hasPendingMelee(attack.target,attack.mob,attack.contactTick);
+            if (!attack.contact.claimExecution(now,reverse)) continue;
+            Invocation previous=invocation;
+            // The native contact occurred at interception, even when dispatch follows in the same tick.
+            invocation=new Invocation(null,attack,attack.contactTick,true);
+            try { attack.mob.doHurtTarget(attack.level,attack.target); }
+            finally { invocation=previous;finish(attack,false); }
+        }
+    }
+    private void executeContact(Attack attack,long now,boolean allowExpiration) {
+        var contact=attack.contact;
+        if (contact==null || !contact.pending()) return;
+        RpgServer server=RpgServer.instance();
+        boolean reverse=server!=null&&server.hasPendingMelee(attack.target,attack.mob,contact.contactTick());
+        if (!allowExpiration && contact.waitForReverse() && !reverse) return;
+        if (!contact.claimExecution(now,reverse)) return;
+        // Invoke the complete original virtual method exactly once. Delaying only a replacement
+        // hurtServer call would discard poison, enchantment hooks and other mob-specific effects.
+        Invocation previous=invocation;
+        invocation=new Invocation(attack,null,contact.contactTick(),contact.deferred());
+        try { attack.mob.doHurtTarget(attack.level,attack.target); }
+        finally { invocation=previous; }
+        if (stunRemaining.applyAsInt(attack.mob)>0) {
+            attack.mob.getNavigation().stop(); attack.mob.setDeltaMovement(0,0,0); attack.mob.hurtMarked=true;
+            finish(attack,true);
+        }
+    }
+    private void finishCompleted(Attack attack,long now) {
+        if (active.get(attack.mob.getUUID())==attack && (attack.contact==null || !attack.contact.pending())
+                && attack.clock.phase(now)==CreatureAttackTimeline.Phase.FINISHED) finish(attack,false);
+    }
+    /** The synchronous incoming-damage adapter can recover the original animation contact tick. */
+    public Long invocationContactTick(Entity source,Entity direct,LivingEntity target) {
+        if (invocation==null) return null;
+        return source==invocation.mob() && direct==invocation.mob() && target==invocation.target() ? invocation.contactTick() : null;
+    }
+    public boolean invocationDeferred() { return invocation!=null && invocation.deferred(); }
+    /** Counter power belongs to this accepted native invocation, even after a long authored windup. */
+    public double invocationDamageMultiplier() { return invocation==null ? 1 : invocation.damageMultiplier(); }
     private boolean valid(Attack attack) {
         return canContinue(attack.mob) && attack.mob.isAlive() && !attack.mob.isRemoved() && attack.target.isAlive() && !attack.target.isRemoved()
                 && attack.mob.level()==attack.level && attack.target.level()==attack.level
                 && (!attack.trackedTarget || attack.mob.getTarget()==attack.target)
-                && (attack.clock.contactClaimed() ? attack.weapon.getItem()==attack.mob.getMainHandItem().getItem()
+                && (attack.clock.contactClaimed() && (attack.contact==null || !attack.contact.pending()) ? attack.weapon.getItem()==attack.mob.getMainHandItem().getItem()
                     : ItemStack.isSameItemSameComponents(attack.weapon,attack.mob.getMainHandItem()));
+    }
+    private boolean valid(NativeAttack attack) {
+        return canContinue(attack.mob) && attack.mob.isAlive() && !attack.mob.isRemoved() && attack.target.isAlive() && !attack.target.isRemoved()
+                && attack.mob.level()==attack.level && attack.target.level()==attack.level
+                && (!attack.trackedTarget || attack.mob.getTarget()==attack.target)
+                && ItemStack.isSameItemSameComponents(attack.weapon,attack.mob.getMainHandItem());
     }
     private static boolean canContinue(Mob mob) {
         if (mob instanceof Creaking creaking && !creaking.canMove()) return false;
@@ -128,20 +223,34 @@ public final class CreatureMeleeServer {
         return true;
     }
     public void cancel(Entity entity) {
-        Attack attack=active.get(entity.getUUID());
-        if (attack!=null && attack.mob==entity) finish(attack,true);
+        for (Attack attack:List.copyOf(active.values()))
+            if (attack.mob==entity || attack.target==entity) finish(attack,true);
+        for (NativeAttack attack:List.copyOf(nativeActive.values()))
+            if (attack.mob==entity || attack.target==entity) finish(attack,true);
+    }
+    /** A parry stops this attacker's weapon, without erasing unrelated attacks aimed at it. */
+    public void cancelAttacker(Entity entity) {
+        for (Attack attack:List.copyOf(active.values()))if(attack.mob==entity)finish(attack,true);
+        for (NativeAttack attack:List.copyOf(nativeActive.values()))if(attack.mob==entity)finish(attack,true);
     }
     private void finish(Attack attack, boolean canceled) {
         if (!active.remove(attack.mob.getUUID(),attack)) return;
+        if(attack.contact!=null)attack.contact.cancel();
         if(attack.cue!=null)attack.cue.cancel();
         if (canceled) {attack.clock.cancel(); canceledAttacks++;} else completedAttacks++;
         send(attack,canceled?"CANCEL":"END",null);
+    }
+    private void finish(NativeAttack attack,boolean canceled) {
+        if (!nativeActive.remove(attack.mob.getUUID(),attack)) return;
+        attack.contact.cancel();
+        if (canceled) canceledAttacks++; else completedAttacks++;
     }
     public void reconfigure(CreatureCombatCatalog replacement) {
         reconfigure(replacement,cueSettings);
     }
     public void reconfigure(CreatureCombatCatalog replacement,GuardCueSettings settings) {
         for (Attack attack:List.copyOf(active.values())) finish(attack,true);
+        for (NativeAttack attack:List.copyOf(nativeActive.values())) finish(attack,true);
         catalog=replacement;cueSettings=settings;
     }
     public void startTracking(ServerPlayer viewer, Entity entity) {
@@ -164,16 +273,30 @@ public final class CreatureMeleeServer {
     }
     public Snapshot snapshot(Entity entity) {
         Attack attack=active.get(entity.getUUID());
-        if (attack==null || attack.mob!=entity) return null;
+        if (attack==null || attack.mob!=entity) {
+            NativeAttack nativeAttack=nativeActive.get(entity.getUUID());
+            if (nativeAttack==null || nativeAttack.mob!=entity) return null;
+            return new Snapshot(entity.getUUID(),nativeAttack.target.getUUID(),nativeAttack.sequence,"","NATIVE_CONTACT",
+                    nativeAttack.contactTick,nativeAttack.contactTick,nativeAttack.contactTick+nativeAttack.windowTicks,true);
+        }
         return new Snapshot(entity.getUUID(),attack.target.getUUID(),attack.sequence,attack.definition.clip(),
                 attack.clock.phase(attack.level.getGameTime()).name(),attack.clock.startedGameTick(),
                 attack.clock.contactGameTick(),attack.clock.endGameTick(),attack.clock.contactClaimed());
+    }
+    /** Only an attack with a future or still-waiting original contact can answer a player's strike. */
+    public long clashSequence(Entity entity) {
+        Attack attack=active.get(entity.getUUID());
+        if (attack!=null && attack.mob==entity && valid(attack) && stunRemaining.applyAsInt(attack.mob)<=0
+                && (!attack.clock.contactClaimed() || attack.contact!=null && attack.contact.pending())) return attack.sequence;
+        NativeAttack nativeAttack=nativeActive.get(entity.getUUID());
+        return nativeAttack!=null && nativeAttack.mob==entity && valid(nativeAttack) && stunRemaining.applyAsInt(nativeAttack.mob)<=0
+                && nativeAttack.contact.pending() ? nativeAttack.sequence : -1;
     }
     public long acceptedAttempts(){return acceptedAttempts;}
     public long contactAttempts(){return contactAttempts;}
     public long canceledAttacks(){return canceledAttacks;}
     public long completedAttacks(){return completedAttacks;}
-    public int activeAttacks(){return active.size();}
+    public int activeAttacks(){return active.size()+nativeActive.size();}
     public CreatureCombatCatalog catalog(){return catalog;}
     public GuardCueSettings guardCueSettings(){return cueSettings;}
     public GuardCueSnapshot guardCueSnapshot(Entity entity){
@@ -195,6 +318,7 @@ public final class CreatureMeleeServer {
     public Boolean claimGuardAuthorization(Entity source,Entity direct,ServerPlayer defender,long serial,boolean held){
         if(invocation==null)return null;
         Attack attack=invocation.attack();
+        if(attack==null)return null;
         if(source!=attack.mob||direct!=attack.mob||attack.target!=defender||attack.cue==null)return null;
         return attack.cue.consume(attack.level.getGameTime(),serial,held);
     }

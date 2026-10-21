@@ -33,6 +33,15 @@
     "guardBreakStunTicks": { "$ref": "#/$defs/ticks" },
     "hitStunTicks": { "$ref": "#/$defs/ticks" },
     "clashFacingArcDegrees": { "$ref": "#/$defs/angle" },
+    "weaponClash": {
+      "type": "object", "additionalProperties": false,
+      "description": "服务端近战相杀的接触时间窗口与伤害容差。旧配置可省略整个对象，兼容默认2tick / 3点；提供对象时两字段必须齐全。",
+      "required": ["contactWindowTicks", "damageTolerance"],
+      "properties": {
+        "contactWindowTicks": { "type": "integer", "minimum": 0, "maximum": 10, "default": 2, "description": "两次近战接触允许相差的tick数，每秒20tick；默认2tick=0.1秒，0仅允许同tick接触。" },
+        "damageTolerance": { "type": "number", "minimum": 0, "maximum": 1000000, "default": 3.0, "description": "双方近战攻击用于相杀比较的伤害容差，单位为生命值点，默认3点；必须为有限非负数。" }
+      }
+    },
     "dodgeDurationTicks": { "type": "integer", "minimum": 1, "maximum": 72000 },
     "dodgeInvulnerabilityStartTicks": { "$ref": "#/$defs/ticks" },
     "dodgeInvulnerabilityTicks": { "$ref": "#/$defs/ticks" },

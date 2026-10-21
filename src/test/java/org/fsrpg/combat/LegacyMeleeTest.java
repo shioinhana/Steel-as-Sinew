@@ -2,7 +2,7 @@ package org.fsrpg.combat;
 
 import java.util.*;
 
-/** Legacy charged-thrust commitment plus unrestricted directional cuts using the original four clips. */
+/** Legacy charged-thrust commitment plus directional hand availability using the original four clips. */
 public final class LegacyMeleeTest {
     private static int checks;
     private static final SkillDefinition THRUST = skill("sword_thrust", SkillInput.RIGHT, 7,2,2,20,9,"sword");
@@ -10,6 +10,8 @@ public final class LegacyMeleeTest {
     public static void main(String[] args) {
         normalCommit(); cancellation(); guiCancellation(); holdAndParry(); forcedInterrupts(); legacyDualRouting();
         legacyDualCadence(); legacyDualBufferedCadence(); legacyDualCadenceResets(); legacyDualBodyAdjustment(); orderedDualCompatibility();
+        legacyDualExhaustionAndReturn();
+        legacyDualClashReturn();
         System.out.println("LegacyMeleeTest passed: " + checks + " checks");
     }
     private static void normalCommit() {
@@ -80,22 +82,25 @@ public final class LegacyMeleeTest {
         Map<String,SkillDefinition> skills=dualSkills(); CombatActor a=ready(style("legacy_dual",skills));
         equal(-1,a.leftSide(),"initialleftneutral"); equal(-1,a.rightSide(),"initialrightneutral");
         equal("dual_ll",a.requestStyledAttack(SkillInput.LEFT,skills).skillId(),"firstleftuseslefthandleft");
-        equal(0,a.leftSide(),"leftendsatleft"); equal(-1,a.rightSide(),"unusedrightstillneutral"); tick(a,4);
-        equal("dual_rl",a.requestStyledAttack(SkillInput.LEFT,skills).skillId(),"secondleftusesrighthandleft"); equal(0,a.rightSide(),"bothhandsnowleft"); tick(a,4);
-        equal("dual_ll",a.requestStyledAttack(SkillInput.LEFT,skills).skillId(),"thirdleftrecoverslefthandwithoutdirectionexhaustion");tick(a,4);
-        equal("dual_rr",a.requestStyledAttack(SkillInput.RIGHT,skills).skillId(),"nextrightmovesrighthandright"); tick(a,4);
-        equal("dual_lr",a.requestStyledAttack(SkillInput.RIGHT,skills).skillId(),"secondrightmoveslefthandright"); tick(a,4);
-        equal("dual_rr",a.requestStyledAttack(SkillInput.RIGHT,skills).skillId(),"thirdrightrecoversrighthandwithoutdirectionexhaustion");tick(a,4);
+        equal(0,a.leftSide(),"leftendsatleft"); equal(-1,a.rightSide(),"unusedrightstillneutral"); tick(a,3);
+        equal("dual_rl",a.requestStyledAttack(SkillInput.LEFT,skills).skillId(),"secondleftusesrighthandleft"); equal(0,a.rightSide(),"bothhandsnowleft"); tick(a,3);
+        equal(ActionResult.DIRECTION_EXHAUSTED,a.requestStyledAttack(SkillInput.LEFT,skills).rejection(),"third left waits for a real return");
+        equal("dual_rr",a.requestStyledAttack(SkillInput.RIGHT,skills).skillId(),"nextrightmovesrighthandright"); tick(a,3);
+        equal("dual_lr",a.requestStyledAttack(SkillInput.RIGHT,skills).skillId(),"secondrightmoveslefthandright"); tick(a,3);
+        equal(ActionResult.DIRECTION_EXHAUSTED,a.requestStyledAttack(SkillInput.RIGHT,skills).rejection(),"third right also waits for a real return");
         equal(ActionResult.ACCEPTED,a.requestAttack(skills.get("dual_combined")),"namedlinkedcut accepted"); equal(-1,a.leftSide(),"linkedcut resetslefthand"); equal(-1,a.rightSide(),"linkedcut resetsrighthand");
         equal(100,a.cooldownRemaining("dual_combined"),"linkedcut5secondscooldown"); tick(a,4);
-        equal("dual_ll",a.requestStyledAttack(SkillInput.LEFT,skills).skillId(),"linkedcut allowsfreshleft"); tick(a,4);
-        tick(a,39); equal(0,a.leftSide(),"handstayspositionuntilfull2secondidle"); a.tick(); equal(-1,a.leftSide(),"two secondsidleleftneutral"); equal(-1,a.rightSide(),"two secondsidlerightneutral");
+        equal("dual_ll",a.requestStyledAttack(SkillInput.LEFT,skills).skillId(),"linkedcut allowsfreshleft"); tick(a,3);
+        equal(0,a.leftSide(),"hand stays on its side throughout recovery");a.tick();
+        equal(-1,a.leftSide(),"complete natural recovery restores default left carry"); equal(-1,a.rightSide(),"complete natural recovery restores default right carry");
         a=ready(style("legacy_dual",skills)); a.requestStyledAttack(SkillInput.LEFT,skills);
         equal(ComboInputStatus.BUFFERED,a.requestStyledAttack(SkillInput.LEFT,skills).status(),"secondleftpreinputqueuesrighthand");
         equal(ComboInputStatus.ALREADY_QUEUED,a.requestStyledAttack(SkillInput.LEFT,skills).status(),"mashingcannotqueueextrathirdleft");
         tick(a,3); equal("dual_rl",a.currentSkill().id(),"secondhandstartsafteractivecontact");
-        equal(ComboInputStatus.BUFFERED,a.requestStyledAttack(SkillInput.LEFT,skills).status(),"nextsame-directioncutcanbequeuedwithouttwocutlimit");
-        tick(a,3);equal("dual_ll",a.currentSkill().id(),"thirdsame-directioncutstartsafterfullcontact");
+        equal(ActionResult.DIRECTION_EXHAUSTED,a.requestStyledAttack(SkillInput.LEFT,skills).rejection(),"third same-direction cut cannot enter the windup buffer");
+        tick(a,3);equal("dual_rl",a.currentSkill().id(),"second cut completes its contact without a hidden third cut");
+        a.tick();equal(CombatPhase.READY,a.phase(),"exhausted pair returns naturally to ready");
+        equal("dual_ll",a.requestStyledAttack(SkillInput.LEFT,skills).skillId(),"fresh left is restored after complete return");
     }
     private static void orderedDualCompatibility() {
         Map<String,SkillDefinition> skills=dualSkills(); CombatActor a=ready(style("dual",skills));
@@ -103,6 +108,98 @@ public final class LegacyMeleeTest {
         for(int i=0;i<4;i++) {equal("dual_rr",a.requestStyledAttack(SkillInput.RIGHT,skills).skillId(),"existingdualmode rightalwaysrighthand");tick(a,4);}
         equal(-1,a.leftSide(),"existingmodeexportsnoneofnewhandpositionstate"); equal(-1,a.rightSide(),"existingmoderightpositionunaffected");
     }
+    private static void legacyDualExhaustionAndReturn() {
+        var skills=dualSkills(2,1,3);
+        for(var direction:List.of(SkillInput.LEFT,SkillInput.RIGHT)) {
+            String first=direction==SkillInput.LEFT?"dual_ll":"dual_rr";
+            String second=direction==SkillInput.LEFT?"dual_rl":"dual_lr";
+            for(int elapsed=0;elapsed<skills.get(second).durationTicks();elapsed++) {
+                var a=ready(style("legacy_dual",skills));
+                a.requestStyledAttack(direction,skills);tick(a,3);
+                equal(ComboInputStatus.STARTED,a.requestStyledAttack(direction,skills).status(),"second hand can chain before full return");
+                equal(second,a.currentSkill().id(),"second cut uses the other available hand");tick(a,elapsed);
+                a.drainStartedSkills();a.perfectGuardSucceeded();
+                int counter=a.counterRemainingTicks();double stamina=a.stamina(),spirit=a.spirit();long sequence=a.snapshot().swingSequence();
+                var rejected=a.requestStyledAttack(direction,skills);
+                equal(ComboInputStatus.REJECTED,rejected.status(),"third direction rejects in every second-cut phase at "+elapsed);
+                equal(ActionResult.DIRECTION_EXHAUSTED,rejected.rejection(),"both hand destinations are exhausted");
+                equal(ActionResult.DIRECTION_EXHAUSTED,a.aimedLeftSkill(skills.get(first),null),"named physical left input cannot bypass hand occupancy");
+                equal(stamina,a.stamina(),"exhaustion rejection spends no stamina");equal(spirit,a.spirit(),"exhaustion rejection spends no spirit");
+                equal(counter,a.counterRemainingTicks(),"exhaustion rejection preserves the counter opening");
+                equal(sequence,a.snapshot().swingSequence(),"exhaustion rejection cannot issue a new swing");
+                check(a.drainStartedSkills().isEmpty()&&!a.comboSnapshot().queued(),"rejection cannot issue a quest event or queue a third cut");
+                tick(a,skills.get(second).durationTicks()-elapsed);
+                equal(CombatPhase.READY,a.phase(),"entire recovery completes before default carry");
+                equal(-1,a.leftSide(),"natural return restores left neutral");equal(-1,a.rightSide(),"natural return restores right neutral");
+                equal(first,a.requestStyledAttack(direction,skills).skillId(),"new click can cut again after complete return");
+            }
+        }
+        var a=ready(style("legacy_dual",skills));
+        a.requestStyledAttack(SkillInput.LEFT,skills);tick(a,3);a.requestStyledAttack(SkillInput.LEFT,skills);tick(a,3);
+        equal(ComboInputStatus.STARTED,a.requestStyledAttack(SkillInput.RIGHT,skills).status(),"opposite cut moves a real hand back across the body");
+        equal("dual_rr",a.currentSkill().id(),"right hand moves to the right");
+        equal(ComboInputStatus.BUFFERED,a.requestStyledAttack(SkillInput.LEFT,skills).status(),"moved hand can queue a left cut again");
+        equal("dual_rl",a.comboSnapshot().queuedSkillId(),"queued reversal belongs to the hand that actually moved");
+        tick(a,3);equal("dual_rl",a.currentSkill().id(),"buffered reversal starts after every contact tick");
+        equal(ComboInputStatus.BUFFERED,a.requestStyledAttack(SkillInput.RIGHT,skills).status(),"valid opposite follow-up occupies the one slot");
+        equal(ActionResult.DIRECTION_EXHAUSTED,a.requestStyledAttack(SkillInput.LEFT,skills).rejection(),"third left cannot displace an already valid opposite follow-up");
+        equal("dual_rr",a.comboSnapshot().queuedSkillId(),"rejected input preserves the previous valid slot");
+
+        for(boolean precision:List.of(false,true)) {
+            a=ready(style("legacy_dual",skills));a.requestStyledAttack(SkillInput.LEFT,skills);tick(a,3);a.requestStyledAttack(SkillInput.LEFT,skills);
+            equal(ActionResult.ACCEPTED,precision?a.requestPrecisionGuard(false):a.setGuarding(true),"guard can interrupt second preparation");
+            for(int press=0;press<4;press++) {
+                a.setGuarding(false);a.setGuarding(true);a.setGuarding(false);
+                equal(ActionResult.DIRECTION_EXHAUSTED,a.requestStyledAttack(SkillInput.LEFT,skills).rejection(),"repeated guard edges cannot wash occupied hands");
+            }
+            tick(a,39);equal(0,a.leftSide(),"interrupted hand occupancy survives until the existing idle reset");
+            a.tick();equal(-1,a.leftSide(),"existing forty-tick idle fallback recovers interrupted hands");
+        }
+    }
+    private static void legacyDualClashReturn() {
+        var skills=dualSkills(2,1,3);
+        for(boolean sequenceApi:List.of(false,true)) {
+            var a=exhaustedLeft(skills);long sequence=a.snapshot().swingSequence();
+            equal(ActionResult.DIRECTION_EXHAUSTED,a.requestStyledAttack(SkillInput.LEFT,skills).rejection(),"two left cuts exhaust both hands before the real clash");
+            equal(ComboInputStatus.BUFFERED,a.requestStyledAttack(SkillInput.RIGHT,skills).status(),"real clash also owns a possible pending reversal");
+            a.drainStartedSkills();
+            if(sequenceApi)check(a.finishClash(sequence),"matching real-contact sequence finishes the exhausted second cut");else a.finishClash();
+            equal(CombatPhase.READY,a.phase(),"real clash finishes directly at the rendered default carry");
+            check(a.currentSkill()==null&&!a.comboSnapshot().queued(),"real clash clears its current and queued cuts");
+            equal(-1,a.leftSide(),"real clash returns left hand to default carry");equal(-1,a.rightSide(),"real clash returns right hand to default carry");
+            a.perfectGuardSucceeded();equal(4,a.counterRemainingTicks(),"advantage clash grants its normal short counter opening");
+            var followUp=a.requestStyledAttack(SkillInput.LEFT,skills);
+            equal(ComboInputStatus.STARTED,followUp.status(),"a new same-direction left can use the real returned hands immediately");
+            equal("dual_ll",a.currentSkill().id(),"post-clash left starts from the default left-hand clip");
+            equal(1.5,a.attackDamageMultiplier(),"post-clash physical left consumes the advantage multiplier");
+            equal(0,a.counterRemainingTicks(),"post-clash counter is consumed once at acceptance");
+            equal(sequence+1,a.snapshot().swingSequence(),"post-clash input accepts exactly one new cut");
+            equal(1,a.drainStartedSkills().size(),"clash return itself emits no extra attack event");
+        }
+        var a=exhaustedLeft(skills);long oldSequence=a.snapshot().swingSequence();check(a.finishClash(oldSequence),"fixture closes the first real clash");
+        a.requestStyledAttack(SkillInput.LEFT,skills);tick(a,3);a.requestStyledAttack(SkillInput.LEFT,skills);tick(a,2);
+        long newSequence=a.snapshot().swingSequence();var current=a.currentSkill();a.perfectGuardSucceeded();
+        check(!a.finishClash(oldSequence),"old clash sequence cannot end a later accepted cut");
+        equal(newSequence,a.snapshot().swingSequence(),"old clash cannot change the new swing sequence");equal(current,a.currentSkill(),"old clash cannot clear the new active cut");
+        equal(0,a.leftSide(),"old clash cannot return a new occupied left hand");equal(0,a.rightSide(),"old clash cannot return a new occupied right hand");
+        equal(4,a.counterRemainingTicks(),"old clash cannot clear a later earned counter opening");
+        equal(ActionResult.DIRECTION_EXHAUSTED,a.requestStyledAttack(SkillInput.LEFT,skills).rejection(),"old clash cannot wash the new pair's third-left restriction");
+        for(boolean stunned:List.of(false,true)) {
+            a=exhaustedLeft(skills);
+            if(stunned)a.stun(1);else{a.requestPrecisionGuard(false);a.setGuarding(false);}
+            var before=a.phase();a.perfectGuardSucceeded();a.finishClash();
+            equal(before,a.phase(),"an empty no-argument clash cannot invent a state transition after an ordinary interrupt");
+            equal(0,a.leftSide(),"an empty no-argument clash cannot wash the interrupted left hand");equal(0,a.rightSide(),"an empty no-argument clash cannot wash the interrupted right hand");
+            equal(4,a.counterRemainingTicks(),"an empty no-argument clash cannot clear a later reward");
+            if(stunned)a.tick();
+            equal(ActionResult.DIRECTION_EXHAUSTED,a.requestStyledAttack(SkillInput.LEFT,skills).rejection(),"ordinary guard or stun still requires a real hand return");
+        }
+    }
+    private static CombatActor exhaustedLeft(Map<String,SkillDefinition> skills) {
+        var a=ready(style("legacy_dual",skills));a.requestStyledAttack(SkillInput.LEFT,skills);tick(a,3);
+        a.requestStyledAttack(SkillInput.LEFT,skills);tick(a,2);return a;
+    }
+
     private static void legacyDualCadence() {
         var skills=dualSkills(3,6,1);var a=ready(style("legacy_dual",skills));
         cut(a,skills,SkillInput.LEFT,"dual_ll",9);
@@ -138,11 +235,11 @@ public final class LegacyMeleeTest {
         a=rightHandTwice(skills);a.setGuarding(true);cut(a,skills,SkillInput.LEFT,"dual_rl",9);
         a=rightHandTwice(skills);a.stun(1);a.tick();cut(a,skills,SkillInput.LEFT,"dual_rl",9);
         a=rightHandTwice(skills);a.forceSheathed();equal(-1,a.leftSide(),"forced sheath resets left hand");equal(-1,a.rightSide(),"forced sheath resets right hand");a.requestDrawn();tick(a,8);cut(a,skills,SkillInput.RIGHT,"dual_rr",9);
-        a=rightHandTwice(skills);a.toggleDrawn();tick(a,a.rules().sheathTicks());a.requestDrawn();tick(a,8);cut(a,skills,SkillInput.RIGHT,"dual_rr",9);
-        a=rightHandTwice(skills);a.setStyle(style("dual",skills));a.setStyle(style("legacy_dual",skills));
+        a=rightHandTwice(skills);a.tick();a.toggleDrawn();tick(a,a.rules().sheathTicks());a.requestDrawn();tick(a,8);cut(a,skills,SkillInput.RIGHT,"dual_rr",9);
+        a=rightHandTwice(skills);a.setGuarding(true);a.setGuarding(false);a.setStyle(style("dual",skills));a.setStyle(style("legacy_dual",skills));
         // Same-ID configuration updates preserve counts; a genuinely different stance clears them.
         equal(9,acceptedGate(a,skills,SkillInput.LEFT),"same style id reload preserves cadence without a hidden streak penalty");
-        a=rightHandTwice(skills);var oldStyle=a.style();
+        a=rightHandTwice(skills);a.tick();var oldStyle=a.style();
         a.setStyle(new WeaponStyleDefinition("dual_alt",oldStyle.label(),oldStyle.weaponGroup(),true,oldStyle.leftCombo(),oldStyle.rightSkill(),oldStyle.guard(),oldStyle.heavyGuard(),oldStyle.techniques(),oldStyle.cancels(),oldStyle.controls()));
         cut(a,skills,SkillInput.RIGHT,"dual_rr",9);
         a=ready(style("legacy_dual",skills));a.setResources(0,0);
@@ -165,7 +262,7 @@ public final class LegacyMeleeTest {
     }
     private static int gate(CombatActor a) { return a.currentSkill().windupTicks()+a.currentSkill().activeTicks(); }
     private static void cut(CombatActor a,Map<String,SkillDefinition> skills,SkillInput input,String id,int gate) {
-        equal(ComboInputStatus.STARTED,a.requestStyledAttack(input,skills).status(),"hand cut accepted: "+id);equal(id,a.currentSkill().id(),"position routing remains correct: "+id);equal(gate,gate(a),"accepted cadence: "+id);tick(a,gate+1);
+        equal(ComboInputStatus.STARTED,a.requestStyledAttack(input,skills).status(),"hand cut accepted: "+id);equal(id,a.currentSkill().id(),"position routing remains correct: "+id);equal(gate,gate(a),"accepted cadence: "+id);tick(a,gate);
     }
     private static Map<String,SkillDefinition> dualSkills() {
         return dualSkills(2,1,1);

@@ -4,6 +4,7 @@ public final class CreatureAttackTimelineTest {
     private static int checks;
     private static void check(boolean condition,String message){checks++;if(!condition)throw new AssertionError(message);}
     public static void main(String[] args) {
+        checks+=CreatureContactDelayTest.run();
         for(int windup=1;windup<=40;windup++)for(int recovery=1;recovery<=40;recovery++) {
             var clock=new CreatureAttackTimeline(100,windup,recovery);
             for(long tick=100;tick<100+windup;tick++) {

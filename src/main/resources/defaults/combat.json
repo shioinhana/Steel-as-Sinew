@@ -30,6 +30,10 @@
   "guardBreakStunTicks": 10,
   "hitStunTicks": 2,
   "clashFacingArcDegrees": 120,
+  "weaponClash": {
+    "contactWindowTicks": 2,
+    "damageTolerance": 3.0
+  },
   "dodgeDurationTicks": 12,
   "dodgeInvulnerabilityStartTicks": 0,
   "dodgeInvulnerabilityTicks": 6,

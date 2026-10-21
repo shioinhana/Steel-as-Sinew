@@ -34,6 +34,7 @@ import net.neoforged.neoforge.event.tick.ServerTickEvent;
 import net.neoforged.neoforge.event.tick.EntityTickEvent;
 import net.neoforged.neoforge.network.PacketDistributor;
 import org.fsrpg.combat.*;
+import org.fsrpg.combat.HitResult;
 import org.fsrpg.config.*;
 import org.fsrpg.network.*;
 import org.fsrpg.quest.*;
@@ -99,6 +100,29 @@ public final class RpgServer {
     private long savedRevision = -1;
     private record Resources(double stamina, double spirit, String weaponStyle) {}
     private record PendingHit(ServerPlayer attacker, LivingEntity victim, org.fsrpg.combat.HitResult result, double damageMultiplier,SpearSwipe.Vector swipe) {}
+    private record MeleeHit(ServerPlayer attacker, LivingEntity victim, HitResult result, double damage,
+            SpearSwipe.Vector swipe, long sequence, long opponentSequence, String mainItem, String offItem,
+            boolean dual, boolean thrust, boolean execution, double knockX, double knockZ,
+            net.minecraft.server.level.ServerLevel level) {}
+    private final WeaponClash<MeleeHit> meleeContacts = new WeaponClash<>((a,b)->
+            a.opponentSequence()==b.sequence() && b.opponentSequence()==a.sequence());
+    private final List<MeleeHit> ordinaryMelee = new ArrayList<>();
+    private record EnemyCounter(long untilTick, double multiplier) {}
+    private final Map<UUID,EnemyCounter> enemyCounters=new HashMap<>();
+    private long meleeClashes, balancedClashes, advantageClashes;
+    public long meleeClashes(){return meleeClashes;}
+    public long balancedClashes(){return balancedClashes;}
+    public long advantageClashes(){return advantageClashes;}
+    public int perfectGuardCounterRemaining(Entity entity) {
+        if(entity instanceof ServerPlayer p)return actor(p).counterRemainingTicks();
+        EnemyCounter c=enemyCounters.get(entity.getUUID());
+        return c==null?0:(int)Math.max(0,c.untilTick()-entity.level().getGameTime());
+    }
+    /** Consume at attack acceptance; the complete windup then retains this multiplier. */
+    public double consumeMeleeCounter(LivingEntity entity) {
+        EnemyCounter c=enemyCounters.remove(entity.getUUID());
+        return c!=null&&entity.level().getGameTime()<c.untilTick()?c.multiplier():1;
+    }
 
     public static RpgServer instance() { return instance; }
     public ProgressionService progression(){return progression;}
@@ -140,6 +164,9 @@ public final class RpgServer {
             @Override public void skillUsed(UUID player,String skill){quests.useSkill(player,skill);}
             @Override public void kill(UUID player){progression.recordArcheryKill(player,MinecraftProgression.epochDay());}
             @Override public double damageBonus(UUID player){return progression.effects(player).damageBonus();}
+            @Override public boolean meleeContact(ServerPlayer player,LivingEntity target,double damage,double knockback,long reservation){
+                captureBash(player,target,damage,knockback,reservation);return true;
+            }
         });
         archery.restore(archeryFile);
         LOG.info("FSRPG loaded {} skills, {} tree nodes and {} quests from {}", definitions.skills().size(), definitions.skillTrees().nodes().size(), definitions.quests().definitions().size(), config.directory());
@@ -150,12 +177,16 @@ public final class RpgServer {
             catch (Exception failure) { throw new IllegalStateException("FSRPG configuration/progress could not load. Existing files were preserved.", failure); }
         });
         bus.addListener((ServerStoppingEvent event) -> { if (instance != null) {
+            instance.flushAllMelee();
             instance.archery.settleAllProjectiles();
             instance.actors.values().forEach(CombatActor::forceSheathed);
             instance.save();
         } });
         bus.addListener((net.neoforged.neoforge.event.entity.EntityLeaveLevelEvent event) -> {
-            if(instance!=null&&!event.getLevel().isClientSide())instance.archery.onEntityLeave(event.getEntity());
+            if(instance!=null&&!event.getLevel().isClientSide()){
+                instance.flushMelee(event.getEntity());instance.creatureMelee.cancel(event.getEntity());
+                instance.enemyCounters.remove(event.getEntity().getUUID());instance.archery.onEntityLeave(event.getEntity());
+            }
         });
         bus.addListener((LivingDamageEvent.Post event) -> {if(instance!=null)instance.archery.onDamagePost(event);});
         bus.addListener((ServerStoppedEvent event) -> instance = null);
@@ -171,11 +202,13 @@ public final class RpgServer {
         bus.addListener((PlayerEvent.PlayerLoggedOutEvent event) -> { if (instance != null && event.getEntity() instanceof ServerPlayer p) instance.logout(p); });
         bus.addListener((PlayerEvent.PlayerRespawnEvent event) -> { if (instance != null && event.getEntity() instanceof ServerPlayer p) instance.resetActor(p); });
         bus.addListener((PlayerEvent.PlayerChangedDimensionEvent event)->{if(instance!=null&&event.getEntity() instanceof ServerPlayer p){
+            instance.flushMelee(p);instance.creatureMelee.cancel(p);
             instance.burstRequests.remove(p.getUUID());instance.actor(p).cancelBurstDashInput();
         }});
         bus.addListener((LivingDeathEvent event) -> {
             if (instance != null) {
                 instance.enemyStuns.remove(event.getEntity().getUUID());
+                instance.enemyCounters.remove(event.getEntity().getUUID());
                 instance.creatureMelee.cancel(event.getEntity());
                 if (event.getEntity() instanceof ServerPlayer dead) instance.actor(dead).forceSheathed();
             }
@@ -240,7 +273,10 @@ public final class RpgServer {
             if(instance!=null&&event.getEntity().getUUID().equals(instance.suppressedSpearKnockback)){event.setCanceled(true);return;}
             if(instance!=null&&event.getEntity() instanceof ServerPlayer p&&event.getStrength()>0)instance.training.forced(p,10);
         });
-        bus.addListener((net.neoforged.neoforge.event.entity.EntityTeleportEvent event)->{if(instance!=null&&event.getEntity() instanceof ServerPlayer p)instance.training.forced(p,10);});
+        bus.addListener((net.neoforged.neoforge.event.entity.EntityTeleportEvent event)->{if(instance!=null){
+            instance.flushMelee(event.getEntity());instance.creatureMelee.cancel(event.getEntity());
+            if(event.getEntity() instanceof ServerPlayer p)instance.training.forced(p,10);
+        }});
         bus.addListener((ProjectileImpactEvent event) -> { if (instance != null) instance.projectile(event); });
         bus.addListener(RpgServer::commands);
     }
@@ -261,6 +297,7 @@ public final class RpgServer {
         return current;
     }
     private void resetActor(ServerPlayer p) {
+        flushMelee(p);creatureMelee.cancel(p);
         burstRequests.remove(p.getUUID());
         archery.remove(p.getUUID());cancelSpear(p);
         guardPresses.remove(p.getUUID());
@@ -274,6 +311,7 @@ public final class RpgServer {
         actor(p); reconcileWeapon(p); send(p, "", null); broadcastAnimation(p, true);
     }
     private void logout(ServerPlayer p) {
+        flushMelee(p);creatureMelee.cancel(p);
         burstRequests.remove(p.getUUID());
         archery.remove(p.getUUID());cancelSpear(p);
         guardPresses.remove(p.getUUID());
@@ -754,6 +792,8 @@ public final class RpgServer {
         }
     }
     private void applyConfig(RpgConfig.Definitions definitions) {
+        flushAllMelee();
+        enemyCounters.clear();
         creatureMelee.reconfigure(validatedCreatureCombat,validatedGuardCues);
         QuestService replacement = new QuestService(definitions.quests());
         replacement.restore(quests.snapshot());
@@ -775,6 +815,7 @@ public final class RpgServer {
     }
     private void tick() {
         ticks++;
+        enemyCounters.entrySet().removeIf(e->e.getValue().untilTick()<=server.overworld().getGameTime());
         enemyStuns.entrySet().removeIf(entry -> !entry.getValue().entity().isAlive() || entry.getValue().entity().isRemoved()
                 || entry.getValue().entity().level().getGameTime() >= entry.getValue().untilGameTick());
         creatureMelee.tick();
@@ -789,18 +830,6 @@ public final class RpgServer {
             if (a.currentSkill() != null && !validSwing(p)) a.stun(1);
             if (a.phase() == CombatPhase.GUARDING && !hasWeapon(p)) a.setGuarding(false);
             prepareSpearRays(p,a);
-        }
-        // Resolve clashes first, so iteration order cannot let a third target receive an already-clashed swing.
-        for (int i = 0; i < players.size(); i++) for (int j = i + 1; j < players.size(); j++) {
-            ServerPlayer p = players.get(i), q = players.get(j);
-            CombatActor a = actor(p), b = actor(q);
-            if (p.level() != q.level() || !p.isAlive() || !q.isAlive() || !p.canHarmPlayer(q) || !validSwing(p) || !validSwing(q)) continue;
-            double distance = Math.max(attackDistance(p, q), attackDistance(q, p));
-            if(a.style()!=null&&a.style().controls().spear()&&!spearContact(p,q,a) || b.style()!=null&&b.style().controls().spear()&&!spearContact(q,p,b))continue;
-            if (p.hasLineOfSight(q) && CombatResolver.canClash(a, b, distance, attackFacing(p, q), attackFacing(q, p))) {
-                var result = CombatResolver.resolveHit(a, b, distance, attackFacing(p, q), attackFacing(q, p));
-                effects(p, q, result);
-            }
         }
         List<PendingHit> pendingHits = new ArrayList<>();
         for (ServerPlayer p : players) {
@@ -821,12 +850,19 @@ public final class RpgServer {
                     double attackMultiplier = a.attackDamageMultiplier();
                     double distance=attackDistance(p,target);
                     if(spear)distance=Math.min(distance,skill.reach()); // The swept contact already proved a legal past/current origin within reach.
-                    var result = CombatResolver.resolveHit(a, defender, distance, attackFacing(p, target), facing(target, p));
-                    if (result.contacted()) {pendingHits.add(new PendingHit(p, target, result, attackMultiplier,contact==null?SpearSwipe.Vector.ZERO:contact.swipe()));if(a.style()!=null&&a.style().presentationStyleId().equals("rapier"))break;}
+                    var result = CombatResolver.captureMelee(a, defender, distance, attackFacing(p, target), facing(target, p));
+                    if (result.contacted()) {
+                        var swipe=contact==null?SpearSwipe.Vector.ZERO:contact.swipe();
+                        if(result.outcome()==HitOutcome.HIT) captureMelee(p,target,result,attackMultiplier,swipe);
+                        else pendingHits.add(new PendingHit(p,target,result,attackMultiplier,swipe));
+                        if(a.style()!=null&&a.style().presentationStyleId().equals("rapier"))break;
+                    }
                 }
             }
         }
         // Collect both outgoing intents before applying health changes, including lethal trades.
+        creatureMelee.flushContacts();
+        resolveMeleeContacts();
         for (PendingHit hit : pendingHits) applyHit(hit.attacker(), hit.victim(), hit.result(), hit.damageMultiplier(),hit.swipe());
         // Advance everyone together after all hits: the last dodge/attack frame has the same
         // meaning for every player regardless of player-list order.
@@ -856,6 +892,155 @@ public final class RpgServer {
     private boolean validSwing(ServerPlayer p) {
         SkillDefinition skill = actor(p).currentSkill();
         return mainItem(p).equals(swingItems.get(p.getUUID())) && (actor(p).style()==null || !actor(p).style().controls().dual() || BuiltInRegistries.ITEM.getKey(p.getOffhandItem().getItem()).toString().equals(swingOffhands.get(p.getUUID()))) && (skill == null || weaponMatches(p, skill));
+    }
+    private long opponentSequence(LivingEntity opponent,ServerPlayer attacker,long sequence) {
+        for(var c:meleeContacts.contacts()) if(c.attacker().equals(opponent.getUUID()) && c.victim().equals(attacker.getUUID())
+                && c.value().opponentSequence()==sequence) return c.sequence();
+        if(opponent instanceof ServerPlayer p) {
+            CombatActor a=actor(p);
+            return validSwing(p) && (a.phase()==CombatPhase.WINDUP || a.phase()==CombatPhase.ACTIVE) ? a.snapshot().swingSequence() : -1;
+        }
+        var pending=creatureMelee.snapshot(opponent);
+        return pending!=null && pending.targetId().equals(attacker.getUUID()) ? creatureMelee.clashSequence(opponent) : -1;
+    }
+    private void captureBash(ServerPlayer attacker,LivingEntity target,double damage,double knockback,long reservation) {
+        CombatActor defender=target instanceof ServerPlayer p?actor(p):new CombatActor(target.getUUID(),config.current().combat());
+        // A bow bash is instantaneous melee; arrows never enter this path.
+        if(defender.invulnerable())return;
+        archery.markBashContact(attacker.getUUID());
+        if(target instanceof ServerPlayer && defender.receiveChargedParry()==1)return;
+        if(defender.phase()==CombatPhase.GUARDING&&CombatResolver.withinArc(facing(target,attacker),defender.guardRules().arcDegrees())) {
+            var defense=CombatResolver.receiveIncoming(actor(attacker),defender,facing(target,attacker),damage,knockback,true,true,false);
+            effects(attacker,target,defense);
+            if(defense.outcome()!=HitOutcome.HIT) {
+                if(defense.dealsDamage()) {
+                    resolvingDamage=true;
+                    try{target.hurtServer(attacker.level(),attacker.damageSources().playerAttack(attacker),(float)defense.damage());}
+                    finally{resolvingDamage=false;}
+                }
+                return;
+            }
+        }
+        actor(attacker).markCombatActivity();defender.markCombatActivity();
+        long sequence=Long.MAX_VALUE/2+reservation,opponent=opponentSequence(target,attacker,sequence);
+        var hit=new MeleeHit(attacker,target,new HitResult(HitOutcome.HIT,damage,knockback,false,config.current().combat().hitStunTicks(),"bow_bash"),
+                damage,SpearSwipe.Vector.ZERO,sequence,opponent,mainItem(attacker),BuiltInRegistries.ITEM.getKey(attacker.getOffhandItem().getItem()).toString(),
+                false,false,false,attacker.getX()-target.getX(),attacker.getZ()-target.getZ(),attacker.level());
+        if(opponent<0)ordinaryMelee.add(hit);
+        else meleeContacts.offer(new WeaponClash.Contact<>(attacker.getUUID(),target.getUUID(),sequence,attacker.level().getGameTime(),damage,hit));
+    }
+    private void captureMelee(ServerPlayer attacker,LivingEntity target,HitResult result,double attackMultiplier,SpearSwipe.Vector swipe) {
+        CombatActor a=actor(attacker);
+        if(target instanceof ServerPlayer q && actor(q).receiveChargedParry()==1) return;
+        var bonus=progression.effects(attacker.getUUID());
+        boolean thrust=result.skillId().equals("sword_thrust");
+        double damage=result.damage();
+        if(thrust&&a.chargedParried()) {
+            var rules=config.current().skillTrees().rules().rapier();
+            damage*=rules.thrustMultiplier()>0?rules.parriedMultiplier()/rules.thrustMultiplier():1;
+        }
+        damage=(damage+bonus.damageBonus()*attackMultiplier)*config.current().weapons().damageMultiplier(damageItems.getOrDefault(attacker.getUUID(),mainItem(attacker)));
+        long sequence=a.snapshot().swingSequence(),opponent=opponentSequence(target,attacker,sequence);
+        MeleeHit frozen=new MeleeHit(attacker,target,result,damage,swipe,sequence,opponent,mainItem(attacker),
+                BuiltInRegistries.ITEM.getKey(attacker.getOffhandItem().getItem()).toString(),a.style()!=null&&a.style().controls().dual(),
+                thrust,bonus.rapierExecution(),attacker.getX()-target.getX(),attacker.getZ()-target.getZ(),attacker.level());
+        if(opponent<0) ordinaryMelee.add(frozen);
+        else meleeContacts.offer(new WeaponClash.Contact<>(attacker.getUUID(),target.getUUID(),sequence,attacker.level().getGameTime(),damage,frozen));
+    }
+    /** Creature contacts use world time, exactly like their animation timeline. */
+    public boolean hasPendingMelee(Entity attacker,Entity victim,long contactTick) {
+        return meleeContacts.contacts().stream().anyMatch(c->c.attacker().equals(attacker.getUUID())&&c.victim().equals(victim.getUUID())
+                && Math.abs(c.tick()-contactTick)<=config.current().combat().weaponClash().contactWindowTicks() && eligibleClash(c.value()));
+    }
+    public boolean deferCreatureContact(Mob mob,LivingEntity target) {
+        if(!(target instanceof ServerPlayer p)||!hasWeapon(p))return false;
+        CombatActor a=actor(p);
+        boolean defer=a.drawn()&&!a.invulnerable()&&a.phase()!=CombatPhase.GUARDING
+                && (a.phase()==CombatPhase.WINDUP||a.phase()==CombatPhase.ACTIVE||hasPendingMelee(p,mob,mob.level().getGameTime()));
+        if(defer)a.markCombatActivity();
+        return defer;
+    }
+    private boolean eligibleClash(MeleeHit h) {
+        return h.attacker().isAlive()&&!h.attacker().isRemoved()&&h.victim().isAlive()&&!h.victim().isRemoved()
+                && h.attacker().level()==h.level()&&h.victim().level()==h.level()
+                && mainItem(h.attacker()).equals(h.mainItem())
+                && (!h.dual()||BuiltInRegistries.ITEM.getKey(h.attacker().getOffhandItem().getItem()).toString().equals(h.offItem()));
+    }
+    private void resolveMeleeContacts() {
+        for(var c:meleeContacts.contacts()) if(!eligibleClash(c.value())) {
+            ordinaryMelee.add(c.value());meleeContacts.remove(c);
+        }
+        long now=server.overworld().getGameTime();
+        var batch=meleeContacts.resolve(now,config.current().combat().weaponClash());
+        for(var pair:batch.pairs()) {
+            MeleeHit a=pair.first().value(),b=pair.second().value();
+            ordinaryMelee.removeIf(h->sameSwing(h,a)||sameSwing(h,b));
+            settleClash(a.attacker(),a.sequence(),b.attacker(),b.sequence(),pair.exchange());
+            if(pair.exchange().firstDamage()>0) deliverMelee(a,pair.exchange().firstDamage(),true);
+            if(pair.exchange().secondDamage()>0) deliverMelee(b,pair.exchange().secondDamage(),true);
+        }
+        for(var c:batch.expired()) ordinaryMelee.add(c.value());
+        var committed=List.copyOf(ordinaryMelee);ordinaryMelee.clear();
+        for(MeleeHit h:committed) deliverMelee(h,h.damage(),false);
+    }
+    private static boolean sameSwing(MeleeHit a,MeleeHit b){return a.attacker()==b.attacker()&&a.sequence()==b.sequence();}
+    private void finishClashActor(LivingEntity entity,long sequence) {
+        if(entity instanceof ServerPlayer p) {actor(p).finishClash(sequence);actor(p).recordGuardContact();}
+        else {creatureMelee.cancelAttacker(entity);enemyCounters.remove(entity.getUUID());}
+    }
+    private void settleClash(LivingEntity first,long firstSequence,LivingEntity second,long secondSequence,WeaponClash.Exchange exchange) {
+        meleeClashes++;finishClashActor(first,firstSequence);finishClashActor(second,secondSequence);
+        LivingEntity winner=exchange.winner()>0?first:exchange.winner()<0?second:null;
+        if(winner==null) {
+            balancedClashes++;effects(first,second,new HitResult(HitOutcome.CLASH,0,0,false,0,""));
+            if(first instanceof ServerPlayer p){send(p,"相杀 · 双方格挡",null);broadcastAnimation(p,true);}
+            if(second instanceof ServerPlayer p){send(p,"相杀 · 双方格挡",null);broadcastAnimation(p,true);}
+        } else {
+            advantageClashes++;LivingEntity loser=winner==first?second:first;
+            int stun=winner instanceof ServerPlayer p?actor(p).guardRules().parryStunTicks():config.current().combat().parryStunTicks();
+            if(loser instanceof ServerPlayer p)actor(p).stun(stun);
+            if(winner instanceof ServerPlayer p)actor(p).perfectGuardSucceeded();
+            else enemyCounters.put(winner.getUUID(),new EnemyCounter(winner.level().getGameTime()+config.current().combat().perfectGuardCounter().windowTicks(),config.current().combat().perfectGuardCounter().damageMultiplier()));
+            effects(loser,winner,new HitResult(HitOutcome.PARRIED,0,0,false,0,""));
+        }
+        for(LivingEntity e:List.of(first,second))if(e instanceof ServerPlayer p){send(p,"",null);broadcastAnimation(p,true);}
+    }
+    /** Frozen total already contains weapon/counter/progression modifiers; armor is applied once below. */
+    private void deliverMelee(MeleeHit h,double damage,boolean clashRemainder) {
+        LivingEntity target=h.victim();ServerPlayer attacker=h.attacker();
+        if(target.isRemoved()||!target.isAlive()||target.level()!=h.level()||attacker.level()!=h.level())return;
+        if(!clashRemainder && target instanceof ServerPlayer p)actor(p).queueHitStun(h.result().victimStunTicks());
+        if(damage<=0)return;
+        resolvingDamage=true;
+        try {
+            suppressedSpearKnockback=h.swipe().swept()?target.getUUID():null;
+            if(h.thrust()&&target.invulnerableTime>10)target.invulnerableTime=0;
+            boolean hurt=target.hurtServer(h.level(),attacker.damageSources().playerAttack(attacker),(float)Math.min(100_000_000,damage));
+            if(hurt&&h.dual())progression.recordDualHit(attacker.getUUID(),h.level().getGameTime(),MinecraftProgression.epochDay());
+            if(hurt&&h.thrust()) {
+                rapierHasteUntil.put(attacker.getUUID(),ticks+60);
+                if(!clashRemainder&&h.execution()&&target.isAlive()) {
+                    double missing=target.getMaxHealth()-target.getHealth();target.invulnerableTime=0;
+                    target.hurtServer(h.level(),attacker.damageSources().playerAttack(attacker),(float)(missing*config.current().skillTrees().rules().rapier().executionMissingHealthShare()));
+                }
+            }
+            suppressedSpearKnockback=null;
+            if(hurt&&!clashRemainder&&h.result().knockback()>0) {
+                if(h.swipe().swept())applySpearSwipe(target,h.swipe(),h.result().knockback(),actor(attacker).rules().spearSwipeKnockbackMultiplier());
+                else target.knockback(h.result().knockback(),h.knockX(),h.knockZ());
+            }
+        } finally {resolvingDamage=false;suppressedSpearKnockback=null;}
+    }
+    private void flushAllMelee() {
+        for(var c:meleeContacts.contacts())ordinaryMelee.add(c.value());meleeContacts.clear();
+        var committed=List.copyOf(ordinaryMelee);ordinaryMelee.clear();for(var h:committed)deliverMelee(h,h.damage(),false);
+    }
+    private void flushMelee(Entity entity) {
+        List<MeleeHit> committed=new ArrayList<>();
+        for(var c:meleeContacts.contacts())if(c.attacker().equals(entity.getUUID())||c.victim().equals(entity.getUUID()))committed.add(c.value());
+        meleeContacts.remove(entity.getUUID());
+        ordinaryMelee.removeIf(h->{if(h.attacker()==entity||h.victim()==entity){committed.add(h);return true;}return false;});
+        for(var h:committed)deliverMelee(h,h.damage(),false);
     }
     private void applyHit(ServerPlayer attacker, LivingEntity target, org.fsrpg.combat.HitResult result, double attackMultiplier,SpearSwipe.Vector swipe) {
         effects(attacker, target, result);
@@ -912,6 +1097,7 @@ public final class RpgServer {
         if (resolvingDamage || !(event.getEntity() instanceof ServerPlayer p) || event.getSource().getDirectEntity() == null) return;
         reconcileAndSync(p);
         training.incoming(p,event.getSource().getEntity());
+        if(creatureClash(event,p))return;
         if(archery.onIncoming(event,archeryProgress(p)))return;
         if(actor(p).receiveChargedParry()==1){
             actor(p).markCombatActivity();
@@ -929,6 +1115,36 @@ public final class RpgServer {
         if(result.outcome()!=HitOutcome.DODGED)recordArcheryContact(source,direct);
         if (result.dealsDamage()) event.setAmount((float) result.damage()); else event.setCanceled(true);
         if (result.outcome() != HitOutcome.HIT) effects(source, p, result);
+    }
+    private boolean creatureClash(LivingIncomingDamageEvent event,ServerPlayer defender) {
+        Entity source=event.getSource().getEntity(),direct=event.getSource().getDirectEntity();
+        if(!(source instanceof LivingEntity enemy)||source==defender||source!=direct||source instanceof ServerPlayer)return false;
+        Long contactTick=creatureMelee.invocationContactTick(source,direct,defender);
+        double multiplier=contactTick==null?consumeMeleeCounter(enemy):creatureMelee.invocationDamageMultiplier();
+        event.setAmount((float)Math.min(100_000_000,event.getAmount()*multiplier));
+        if(contactTick==null)return false;
+        var attack=creatureMelee.snapshot(enemy);
+        long sequence=attack==null?-1:attack.sequence();
+        var reverse=meleeContacts.contacts().stream().filter(c->c.attacker().equals(defender.getUUID())&&c.victim().equals(enemy.getUUID())
+                && c.value().opponentSequence()==sequence&&eligibleClash(c.value())
+                &&Math.abs(c.tick()-contactTick)<=config.current().combat().weaponClash().contactWindowTicks())
+                .min(Comparator.comparingLong(c->Math.abs(c.tick()-contactTick))).orElse(null);
+        if(reverse!=null) {
+            MeleeHit hit=reverse.value();
+            var exchange=WeaponClash.compare(hit.damage(),Math.max(0,event.getAmount()),config.current().combat().weaponClash().damageTolerance());
+            meleeContacts.removeSwing(reverse.attacker(),reverse.sequence());ordinaryMelee.removeIf(h->sameSwing(h,hit));
+            settleClash(defender,hit.sequence(),enemy,sequence,exchange);
+            if(exchange.firstDamage()>0)deliverMelee(hit,exchange.firstDamage(),true);
+            if(exchange.secondDamage()>0)event.setAmount((float)exchange.secondDamage());else event.setCanceled(true);
+            return true;
+        }
+        if(creatureMelee.invocationDeferred()) {
+            // This contact already happened while the player was attacking. Later C/charge/dodge
+            // input cannot turn an unanswered contact into a retroactive defense.
+            actor(defender).markCombatActivity();actor(defender).queueHitStun(config.current().combat().hitStunTicks());
+            return true;
+        }
+        return false;
     }
     private void projectile(ProjectileImpactEvent event) {
         if(archery.onProjectileImpact(event)||event.isCanceled())return;
@@ -969,7 +1185,7 @@ public final class RpgServer {
             int duration = victim instanceof ServerPlayer defender ? actor(defender).guardRules().parryStunTicks() : config.current().combat().parryStunTicks();
             if (duration > 0 && living.isAlive()) {
                 enemyStuns.put(living.getUUID(), new EnemyStun(living, living.level().getGameTime() + duration));
-                creatureMelee.cancel(living);
+                creatureMelee.cancelAttacker(living);
                 stopStunnedEnemy(living);
             }
         }

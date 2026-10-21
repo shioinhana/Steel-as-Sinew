@@ -10,8 +10,20 @@ public final class PerfectGuardCounterTest {
 
     public static void main(String[] args) {
         perfectGuardBoundaries(); counterBoundaries(); physicalInputRoutes(); failedInputAndSingleUse();
-        interruptCleanup(); attackerStunBoundaries(); staleGuardRenewal();
+        interruptCleanup(); attackerStunBoundaries(); staleGuardRenewal(); independentAcceptedLeftCounter();
         System.out.println("PerfectGuardCounterTest passed: " + checks + " checks");
+    }
+
+    private static void independentAcceptedLeftCounter() {
+        for(int elapsed=0;elapsed<=4;elapsed++) {
+            CombatActor actor=parried(style("bow",false));ticks(actor,elapsed);
+            double stamina=actor.stamina();
+            double frozen=actor.consumeCounterForAcceptedLeftAttack();
+            near(elapsed<4?1.5:1,frozen,"independent accepted bow left captures the same four-tick counter boundary");
+            near(1,actor.consumeCounterForAcceptedLeftAttack(),"independent counter is consumed once");
+            ticks(actor,10);near(elapsed<4?1.5:1,frozen,"accepted action keeps its frozen multiplier after the window closes");
+            check(actor.stamina()>=stamina,"counter multiplier does not debit resources a second time");
+        }
     }
 
     private static void perfectGuardBoundaries() {

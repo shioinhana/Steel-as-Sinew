@@ -216,7 +216,7 @@ public final class RpgConfig {
             boolean optionalStyleExtension = record == WeaponStyleDefinition.class
                     && Set.of("heavyGuard", "techniques", "cancels", "controls").contains(component.getName());
             boolean optionalLegacyGate = record == WeaponStyleDefinition.ComboStage.class && !component.getName().equals("skillId");
-            boolean optionalTargetLock = record == CombatRules.class && Set.of("rapierTargetLock","perfectGuardCounter","staminaLevelScaling","staminaCombatRules","burstDash","spearSwipeKnockbackMultiplier").contains(component.getName()) && !obj.has(component.getName());
+            boolean optionalTargetLock = record == CombatRules.class && Set.of("rapierTargetLock","perfectGuardCounter","staminaLevelScaling","staminaCombatRules","burstDash","spearSwipeKnockbackMultiplier","weaponClash").contains(component.getName()) && !obj.has(component.getName());
             boolean optionalPartialShot = record == ArcheryRules.class && component.getName().equals("partialShotStaminaMultiplier") && !obj.has(component.getName());
             boolean optionalComboReset = record == org.fsrpg.combat.WeaponControls.class && component.getName().equals("comboResetTicks") && !obj.has(component.getName());
             boolean optionalImpulseSpeed=record==BurstDashRules.class&&component.getName().equals("initialSpeed")&&!obj.has(component.getName());
@@ -244,7 +244,8 @@ public final class RpgConfig {
             boolean completeStyleRules = clazz == WeaponStyleDefinition.ComboStage.class || clazz == WeaponStyleDefinition.GuardRules.class
                     || clazz == WeaponStyleDefinition.Techniques.class || clazz == WeaponStyleDefinition.CancelRules.class || clazz == org.fsrpg.combat.WeaponControls.class
                     || clazz == org.fsrpg.combat.RapierTargeting.Rules.class || clazz == CombatRules.PerfectGuardCounter.class
-                    || clazz == StaminaLevelScaling.class || clazz == StaminaCombatRules.class || clazz == BurstDashRules.class;
+                    || clazz == StaminaLevelScaling.class || clazz == StaminaCombatRules.class || clazz == BurstDashRules.class
+                    || clazz == WeaponClashRules.class;
             recordFields(value.getAsJsonObject(), clazz, completeStyleRules); return;
         }
         if (!value.isJsonPrimitive()) throw new IllegalArgumentException(path + " must be a scalar");

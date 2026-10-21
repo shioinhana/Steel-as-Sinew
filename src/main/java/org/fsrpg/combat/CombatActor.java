@@ -146,6 +146,11 @@ public final class CombatActor {
     public double spirit() { return spirit; }
     public WeaponStyleDefinition style() { return style; }
     public int counterRemainingTicks() { return drawn ? (int)Math.max(0, counterUntil - tick) : 0; }
+    /** For an independently accepted left-click melee action, such as a bow bash. */
+    public double consumeCounterForAcceptedLeftAttack() {
+        if(counterRemainingTicks()<=0)return 1;
+        counterUntil=0;return rules.perfectGuardCounter().damageMultiplier();
+    }
     public double attackDamageMultiplier() { return skill == null ? 1 : attackDamageMultiplier; }
 
     /** Applied once at acceptance to the authored contact interval, before its minimum clamp. */
@@ -407,6 +412,7 @@ public final class CombatActor {
             return ActionResult.BUSY;
         if (style != null && style.techniques().conditional(requested.id())
                 && !techniqueSnapshot().skillId().equals(requested.id())) return ActionResult.TECHNIQUE_NOT_READY;
+        if (dualDirectionExhausted(requested)) return ActionResult.DIRECTION_EXHAUSTED;
         if (cooldownRemaining(requested.id()) > 0) return ActionResult.COOLDOWN;
         if (stamina + 1e-9 < requested.staminaCost()) return ActionResult.INSUFFICIENT_STAMINA;
         if (spirit + 1e-9 < requested.spiritCost()) return ActionResult.INSUFFICIENT_SPIRIT;
@@ -465,6 +471,14 @@ public final class CombatActor {
         return style == null ? WeaponStyleDefinition.CancelRules.defaults() : style.cancels();
     }
 
+    /** A hand already on the requested side must return or cut in the other direction first. */
+    private boolean dualDirectionExhausted(SkillDefinition requested) {
+        if (style == null || !style.controls().legacyDual()) return false;
+        var controls=style.controls();
+        int destination=controls.destination(requested.id());
+        return destination >= 0 && (controls.leftHand(requested.id()) ? leftRest : rightRest) == destination;
+    }
+
     /** Same-button follow-ups queue one next stage; no timing gate rejects an early/late click. */
     public ComboInputResult requestStyledAttack(SkillInput input, Map<String, SkillDefinition> skills) {
         boolean previous = leftIntent;
@@ -520,6 +534,8 @@ public final class CombatActor {
     private ComboInputResult queueAttack(SkillDefinition requested,int stage,WeaponStyleDefinition owner) {
         if (requested == null) return comboResult(ComboInputStatus.REJECTED,ActionResult.SKILL_NOT_FOUND,stage,"");
         if (pendingHitStun > 0) return comboResult(ComboInputStatus.REJECTED,ActionResult.BUSY,stage,requested.id());
+        if (dualDirectionExhausted(requested))
+            return comboResult(ComboInputStatus.REJECTED,ActionResult.DIRECTION_EXHAUSTED,stage,requested.id());
         if (queuedSkill != null && queuedSkill.id().equals(requested.id()))
             return comboResult(ComboInputStatus.ALREADY_QUEUED,ActionResult.ACCEPTED,stage,requested.id());
         // Only the latest distinct attack intent is retained, so mashing cannot queue a whole combo.
@@ -771,11 +787,23 @@ public final class CombatActor {
         return true;
     }
 
-    void finishClash() {
+    /** End the current swing after real blade contact, retaining its paid cost and cooldown without guard fees. */
+    public void finishClash() {
+        if (skill == null) return;
+        markAttackContact(swingSequence);
         clearAttack();
         clearCounter();
         phase = drawn ? CombatPhase.READY : CombatPhase.SHEATHED;
         phaseRemaining = 0;
+        // A real clash returns directly to the rendered default carry, with no recovery left to run.
+        if (drawn && style != null && style.controls().legacyDual()) resetDualHandsAndStreaks();
+    }
+
+    /** A delayed contact may finish only the swing that produced it, never a newer accepted attack. */
+    public boolean finishClash(long sequence) {
+        if (skill == null || sequence != swingSequence) return false;
+        finishClash();
+        return true;
     }
 
     private void updateAttackPhase() {
@@ -793,7 +821,11 @@ public final class CombatActor {
         } else {
             var finishedCombo=comboStyle;
             int finishedStage=comboStage;
+            boolean returnDualHands=style != null && style.controls().legacyDual();
             clearAttack();
+            // Only completing the authored recovery returns the hands to their default carry.
+            // Chaining, guard cancellation and forced interrupts must retain their occupied sides.
+            if (returnDualHands) resetDualHandsAndStreaks();
             if (finishedCombo != null && finishedStage >= 0 && finishedCombo.controls().comboResetTicks() > 0) {
                 resumeComboStyle=finishedCombo;
                 resumeComboStage=finishedStage;

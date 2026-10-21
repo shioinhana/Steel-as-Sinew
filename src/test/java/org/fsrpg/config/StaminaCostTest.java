@@ -239,6 +239,10 @@ public final class StaminaCostTest {
                 equal(new JsonPrimitive(.5),after.getAsJsonObject().get("spearSwipeKnockbackMultiplier"),path+" adds exact default spear swipe knockback multiplier");
                 afterFields.remove("spearSwipeKnockbackMultiplier");
             }
+            if(path.endsWith("combat.json")&&!before.getAsJsonObject().has("weaponClash")&&after.getAsJsonObject().has("weaponClash")) {
+                equal(RpgConfig.JSON.toJsonTree(WeaponClashRules.defaults()),after.getAsJsonObject().get("weaponClash"),path+" seeds exact clash defaults without rewriting existing files");
+                afterFields.remove("weaponClash");
+            }
             equal(before.getAsJsonObject().keySet(), afterFields, path + " preserves all original fields");
             for (var field : before.getAsJsonObject().entrySet()) {
                 if (field.getKey().equals("staminaCost") || field.getKey().endsWith("StaminaCost")) near(field.getValue().getAsDouble() / 5, after.getAsJsonObject().get(field.getKey()).getAsDouble(), path + "." + field.getKey());

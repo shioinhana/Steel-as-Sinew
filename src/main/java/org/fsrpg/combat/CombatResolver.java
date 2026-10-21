@@ -16,14 +16,18 @@ public final class CombatResolver {
         if (!withinArc(attackerFacingAngleDegrees, skill.arcDegrees())) return empty(HitOutcome.OUTSIDE_ARC, skill.id());
         if (attacker.hasHit(defender.id())) return empty(HitOutcome.ALREADY_HIT, skill.id());
         if (canClash(attacker, defender, distance, attackerFacingAngleDegrees, defenderFacingAngleDegrees)) {
-            // Preserve the original cooldown timestamps. A clash adds no stamina cost or stun.
+            var exchange = WeaponClash.compare(skill.damage() * attacker.attackDamageMultiplier(),
+                    defender.activeSkill().damage() * defender.attackDamageMultiplier(), attacker.rules().weaponClash().damageTolerance());
             attacker.markHit(defender.id());
             defender.markHit(attacker.id());
             attacker.markAttackContact(attacker.snapshot().swingSequence());
             defender.markAttackContact(defender.snapshot().swingSequence());
             attacker.finishClash();
             defender.finishClash();
-            return empty(HitOutcome.CLASH, skill.id());
+            attacker.recordGuardContact(); defender.recordGuardContact();
+            if (exchange.winner() > 0) { defender.stun(attacker.guardRules().parryStunTicks()); attacker.perfectGuardSucceeded(); }
+            if (exchange.winner() < 0) { attacker.stun(defender.guardRules().parryStunTicks()); defender.perfectGuardSucceeded(); }
+            return new HitResult(HitOutcome.CLASH, exchange.firstDamage(), 0, false, 0, skill.id());
         }
         attacker.markHit(defender.id());
         return receiveIncoming(attacker, defender, defenderFacingAngleDegrees, skill.damage() * attacker.attackDamageMultiplier(), skill.knockback(),
@@ -40,13 +44,32 @@ public final class CombatResolver {
         SkillDefinition skill = attacker.activeSkill(), counter = defender.activeSkill();
         return skill != null && counter != null && !attacker.id().equals(defender.id())
                 && !attacker.hasHit(defender.id()) && !defender.hasHit(attacker.id())
-                && skill.clashable() && counter.clashable()
-                && skill.input() != SkillInput.SPECIAL && skill.input() == counter.input()
                 && distance <= skill.reach() && distance <= counter.reach()
                 && withinArc(attackerFacingAngleDegrees, skill.arcDegrees())
-                && withinArc(defenderFacingAngleDegrees, counter.arcDegrees())
-                && withinArc(attackerFacingAngleDegrees, attacker.rules().clashFacingArcDegrees())
-                && withinArc(defenderFacingAngleDegrees, defender.rules().clashFacingArcDegrees());
+                && withinArc(defenderFacingAngleDegrees, counter.arcDegrees());
+    }
+
+    /** Capture a real contact without stunning away a return hit in the following two ticks.
+     * Guard and dodge are evaluated now, so later input cannot defend a contact retroactively. */
+    public static HitResult captureMelee(CombatActor attacker, CombatActor defender, double distance,
+                                         double attackerFacing, double defenderFacing) {
+        if(attacker==null||defender==null)throw new IllegalArgumentException("both actors are required");
+        SkillDefinition.checkNumber(distance,"distance",0,Double.MAX_VALUE);
+        requireAngle(attackerFacing);requireAngle(defenderFacing);
+        SkillDefinition skill = attacker.activeSkill();
+        if (skill == null || attacker.id().equals(defender.id())) return empty(HitOutcome.INACTIVE, "");
+        if (distance > skill.reach()) return empty(HitOutcome.OUT_OF_RANGE, skill.id());
+        if (!withinArc(attackerFacing, skill.arcDegrees())) return empty(HitOutcome.OUTSIDE_ARC, skill.id());
+        if (attacker.hasHit(defender.id())) return empty(HitOutcome.ALREADY_HIT, skill.id());
+        attacker.markHit(defender.id());
+        if(defender.invulnerable())return empty(HitOutcome.DODGED,skill.id());
+        attacker.markAttackContact(attacker.snapshot().swingSequence());
+        if (defender.phase()==CombatPhase.GUARDING && withinArc(defenderFacing,defender.guardRules().arcDegrees()))
+            return receiveIncoming(attacker,defender,defenderFacing,skill.damage()*attacker.attackDamageMultiplier(),
+                    skill.knockback(),skill.blockable(),skill.parryable(),false,skill.id(),null);
+        defender.markCombatActivity();
+        return new HitResult(HitOutcome.HIT,skill.damage()*attacker.attackDamageMultiplier(),skill.knockback(),false,
+                defender.rules().hitStunTicks(),skill.id());
     }
 
     /** For vanilla melee/projectiles; attacker may be null when it has no RPG combat state. */

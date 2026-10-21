@@ -35,6 +35,7 @@ public final class ArcheryServer {
         default void hostileKilled(UUID player) {}
         default void kill(UUID player) { hostileKilled(player); }
         default double damageBonus(UUID player) { return 0; }
+        default boolean meleeContact(ServerPlayer player,LivingEntity target,double damage,double knockback,long reservation) { return false; }
     }
     private static final String TAG="fsrpgArchery",OWNER="fsrpgArcheryOwner",PIERCE="fsrpgArcheryPierce",SHIELD="fsrpgArcheryShieldPierce",
             BLOCKS="fsrpgArcheryBlocks",SLOW="fsrpgArcheryBlockSlow",CAPTURED="fsrpgArcheryCaptured",SETTLED="fsrpgArcheryStaminaSettled";
@@ -127,13 +128,15 @@ public final class ArcheryServer {
         Vec3 direction=p.getLookAngle().multiply(1,0,1);
         if(direction.lengthSqr()<1e-8) direction=Vec3.directionFromRotation(0,p.getYRot());
         direction=direction.normalize();
-        float damage=(float)Math.min(1000000,rules.bashDamage()+progress.damageBonus());
+        double counter=a.consumeCounterForAcceptedLeftAttack();
+        float damage=(float)Math.min(1000000,(rules.bashDamage()+progress.damageBonus())*counter);
         pendingBashes.put(p.getUUID(),new PendingBash(a,reservation));
         try {
             for(LivingEntity target:p.level().getEntitiesOfClass(LivingEntity.class,p.getBoundingBox().inflate(rules.bashRange()),e->e!=p&&e.isAlive()&&!e.isSpectator())) {
                 Vec3 flat=target.position().subtract(p.position()).multiply(1,0,1);
                 if(flat.lengthSqr()<1e-8||flat.lengthSqr()>rules.bashRange()*rules.bashRange()||flat.normalize().dot(direction)<.4) continue;
                 if(!p.hasLineOfSight(target)||target instanceof Player other&&!p.canHarmPlayer(other)) continue;
+                if(sink.meleeContact(p,target,damage,rules.bashKnockback(),reservation)) continue;
                 if(target.hurtServer(p.level(),p.damageSources().playerAttack(p),damage)) {
                     a.markReservedAttackContact(reservation);
                     Vec3 away=flat.normalize(); target.knockback(rules.bashKnockback(),-away.x,-away.z); target.hurtMarked=true;

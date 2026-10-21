@@ -25,7 +25,7 @@ public record WeaponControls(String mode, String leftHandLeft, String rightHandL
     public boolean dual() { return mode.equals("dual") || mode.equals("legacy_dual"); }
     public boolean legacyDual() { return mode.equals("legacy_dual"); }
     public boolean spear() { return mode.equals("spear"); }
-    /** Direction chooses a cut, never an exhausted-input rejection; the idle-to-clip blend recovers the hand. */
+    /** Route by current hand position; CombatActor rejects a chosen hand already on the destination side. */
     public String directionalSkill(SkillInput input, int leftRest, int rightRest, boolean lastHandLeft) {
         if (input != SkillInput.LEFT && input != SkillInput.RIGHT) return "";
         if (!legacyDual()) return input == SkillInput.LEFT ? leftHandLeft : rightHandRight;

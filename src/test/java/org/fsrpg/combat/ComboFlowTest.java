@@ -12,9 +12,10 @@ public final class ComboFlowTest {
         var definitions=WeaponControlsTest.definitions();
         everyInputInstant(definitions);
         relaxedContinuation(definitions);
-        directionalLoops(definitions);
+        directionalAvailability(definitions);
         singleSlotAndResources(definitions);
         fullRecoveryQueue(definitions);
+        clashSequenceOwnership(definitions);
         precisionInterrupt(definitions);
         settings(definitions);
         configCompatibility();
@@ -79,18 +80,34 @@ public final class ComboFlowTest {
         }
     }
 
-    private static void directionalLoops(RpgConfig.Definitions d) {
+    private static void directionalAvailability(RpgConfig.Definitions d) {
         for(var input:List.of(SkillInput.LEFT,SkillInput.RIGHT)) {
             var actor=actor(d,"dual_blade");
-            for(int cut=0;cut<12;cut++) {
-                String expected=input==SkillInput.LEFT?(cut%2==0?"dual_ll":"dual_rl"):(cut%2==0?"dual_rr":"dual_lr");
-                double before=actor.stamina();
-                check(actor.requestStyledAttack(input,d.skills()).started(),"same-direction cut never exhausts "+cut);
-                equal(expected,actor.currentSkill().id(),"hands recover and alternate while retaining the chosen direction");
-                near(before-8,actor.stamina(),"each actual cut costs eight");
-                equal(9,actor.currentSkill().windupTicks()+actor.currentSkill().activeTicks(),"repetition cannot add hidden cadence penalties");
-                ticks(actor,actor.currentSkill().durationTicks());
+            String first=input==SkillInput.LEFT?"dual_ll":"dual_rr",second=input==SkillInput.LEFT?"dual_rl":"dual_lr";
+            double before=actor.stamina();
+            check(actor.requestStyledAttack(input,d.skills()).started(),"first direction uses an available hand");
+            equal(first,actor.currentSkill().id(),"first cut uses its original hand");near(before-8,actor.stamina(),"first actual cut costs eight");
+            equal(ComboInputStatus.BUFFERED,actor.requestStyledAttack(input,d.skills()).status(),"second hand can be buffered from the first windup");
+            equal(9,actor.currentSkill().windupTicks()+actor.currentSkill().activeTicks(),"authored cadence has no new timing penalty");
+            ticks(actor,9);equal(second,actor.currentSkill().id(),"second accepted cut uses the remaining available hand");
+            actor.drainStartedSkills();
+            int duration=actor.currentSkill().durationTicks();
+            for(int elapsed=0;elapsed<duration;elapsed++) {
+                double stamina=actor.stamina(),spirit=actor.spirit();long sequence=actor.snapshot().swingSequence();
+                actor.perfectGuardSucceeded();int counter=actor.counterRemainingTicks();
+                var rejected=actor.requestStyledAttack(input,d.skills());
+                equal(ActionResult.DIRECTION_EXHAUSTED,rejected.rejection(),"third cut rejects through windup, active and full recovery "+elapsed);
+                near(stamina,actor.stamina(),"blocked third cut spends no stamina");near(spirit,actor.spirit(),"blocked third cut spends no spirit");
+                equal(counter,actor.counterRemainingTicks(),"blocked third cut preserves earned counter window");
+                equal(sequence,actor.snapshot().swingSequence(),"blocked third cut issues no extra attack");
+                check(actor.drainStartedSkills().isEmpty()&&!actor.comboSnapshot().queued(),"blocked third cut never enters the next slot");
+                actor.tick();
             }
+            equal(CombatPhase.READY,actor.phase(),"full authored recovery returns to READY");
+            equal(-1,actor.leftSide(),"full return restores default left carry");equal(-1,actor.rightSide(),"full return restores default right carry");
+            ticks(actor,20);equal(2L,actor.snapshot().swingSequence(),"rejected clicks never replay automatically after return");
+            check(actor.requestStyledAttack(input,d.skills()).started(),"a new click starts after complete return");
+            equal(first,actor.currentSkill().id(),"new sequence starts from default hand availability");
         }
         var actor=actor(d,"dual_blade");actor.requestStyledAttack(SkillInput.LEFT,d.skills());
         equal(ComboInputStatus.BUFFERED,actor.requestStyledAttack(SkillInput.RIGHT,d.skills()).status(),"direction reversal during windup queues");
@@ -131,6 +148,40 @@ public final class ComboFlowTest {
         ticks(actor,7);equal("sword_left",actor.currentSkill().id(),"custom noncancelable recovery is retained");
         equal(CombatPhase.RECOVERY,actor.phase(),"full recovery phase still runs");
         actor.tick();equal("rapier_downcut",actor.currentSkill().id(),"pending input runs at full completion without a new timing test");
+        actor=actor(d,"dual_blade");s=actor.style();
+        actor.setStyle(new WeaponStyleDefinition(s.id(),s.label(),s.weaponGroup(),true,s.leftCombo(),s.rightSkill(),s.guard(),s.heavyGuard(),s.techniques(),
+                new WeaponStyleDefinition.CancelRules(false,false,false,false,false,false),s.controls()));
+        actor.requestStyledAttack(SkillInput.LEFT,d.skills());actor.requestStyledAttack(SkillInput.LEFT,d.skills());
+        ticks(actor,d.skills().get("dual_ll").durationTicks());
+        equal("dual_rl",actor.currentSkill().id(),"dual buffered follow-up survives a custom full recovery");
+        equal(0,actor.leftSide(),"buffer execution does not manufacture a default carry reset at completion");
+        equal(0,actor.rightSide(),"buffered second cut occupies the remaining hand");
+        equal(ActionResult.DIRECTION_EXHAUSTED,actor.requestStyledAttack(SkillInput.LEFT,d.skills()).rejection(),"custom recovery lock cannot buffer a third left cut");
+        ticks(actor,actor.currentSkill().durationTicks());
+        equal(-1,actor.leftSide(),"uninterrupted final recovery finally restores default carry");
+    }
+
+    private static void clashSequenceOwnership(RpgConfig.Definitions d) {
+        var actor=actor(d,"rapier");actor.requestStyledAttack(SkillInput.LEFT,d.skills());
+        actor.requestStyledAttack(SkillInput.LEFT,d.skills());ticks(actor,d.skills().get("sword_left").windupTicks());
+        long old=actor.snapshot().swingSequence();double paid=actor.stamina();int cooldown=actor.cooldownRemaining("sword_left");
+        check(actor.finishClash(old),"matching clash contact ends its own committed swing");
+        near(paid,actor.stamina(),"clash keeps the paid attack cost and charges no ordinary guard fee");
+        equal(cooldown,actor.cooldownRemaining("sword_left"),"clash retains the existing cooldown");
+        equal(CombatPhase.READY,actor.phase(),"clash returns to drawn default state");
+        check(actor.currentSkill()==null&&!actor.comboSnapshot().queued(),"clash cancels both the old contact and its queued follow-up");
+        actor.perfectGuardSucceeded();int counter=actor.counterRemainingTicks();
+        check(!actor.finishClash(old),"already finished contact cannot finish twice");
+        equal(counter,actor.counterRemainingTicks(),"duplicate contact cannot consume the new reward");
+        actor.requestStyledAttack(SkillInput.LEFT,d.skills());
+        long fresh=actor.snapshot().swingSequence();double multiplier=actor.attackDamageMultiplier();paid=actor.stamina();
+        check(fresh!=old&&!actor.finishClash(old),"delayed previous contact cannot cancel a newer swing");
+        equal(fresh,actor.snapshot().swingSequence(),"stale contact preserves the new swing sequence");
+        equal("sword_left",actor.currentSkill().id(),"stale contact preserves the new active preparation");
+        near(multiplier,actor.attackDamageMultiplier(),"stale contact preserves the accepted counter multiplier");
+        near(paid,actor.stamina(),"stale contact cannot change resources");
+        check(actor.finishClash(fresh),"matching preparation may resolve a near-contact clash");
+        near(paid,actor.stamina(),"uncommitted preparation keeps its original full reservation");
     }
 
     private static void precisionInterrupt(RpgConfig.Definitions d) {

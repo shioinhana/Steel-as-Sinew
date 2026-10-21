@@ -31,7 +31,7 @@
         "knockback": { "type": "number", "minimum": 0, "maximum": 128 },
         "blockable": { "type": "boolean" },
         "parryable": { "type": "boolean" },
-        "clashable": { "type": "boolean", "description": "对刀还要求双方满足方向、有效攻击阶段、距离和朝向条件。" },
+        "clashable": { "type": "boolean", "description": "保留旧配置字段。0.8.3起实际互达的持械近战统一按combat.weaponClash判定相杀，不再按输入方向或此旧标志排除突刺、联动斩。" },
         "model": { "type": "string", "maxLength": 256, "pattern": "^(?!/)(?!.*\\.\\.)[^\\\\:]*$", "description": "模型目录中的相对 fsvoxel 路径，可以为空；禁止绝对路径、冒号、反斜线和 ..。" },
         "action": { "type": "string", "maxLength": 128, "description": "fsvoxel 模型内动作名，可以为空。" }
       }

@@ -11,6 +11,8 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
+import org.fsrpg.combat.CombatRules;
+import org.fsrpg.combat.WeaponClashRules;
 
 /** Config edits are tested independently of registries, network packets, or Minecraft. */
 public final class ConfigTest {
@@ -25,8 +27,82 @@ public final class ConfigTest {
         skillTreeAndArcheryMilestoneValidation();
         legacyDefaultFieldMigration();
         rapierTargetLockValidationAndMigration();
+        weaponClashValidation();
         if (!failures.isEmpty()) throw new AssertionError("ConfigTest failed " + failures.size() + "/" + checks + " checks: " + String.join("; ", failures));
         System.out.println("ConfigTest passed: " + checks + " checks");
+    }
+
+    private static void weaponClashValidation() throws Exception {
+        JsonObject combat=resource("combat.json").getAsJsonObject();
+        var skills=resource("skills.json");var quests=resource("quests.json");var weapons=resource("weapons.json");
+        equal(new WeaponClashRules(2,3),RpgConfig.parse(combat,skills,quests,weapons).combat().weaponClash(),"bundled weapon clash defaults use two ticks and three damage points");
+        JsonObject old=combat.deepCopy();old.remove("weaponClash");String oldText=RpgConfig.JSON.toJson(old);
+        equal(WeaponClashRules.defaults(),RpgConfig.parse(old,skills,quests,weapons).combat().weaponClash(),"old combat JSON can omit the entire clash extension");
+        equal(oldText,RpgConfig.JSON.toJson(old),"parsing old combat rules does not insert or rewrite source fields");
+        var base=CombatRules.defaults();
+        var compatible=new CombatRules(base.maxStamina(),base.maxSpirit(),base.staminaRegenPerSecond(),base.spiritRegenPerSecond(),
+                base.resourceRegenDelayTicks(),base.drawTicks(),base.sheathTicks(),base.guardArcDegrees(),base.guardDamageMultiplier(),
+                base.guardStaminaCost(),base.perfectGuardTicks(),base.perfectGuardStaminaCost(),base.parryStunTicks(),base.guardBreakStunTicks(),
+                base.hitStunTicks(),base.clashFacingArcDegrees(),base.dodgeDurationTicks(),base.dodgeInvulnerabilityStartTicks(),
+                base.dodgeInvulnerabilityTicks(),base.dodgeCooldownTicks(),base.dodgeStaminaCost(),base.dodgeDistance(),base.dodgeCancelsRecovery(),
+                base.allowAirDodge(),base.rapierTargetLock(),base.perfectGuardCounter(),base.staminaLevelScaling(),base.staminaCombatRules(),base.burstDash(),.25);
+        equal(WeaponClashRules.defaults(),compatible.weaponClash(),"previous full CombatRules constructor retains default clash rules");
+        equal(.25,compatible.spearSwipeKnockbackMultiplier(),"previous full constructor retains customized spear swipe knockback");
+        JsonObject nullable=combat.deepCopy();nullable.add("weaponClash",com.google.gson.JsonNull.INSTANCE);
+        equal(WeaponClashRules.defaults(),RpgConfig.JSON.fromJson(nullable,CombatRules.class).weaponClash(),"programmatic null clash record receives compact-constructor defaults");
+        rejects(()->RpgConfig.parse(nullable,skills,quests,weapons),"strict config loader rejects explicit null clash rules");
+        for(int window:List.of(0,2,10)) for(double tolerance:List.of(0.0,3.0,1_000_000.0)) {
+            JsonObject valid=combat.deepCopy();var clash=valid.getAsJsonObject("weaponClash");
+            clash.addProperty("contactWindowTicks",window);clash.addProperty("damageTolerance",tolerance);
+            equal(new WeaponClashRules(window,tolerance),RpgConfig.parse(valid,skills,quests,weapons).combat().weaponClash(),"legal clash boundaries retain exact values");
+        }
+        for(String field:List.of("contactWindowTicks","damageTolerance")) {
+            JsonObject missing=combat.deepCopy();missing.getAsJsonObject("weaponClash").remove(field);
+            rejects(()->RpgConfig.parse(missing,skills,quests,weapons),"provided clash object requires "+field);
+            JsonObject nullField=combat.deepCopy();nullField.getAsJsonObject("weaponClash").add(field,com.google.gson.JsonNull.INSTANCE);
+            rejects(()->RpgConfig.parse(nullField,skills,quests,weapons),"provided clash object rejects null "+field);
+        }
+        for(JsonElement value:List.of(new com.google.gson.JsonPrimitive(-1),new com.google.gson.JsonPrimitive(11),
+                new com.google.gson.JsonPrimitive(1.5),new com.google.gson.JsonPrimitive("2"),new com.google.gson.JsonPrimitive(true),
+                new com.google.gson.JsonPrimitive(Double.NaN),new com.google.gson.JsonPrimitive(Double.POSITIVE_INFINITY),
+                new com.google.gson.JsonPrimitive(1e100))) {
+            JsonObject invalid=combat.deepCopy();invalid.getAsJsonObject("weaponClash").add("contactWindowTicks",value);
+            rejects(()->RpgConfig.parse(invalid,skills,quests,weapons),"invalid clash contact window rejected: "+value);
+        }
+        for(JsonElement value:List.of(new com.google.gson.JsonPrimitive(-.01),new com.google.gson.JsonPrimitive(1_000_000.01),
+                new com.google.gson.JsonPrimitive("3"),new com.google.gson.JsonPrimitive(false),new com.google.gson.JsonPrimitive(Double.NaN),
+                new com.google.gson.JsonPrimitive(Double.POSITIVE_INFINITY),new com.google.gson.JsonPrimitive(Double.NEGATIVE_INFINITY))) {
+            JsonObject invalid=combat.deepCopy();invalid.getAsJsonObject("weaponClash").add("damageTolerance",value);
+            rejects(()->RpgConfig.parse(invalid,skills,quests,weapons),"invalid clash damage tolerance rejected: "+value);
+        }
+        for(JsonElement value:List.of(new JsonArray(),new com.google.gson.JsonPrimitive("clash"),new com.google.gson.JsonPrimitive(2),new com.google.gson.JsonPrimitive(true))) {
+            JsonObject invalid=combat.deepCopy();invalid.add("weaponClash",value);
+            rejects(()->RpgConfig.parse(invalid,skills,quests,weapons),"clash extension must be an object: "+value);
+        }
+        JsonObject typo=combat.deepCopy();typo.getAsJsonObject("weaponClash").addProperty("damageTolerence",3);
+        rejects(()->RpgConfig.parse(typo,skills,quests,weapons),"unknown clash property rejected");
+        JsonObject rootTypo=combat.deepCopy();rootTypo.addProperty("weaponClashes",2);
+        rejects(()->RpgConfig.parse(rootTypo,skills,quests,weapons),"unknown root clash property rejected");
+        rejects(()->new WeaponClashRules(-1,3),"direct clash record rejects negative window");
+        rejects(()->new WeaponClashRules(11,3),"direct clash record rejects oversized window");
+        for(double tolerance:List.of(-1.0,1_000_001.0,Double.NaN,Double.POSITIVE_INFINITY,Double.NEGATIVE_INFINITY))
+            rejects(()->new WeaponClashRules(2,tolerance),"direct clash record rejects invalid or nonfinite tolerance");
+        Path directory=Files.createTempDirectory("fsrpg-weapon-clash-config-");
+        try {
+            var config=new RpgConfig(directory);config.reload();Path combatFile=directory.resolve("combat.json");
+            JsonObject customized=JsonParser.parseString(Files.readString(combatFile)).getAsJsonObject();customized.remove("weaponClash");customized.addProperty("maxSpirit",137);
+            String original=" \n"+RpgConfig.JSON.toJson(customized)+"\n";Files.writeString(combatFile,original);
+            var reloaded=config.reload();equal(137.0,reloaded.combat().maxSpirit(),"old customized combat field survives clash defaults");
+            equal(WeaponClashRules.defaults(),reloaded.combat().weaponClash(),"reload supplies absent clash rules in memory");
+            equal(original,Files.readString(combatFile),"reload preserves exact old user combat JSON without clash migration");
+        } finally {
+            try(var paths=Files.walk(directory)) {
+                for(Path path:paths.sorted(Comparator.reverseOrder()).toList()) {
+                    if(!path.toAbsolutePath().normalize().startsWith(directory.toAbsolutePath().normalize()))throw new IllegalStateException("test cleanup escaped temp");
+                    Files.deleteIfExists(path);
+                }
+            }
+        }
     }
 
     private static void rapierTargetLockValidationAndMigration() throws Exception {

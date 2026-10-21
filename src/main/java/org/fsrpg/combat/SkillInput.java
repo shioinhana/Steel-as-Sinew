@@ -1,4 +1,4 @@
 package org.fsrpg.combat;
 
-/** The physical swing direction; only matching LEFT/RIGHT inputs can clash. */
+/** Physical input intent. Mutual melee contacts can clash independently of input direction. */
 public enum SkillInput { LEFT, RIGHT, SPECIAL }

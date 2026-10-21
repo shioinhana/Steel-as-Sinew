@@ -13,7 +13,7 @@ public final class CombatTest {
         phasesAndDrawGate();
         resourcesAndCooldown();
         geometryAndVictimDeduplication();
-        clashAndSimultaneousOppositeHits();
+        clashDirectionsAndDamageAdvantage();
         finalFrameExchangeAndClashPrepass();
         guardAndProjectileReflection();
         dodgeAndRecoveryCancel();
@@ -108,7 +108,7 @@ public final class CombatTest {
         check(!CombatResolver.withinArc(180, 120), "behind actor outside front arc");
     }
 
-    private static void clashAndSimultaneousOppositeHits() {
+    private static void clashDirectionsAndDamageAdvantage() {
         SkillDefinition left = skill("left", SkillInput.LEFT, 0, 4, 4, 0);
         SkillDefinition right = skill("right", SkillInput.RIGHT, 0, 4, 4, 0);
         CombatActor a = ready(baseRules());
@@ -116,7 +116,7 @@ public final class CombatTest {
         a.requestAttack(left);
         b.requestAttack(left);
         HitResult clash = hit(a, b, 2, 0, 0);
-        equal(clash.outcome(), HitOutcome.CLASH, "matching swing directions clash");
+        equal(clash.outcome(), HitOutcome.CLASH, "mutual active melee contacts clash");
         near(clash.damage(), 0, "clash has no damage");
         near(a.stamina(), 80, "clash costs no additional stamina");
         equal(a.phase(), CombatPhase.READY, "clash adds no attacker stun or recovery");
@@ -126,12 +126,27 @@ public final class CombatTest {
         b = ready(baseRules());
         a.requestAttack(left);
         b.requestAttack(right);
-        equal(hit(a, b, 2, 0, 0).outcome(), HitOutcome.HIT, "left against right lands");
-        equal(hit(b, a, 2, 0, 0).outcome(), HitOutcome.HIT, "opposite return hit also lands in same tick");
+        equal(hit(a, b, 2, 0, 0).outcome(), HitOutcome.CLASH, "opposite swing directions also clash on real mutual contact");
+        equal(hit(b, a, 2, 0, 0).outcome(), HitOutcome.INACTIVE, "resolved clash removes the reciprocal active hit");
         a.tick();
         b.tick();
-        equal(a.phase(), CombatPhase.STUNNED, "opposite hit applies reaction after intents");
-        equal(b.phase(), CombatPhase.STUNNED, "both opposite attackers receive reaction");
+        equal(a.phase(), CombatPhase.READY, "balanced opposite clash adds no delayed attacker stun");
+        equal(b.phase(), CombatPhase.READY, "balanced opposite clash adds no delayed defender stun");
+        check(a.counterRemainingTicks()==0&&b.counterRemainingTicks()==0,"balanced clash awards no damage-advantage counter");
+        for(boolean reverse:List.of(false,true)) {
+            a=ready(baseRules());b=ready(baseRules());
+            var stronger=new SkillDefinition("stronger","Stronger","SWORD",SkillInput.SPECIAL,0,1,0,9,
+                    20,0,10,3,90,.3,false,false,false,"editor_rig.fsvoxel","sword_thrust");
+            a.requestAttack(stronger);b.requestAttack(right);
+            var result=reverse?hit(b,a,2,0,0):hit(a,b,2,0,0);
+            equal(result.outcome(),HitOutcome.CLASH,"SPECIAL and legacy clashable=false do not prohibit a real clash");
+            near(result.damage(),reverse?0:1,"only the advantage beyond three becomes residual outgoing damage");
+            equal(a.phase(),CombatPhase.READY,"stronger side recovers immediately");equal(b.phase(),CombatPhase.STUNNED,"weaker side takes configured parry stun");
+            equal(a.counterRemainingTicks(),4,"stronger side earns the ordinary four-tick counter chance");equal(b.counterRemainingTicks(),0,"weaker side gains no counter chance");
+            near(a.stamina(),80,"stronger clash retains paid attack cost without guard fees");near(b.stamina(),80,"weaker clash retains paid attack cost without guard fees");
+            equal(a.cooldownRemaining("stronger"),9,"advantage clash preserves the accepted cooldown");
+            check(a.staminaCombatState()&&b.staminaCombatState(),"both sides record real combat activity");
+        }
         a = ready(baseRules());
         b = ready(baseRules());
         SkillDefinition cooldownLeft = skill("left_cd", SkillInput.LEFT, 0, 4, 4, 7);
@@ -190,12 +205,13 @@ public final class CombatTest {
         SkillDefinition right = skill("last_right", SkillInput.RIGHT, 0, 1, 0, 0);
         a.requestAttack(left);
         b.requestAttack(right);
-        check(!CombatResolver.canClash(a, b, 2, 0, 0), "opposite input prepass rejects clash");
-        equal(a.phase(), CombatPhase.ACTIVE, "failed prepass preserves attacker last frame");
-        equal(b.phase(), CombatPhase.ACTIVE, "failed prepass preserves defender last frame");
-        check(!a.hasHit(b.id()) && !b.hasHit(a.id()), "failed prepass does not claim either victim");
-        HitResult outgoingA = hit(a, b, 2, 0, 0);
-        HitResult outgoingB = hit(b, a, 2, 0, 0);
+        check(CombatResolver.canClash(a, b, 2, 0, 0), "opposite input prepass accepts actual mutual last-frame contact");
+        equal(a.phase(), CombatPhase.ACTIVE, "predicate preserves attacker last frame");
+        equal(b.phase(), CombatPhase.ACTIVE, "predicate preserves defender last frame");
+        check(!a.hasHit(b.id()) && !b.hasHit(a.id()), "predicate does not claim either victim");
+        // Generic incoming events remain simultaneous trades when no paired melee contact was collected.
+        HitResult outgoingA = CombatResolver.receiveIncoming(a,b,0,6,.3,true,true,false);
+        HitResult outgoingB = CombatResolver.receiveIncoming(b,a,0,6,.3,true,true,false);
         check(outgoingA.dealsDamage() && outgoingB.dealsDamage(), "both last-frame intents exist before tick advancement");
         // The adapter applies the collected damage after this point, so a lethal first hit
         // cannot erase the counterattack intent. Each core actor advances only afterwards.
@@ -208,7 +224,7 @@ public final class CombatTest {
         check(!a.hasHit(b.id()), "geometry-only prepass does not consume an ordinary hit");
         near(a.stamina(), 80, "prepass does not charge attacker");
         near(b.stamina(), 80, "prepass does not charge defender");
-        check(CombatResolver.canClash(a, b, 2, 0, 0), "mutual front-facing matching active swings can clash");
+        check(CombatResolver.canClash(a, b, 2, 0, 0), "mutual front-facing active swings can clash");
         equal(a.phase(), CombatPhase.ACTIVE, "successful predicate is also side-effect-free");
         equal(hit(a, b, 2, 0, 0).outcome(), HitOutcome.CLASH, "predicate leaves actual clash resolution available");
         a = ready(baseRules()); b = ready(baseRules());
