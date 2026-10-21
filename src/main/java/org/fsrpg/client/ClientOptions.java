@@ -13,6 +13,7 @@ final class ClientOptions {
     static final ModConfigSpec.DoubleValue STRIDE_WEIGHT, ATTACK_LEAN_WEIGHT;
     static final ModConfigSpec.DoubleValue KNEE_BEND, STRIDE_LENGTH;
     static final ModConfigSpec.DoubleValue HEAD_LEAN_FOLLOW, HIP_SHIFT;
+    static final ModConfigSpec.DoubleValue AIR_INERTIA_STRENGTH;
     static final ModConfigSpec.DoubleValue SPEAR_CHEST_RETURN;
     static final ModConfigSpec.DoubleValue SPEAR_AIM_RETURN;
     static final ModConfigSpec.DoubleValue SPEAR_ELBOW_LIMIT, SPEAR_WRIST_LIMIT, SPEAR_CLEARANCE, SPEAR_NECK_LIMIT, SPEAR_VERTICAL_BANK;
@@ -32,6 +33,8 @@ final class ClientOptions {
                 .defineInRange("movingFullBodyLowerWeight", .25, 0, 1);
         STANCE_FOOT_YAW_LIMIT = builder.comment("Maximum authored leg yaw in degrees before aim rotation. Action tag foot_yaw_limit overrides this value.")
                 .defineInRange("stanceFootYawLimit", 55.0, 0, 90);
+        AIR_INERTIA_STRENGTH = builder.comment("Small airborne pose response to actual ascent, descent and acceleration. Zero preserves the takeoff frame exactly; entity physics and combat are unchanged.")
+                .defineInRange("airInertiaStrength", 1.0, 0, 1);
         MOVEMENT_LEAN = builder.comment("Additional torso lean toward movement, in degrees, capped at 4 by the shared movement layer. Authored attack tilt is retained; zero disables movement lean.")
                 .defineInRange("movementLeanDegrees", 4.0, 0, 25);
         MOTION_RESPONSE = builder.comment("Visual acceleration/braking smoothing in ticks; applies to directional lean and the upright sprint carry.")

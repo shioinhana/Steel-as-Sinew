@@ -15,7 +15,7 @@ public final class AirPose {
             if(!airborne){airborne=true;if(previous==null)previous=current;takeoff=previous;}
             // These are actual authoritative actions, never a jump/fall substitution.
             boolean action=switch(phase){case "WINDUP","ACTIVE","RECOVERY","GUARDING","STUNNED","DODGING","DRAWING","SHEATHING"->true;default->false;};
-            if(action){previous=current;if(!attack(phase))takeoff=current;}
+            if(action){previous=current;if(!attack(phase)&&!phase.equals("GUARDING"))takeoff=current;}
             holding=!action;
             return previous;
         }

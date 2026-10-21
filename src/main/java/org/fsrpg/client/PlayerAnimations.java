@@ -28,6 +28,8 @@ public final class PlayerAnimations {
     private static final Logger LOG = LoggerFactory.getLogger("FSRPG animation");
     private static final Map<UUID, Binding> bindings = new HashMap<>();
     private static final Map<UUID,AirPose.State<Frame>> airPoses=new HashMap<>();
+    private static final Map<UUID,AirInertia.State> airInertias=new HashMap<>();
+    private static final Map<UUID,AirInertia.Offset> airOffsets=new HashMap<>();
     private static final Map<AvatarRenderState, Frame> previews = new WeakHashMap<>();
     private static final PoseLayers.RenderClock renderClock = new PoseLayers.RenderClock();
     private static Object level;
@@ -115,14 +117,14 @@ public final class PlayerAnimations {
     }
     private static void world() {
         Object next = Minecraft.getInstance().level;
-        if (level != next) { bindings.clear(); airPoses.clear(); previews.clear(); AnimationAssets.clear(); SkinnedArms.clear(); renderClock.reset(); level = next; }
+        if (level != next) { bindings.clear(); airPoses.clear(); airInertias.clear(); airOffsets.clear(); previews.clear(); AnimationAssets.clear(); SkinnedArms.clear(); renderClock.reset(); level = next; }
     }
-    public static void clear() { bindings.clear(); airPoses.clear(); previews.clear(); AnimationAssets.clear(); SkinnedArms.clear(); renderClock.reset(); level = Minecraft.getInstance().level; }
+    public static void clear() { bindings.clear(); airPoses.clear(); airInertias.clear(); airOffsets.clear(); previews.clear(); AnimationAssets.clear(); SkinnedArms.clear(); renderClock.reset(); level = Minecraft.getInstance().level; }
     public static void reloadModels() {
         try { WeaponInspections.reload(net.neoforged.fml.loading.FMLPaths.CONFIGDIR.get().resolve("fsrpg")); }
         catch(Exception error){LOG.warn("Unable to reload weapon inspection catalogue; retaining previous validated data",error);}
         var states = bindings.values().stream().map(binding -> binding.state).toList();
-        bindings.clear(); airPoses.clear(); AnimationAssets.clear(); states.forEach(PlayerAnimations::accept);
+        bindings.clear(); airPoses.clear(); airInertias.clear(); airOffsets.clear(); AnimationAssets.clear(); states.forEach(PlayerAnimations::accept);
     }
     public static long appliedModels() { return appliedModels; }
     public static long weaponBatches() { return weaponBatches; }
@@ -248,7 +250,7 @@ public final class PlayerAnimations {
     }
     public static void accept(RpgAnimationPayload state) {
         world();
-        if (!state.drawn()) { bindings.remove(state.entityId()); airPoses.remove(state.entityId()); return; }
+        if (!state.drawn()) { bindings.remove(state.entityId()); airPoses.remove(state.entityId()); airInertias.remove(state.entityId()); airOffsets.remove(state.entityId()); return; }
         if (state.windupTicks() < 0 || state.activeTicks() < 0 || state.recoveryTicks() < 0 || state.phaseRemaining() < 0) return;
         Binding previous = bindings.get(state.entityId());
         if (previous != null && previous.state.sequence() > state.sequence()) return;
@@ -315,7 +317,7 @@ public final class PlayerAnimations {
         if (!(entity instanceof net.minecraft.world.entity.LivingEntity living)) return null;
         Binding binding = bindings.get(entity.getUUID()); if (binding == null) return null;
         double renderTick = now();
-        if (renderTick - binding.received > 100) { bindings.remove(entity.getUUID()); airPoses.remove(entity.getUUID()); return null; }
+        if (renderTick - binding.received > 100) { bindings.remove(entity.getUUID()); airPoses.remove(entity.getUUID()); airInertias.remove(entity.getUUID()); airOffsets.remove(entity.getUUID()); return null; }
         if (binding.pendingAction != null && binding.pendingAction.ready(renderTick)) {
             var pending = binding.pendingAction;
             var nextState = pending.value();
@@ -503,7 +505,8 @@ public final class PlayerAnimations {
         var spearCarrySource = pose;
         Map<String,Matrix4f> spearNormalWorld = null;
         if (ownsSpearHands && !binding.spearRunCarry.returning()) {
-            pose = SpearRunCarry.apply(binding.asset.full(), pose, binding.spearRunCarry.reference(), spearRunWeight, visualWalkPhase);
+            pose = SpearRunCarry.apply(binding.asset.full(), pose, binding.spearRunCarry.reference(), spearRunWeight, visualWalkPhase,
+                    binding.motion.lateralLean(), binding.motion.forwardLean());
             lastSpearSolveNanos = 0;
         } else if(server.style().equals("spear")) {
             var sourceWorld = binding.asset.full().worldMatrices(pose);
@@ -555,6 +558,8 @@ public final class PlayerAnimations {
             // Keep the pole in the current forward field during packet latency and
             // spherical bridges as well. Legal authoritative contact directions are unchanged.
             aim = SpearAimField.constrain(aim, bodyYaw);
+            if (ownsSpearHands && binding.spearRunCarry.returning() && binding.lastAim != null)
+                aim = PoseLayers.blendAim(binding.lastAim, aim, binding.spearRunCarry.returnAimWeight());
             binding.lastAim = aim;
             // Ready aiming can carry its latest feasible grip around the body.
             // An attack keeps the authored anchor so its stroke cannot accumulate
@@ -581,7 +586,8 @@ public final class PlayerAnimations {
                 // normal return target throughout recovery, before its weight
                 // reaches zero, so the final frame does not jump to a stale aim.
                 spearNormalWorld = binding.asset.full().worldMatrices(pose);
-                pose = SpearRunCarry.apply(binding.asset.full(), spearCarrySource, binding.spearRunCarry.reference(), spearRunWeight, visualWalkPhase);
+                pose = SpearRunCarry.apply(binding.asset.full(), spearCarrySource, binding.spearRunCarry.reference(), spearRunWeight, visualWalkPhase,
+                    binding.motion.lateralLean(), binding.motion.forwardLean());
             }
         }
         var finalWorld = binding.asset.full().worldMatrices(pose);
@@ -625,10 +631,11 @@ public final class PlayerAnimations {
         return binding.sampled;
     }
     private static Frame airFrame(net.minecraft.world.entity.Entity entity,RpgAnimationPayload intent,Frame current,AvatarRenderState state) {
-        boolean inAir=!entity.onGround()&&!entity.isPassenger()&&!entity.isInWater()&&!state.isFallFlying&&state.swimAmount<=.5f;
+        boolean inAir=entity.isAlive()&&!entity.onGround()&&!entity.isPassenger()&&!entity.isInWater()&&!state.isFallFlying&&state.swimAmount<=.5f;
         var air=airPoses.computeIfAbsent(entity.getUUID(),id->new AirPose.State<Frame>());
-        Frame selected=air.sample(intent.style()+"|"+System.identityHashCode(current.model())+"|"+state.skin.model(),inAir,intent.phase(),current);
-        if(inAir&&AirPose.attack(intent.phase())&&air.takeoff()!=null){
+        String airKey=intent.style()+"|"+System.identityHashCode(current.model())+"|"+state.skin.model()+"|"+entity.getId();
+        Frame selected=air.sample(airKey,inAir,intent.phase(),current);
+        if(inAir&&(AirPose.attack(intent.phase())||intent.phase().equals("GUARDING"))&&air.takeoff()!=null){
             // Continue the authored attack above the waist. Air is not permission for
             // vanilla legs (or a newly selected fall clip) to replace the takeoff stance.
             Frame lower=air.takeoff();
@@ -647,8 +654,24 @@ public final class PlayerAnimations {
         }
         if(selected!=current)selected=new Frame(selected.model(),selected.weapon(),selected.local(),selected.world(),selected.lowerBodyWeight(),selected.movingWeight(),
                 current.sampledTick(),selected.layer(),selected.rightKnee(),selected.leftKnee(),selected.balance(),selected.supportedLower());
-        air.presented(selected);return selected;
+        // Retain only the undecorated basis. Feeding the final inertia frame back
+        // into AirPose would integrate a cosmetic rotation on every render frame.
+        air.presented(selected);
+        if(!entity.isAlive()){airInertias.remove(entity.getUUID());airOffsets.remove(entity.getUUID());return selected;}
+        var inertia=airInertias.computeIfAbsent(entity.getUUID(),id->new AirInertia.State());
+        inertia.observeMotion(entity.tickCount,entity.getX(),entity.getY(),entity.getZ(),
+                entity.getX()-entity.xo,entity.getY()-entity.yo,entity.getZ()-entity.zo);
+        float partial=Minecraft.getInstance().getDeltaTracker().getGameTimeDeltaPartialTick(false);
+        float yaw=entity instanceof net.minecraft.world.entity.LivingEntity living
+                ?net.minecraft.util.Mth.rotLerp(partial,living.yBodyRotO,living.yBodyRot):entity.getYRot();
+        var offset=inertia.sample(airKey,current.sampledTick(),partial,inAir,intent.phase(),yaw,ClientOptions.AIR_INERTIA_STRENGTH.get().floatValue());
+        airOffsets.put(entity.getUUID(),offset);
+        if(!offset.active())return selected;
+        var moved=AirInertia.apply(selected.model(),selected.local(),selected.world(),selected.supportedLower(),offset);
+        return new Frame(selected.model(),selected.weapon(),moved.local(),moved.world(),selected.lowerBodyWeight(),selected.movingWeight(),
+                current.sampledTick(),selected.layer(),selected.rightKnee(),selected.leftKnee(),selected.balance(),moved.lower());
     }
+    public static AirInertia.Offset airInertiaOffset(UUID entity){return airOffsets.getOrDefault(entity,AirInertia.Offset.ZERO);}
     public static boolean airbornePoseHeld(UUID entity){var pose=airPoses.get(entity);return pose!=null&&pose.holding();}
     private static SpearTurn.Settings turnSettings() {
         return new SpearTurn.Settings(ClientOptions.SPEAR_PELVIS_RESPONSE.get().floatValue(),ClientOptions.SPEAR_TURN_STEP_TIME.get().floatValue(),

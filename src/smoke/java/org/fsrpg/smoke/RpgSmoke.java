@@ -66,6 +66,7 @@ public final class RpgSmoke {
     private static final CancelReview cancelReview = new CancelReview();
     private static boolean cancelReviewPassed;
     public RpgSmoke(IEventBus bus) {
+        if(Boolean.getBoolean("fsrpg.runAirSmoke")){new RunAirReview();return;}
         if(Boolean.getBoolean("fsrpg.inspectionCarrySmoke")){new InspectionCarryReview();return;}
         if(Boolean.getBoolean("fsrpg.groundImpulseSmoke")){new GroundImpulseReview();return;}
         if(Boolean.getBoolean("fsrpg.shoulderCombatSmoke")){new ShoulderCombatReview();return;}

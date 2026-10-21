@@ -1,0 +1,127 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://fsrpg.local/designs/weapon_skill_proposals.schema.json",
+  "title": "FSRPG 武器技能设计提案；不是运行时技能配置",
+  "description": "仅用于审阅 designs/ 下的未实现提案。不得拷入 config/fsrpg/skills.json；这里使用的倍率、位移、命中事件、资源拆分和状态效果都需要未来运行时实现。",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["$schema", "schemaVersion", "status", "runtimeEnabled", "targetVersionProposal", "reviewDate", "units", "sharedRules", "skills", "reviewChecklist"],
+  "properties": {
+    "$schema": { "type": "string" },
+    "schemaVersion": { "const": 1 },
+    "status": { "const": "DESIGN_PROPOSAL_NOT_IMPLEMENTED" },
+    "runtimeEnabled": { "const": false },
+    "targetVersionProposal": { "const": "0.8.0" },
+    "reviewDate": { "type": "string", "format": "date" },
+    "units": { "type": "object" },
+    "sharedRules": { "type": "object" },
+    "skills": {
+      "type": "array", "minItems": 16, "maxItems": 16,
+      "items": { "$ref": "#/$defs/skill" }
+    },
+    "reviewChecklist": {
+      "type": "array", "items": {
+        "type": "object", "additionalProperties": false,
+        "required": ["id", "owner", "done", "deliverable"],
+        "properties": {
+          "id": { "type": "string" }, "owner": { "type": "string" },
+          "done": { "const": false }, "deliverable": { "type": "string" }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "ticks": { "type": "integer", "minimum": 0, "maximum": 1200 },
+    "nonnegative": { "type": "number", "minimum": 0, "maximum": 1000 },
+    "skill": {
+      "type": "object", "additionalProperties": false,
+      "required": ["id", "name", "weaponGroup", "role", "status", "learning", "timing", "resources", "damage", "motion", "contact", "aim", "animationBeats", "interactions", "dependencies"],
+      "properties": {
+        "id": { "type": "string", "pattern": "^proposal\\.(rapier|dual|spear|bow)\\.[a-z_]+$" },
+        "name": { "type": "string", "minLength": 1 },
+        "weaponGroup": { "enum": ["sword", "dual_blade", "spear", "bow"] },
+        "role": { "type": "string" },
+        "status": { "const": "DESIGN_PROPOSAL_NOT_IMPLEMENTED" },
+        "learning": {
+          "type": "object", "additionalProperties": false,
+          "required": ["existingRoot", "proposedNode", "numericRequirementsConfirmed"],
+          "properties": {
+            "existingRoot": { "type": ["string", "null"] },
+            "proposedNode": { "type": "string" },
+            "numericRequirementsConfirmed": { "const": false }
+          }
+        },
+        "timing": {
+          "type": "object", "additionalProperties": false,
+          "required": ["windupTicks", "activeTicks", "recoveryTicks", "cooldownTicks", "contactTicks"],
+          "properties": {
+            "windupTicks": { "$ref": "#/$defs/ticks" },
+            "activeTicks": { "type": "integer", "minimum": 1, "maximum": 100 },
+            "recoveryTicks": { "$ref": "#/$defs/ticks" },
+            "cooldownTicks": { "$ref": "#/$defs/ticks" },
+            "contactTicks": { "type": "array", "uniqueItems": true, "maxItems": 4, "items": { "$ref": "#/$defs/ticks" } }
+          }
+        },
+        "resources": {
+          "type": "object", "additionalProperties": false,
+          "required": ["stamina", "spirit", "attackStaminaShare", "utilityStaminaShare", "arrows", "durabilityPolicy"],
+          "properties": {
+            "stamina": { "$ref": "#/$defs/nonnegative" }, "spirit": { "$ref": "#/$defs/nonnegative" },
+            "attackStaminaShare": { "$ref": "#/$defs/nonnegative" }, "utilityStaminaShare": { "$ref": "#/$defs/nonnegative" },
+            "arrows": { "type": "integer", "minimum": 0, "maximum": 1 },
+            "durabilityPolicy": { "type": "string" }
+          }
+        },
+        "damage": {
+          "type": "object", "additionalProperties": false,
+          "required": ["basis", "totalMultiplier", "hitMultipliers", "friendlyFirePolicy"],
+          "properties": {
+            "basis": { "enum": ["rapier_base_slash", "dual_base_slash", "spear_thrust", "full_rapid_arrow"] },
+            "totalMultiplier": { "$ref": "#/$defs/nonnegative" },
+            "hitMultipliers": { "type": "array", "maxItems": 4, "items": { "$ref": "#/$defs/nonnegative" } },
+            "friendlyFirePolicy": { "const": "existing_server_relationship_rules" }
+          }
+        },
+        "motion": {
+          "type": "object", "additionalProperties": false,
+          "required": ["type", "groundRequired", "airOnly", "horizontalSpeedMps", "verticalVelocityBlocksPerTick", "distanceCapBlocks", "direction", "triggerTick", "invulnerabilityTicks", "invulnerabilityStartTick"],
+          "properties": {
+            "type": { "enum": ["none", "single_impulse", "blink"] },
+            "groundRequired": { "type": "boolean" }, "airOnly": { "type": "boolean" },
+            "horizontalSpeedMps": { "$ref": "#/$defs/nonnegative" },
+            "verticalVelocityBlocksPerTick": { "type": ["number", "null"], "minimum": -1, "maximum": 1 },
+            "distanceCapBlocks": { "type": ["number", "null"], "minimum": 0, "maximum": 8 },
+            "direction": { "type": "string" },
+            "triggerTick": { "$ref": "#/$defs/ticks" },
+            "invulnerabilityTicks": { "$ref": "#/$defs/ticks" },
+            "invulnerabilityStartTick": { "$ref": "#/$defs/ticks" }
+          }
+        },
+        "contact": {
+          "type": "object", "additionalProperties": false,
+          "required": ["rangeBlocks", "arcDegrees", "launchVelocityY", "slamVelocityY", "slowMultiplier", "slowTicks", "groundedTarget", "airborneTarget", "bossFallback"],
+          "properties": {
+            "rangeBlocks": { "type": "number", "minimum": 0, "maximum": 64 },
+            "arcDegrees": { "type": "number", "minimum": 0, "maximum": 180 },
+            "launchVelocityY": { "type": "number", "minimum": 0, "maximum": 1 },
+            "slamVelocityY": { "type": "number", "minimum": -1, "maximum": 0 },
+            "slowMultiplier": { "type": "number", "minimum": 0, "maximum": 1 },
+            "slowTicks": { "$ref": "#/$defs/ticks" },
+            "groundedTarget": { "type": "string" }, "airborneTarget": { "type": "string" }, "bossFallback": { "type": "string" }
+          }
+        },
+        "aim": { "type": "string" },
+        "animationBeats": { "type": "array", "minItems": 2, "items": { "type": "string" } },
+        "interactions": {
+          "type": "object", "additionalProperties": false,
+          "required": ["hit", "miss", "blocked", "interrupt"],
+          "properties": {
+            "hit": { "type": "string" }, "miss": { "type": "string" },
+            "blocked": { "type": "string" }, "interrupt": { "type": "string" }
+          }
+        },
+        "dependencies": { "type": "array", "minItems": 1, "items": { "type": "string" } }
+      }
+    }
+  }
+}
