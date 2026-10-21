@@ -24,6 +24,7 @@ public final class StaminaCostTest {
         for (String name : FILES.subList(0, 4)) {
             JsonElement before = resource("/stamina-before-0.5.3/" + name);
             if (name.equals("skills.json")) currentSpearTiming(before);
+            currentFencingTemplate(before,name);
             currentTemplateRules(before,name);
             compareCosts(before, resource("/defaults/" + name), name);
         }
@@ -141,7 +142,9 @@ public final class StaminaCostTest {
                 JsonObject old = value.getAsJsonObject();
                 near(old.get("staminaCost").getAsDouble() / 5, result.skills().get(old.get("id").getAsString()).staminaCost(), "legacy field scales original cost once");
             }
-            var defaults = RpgConfig.JSON.fromJson(resource("/defaults/skills.json"), SkillDefinition[].class);
+            // The historical legacy upgrade has a fixed 0.8.4 target. The model-aware
+            // five-stage fencing upgrade has its own stock/custom migration suite.
+            var defaults = RpgConfig.JSON.fromJson(resource("/defaults/legacy-0.8.4/skills.json"), SkillDefinition[].class);
             for (var skill : defaults) if (!containsId(before, skill.id())) near(skill.staminaCost(), result.skills().get(skill.id()).staminaCost(), "new legacy entry keeps reduced template value");
             near(6, result.combat().dodgeStaminaCost(), "absent old combat file seeds reduced cost once");
         } finally { cleanup(directory); }
@@ -171,6 +174,7 @@ public final class StaminaCostTest {
         for (String name : FILES) {
             JsonElement value = resource((FILES.indexOf(name) < 4 ? "/stamina-before-0.5.3/" : "/defaults/") + name);
             if (name.equals("skills.json")) currentSpearTiming(value);
+            if(name.equals("skill_trees.json"))value=RapierFencingMigration.compatibleInitialTrees(read(directory,"skills.json"),value);
             write(directory, name, value);
         }
         Files.writeString(directory.resolve("legacy-skill-migration-v1.json"), "{}");
@@ -195,6 +199,26 @@ public final class StaminaCostTest {
         Files.writeString(directory.resolve(GuardCueMigration.MARKER),"{}");
         Files.writeString(directory.resolve(DefenseFlowMigration.MARKER),"{}");
         Files.writeString(directory.resolve(StaminaLevelMigration.MARKER),"{}");
+        Files.writeString(directory.resolve(RapierFencingMigration.MARKER),"{}");
+    }
+    // Project only the separately tested 0.8.5 additions onto this historical cost fixture.
+    // compareCosts still checks every original field and every divide-by-five debit.
+    private static void currentFencingTemplate(JsonElement before,String name)throws Exception {
+        if(name.equals("skills.json")) {
+            JsonArray current=resource("/defaults/skills.json").getAsJsonArray();
+            Set<String> changed=Set.of("sword_left","rapier_downcut","rapier_crosscut","rapier_light_thrust");
+            for(var value:before.getAsJsonArray()) {
+                var old=value.getAsJsonObject();if(!changed.contains(old.get("id").getAsString()))continue;
+                var next=current.asList().stream().map(JsonElement::getAsJsonObject).filter(v->v.get("id").equals(old.get("id"))).findFirst().orElseThrow();
+                for(String field:List.of("label","windupTicks","activeTicks","recoveryTicks"))old.add(field,next.get(field).deepCopy());
+            }
+            var fifth=current.asList().stream().map(JsonElement::getAsJsonObject).filter(v->v.get("id").getAsString().equals("rapier_lunge_finish")).findFirst().orElseThrow();
+            before.getAsJsonArray().asList().add(4,fifth.deepCopy());
+        }else if(name.equals("styles.json")) {
+            for(var value:before.getAsJsonArray())if(value.getAsJsonObject().get("id").getAsString().equals("rapier")) {
+                JsonObject fifth=new JsonObject();fifth.addProperty("skillId","rapier_lunge_finish");value.getAsJsonObject().getAsJsonArray("leftCombo").add(fifth);
+            }
+        }
     }
     private static void currentTemplateRules(JsonElement before,String name) {
         if(name.equals("combat.json")) {

@@ -50,7 +50,10 @@ public final class RpgConfig {
             if (!Files.exists(target)) {
                 try (InputStream in = RpgConfig.class.getResourceAsStream("/defaults/" + name)) {
                     if (in == null) throw new IOException("Missing bundled default " + name);
-                    Files.copy(in, target);
+                    if(name.equals("skill_trees.json")) {
+                        JsonElement trees=JsonParser.parseString(new String(in.readAllBytes(),StandardCharsets.UTF_8));
+                        atomicWrite(target,JSON.toJson(RapierFencingMigration.compatibleInitialTrees(read("skills.json"),trees)));
+                    }else Files.copy(in, target);
                 }
             }
         }
@@ -70,6 +73,7 @@ public final class RpgConfig {
         GuardCueMigration.migrate(directory);
         if(defenseFlowMigration!=null)defenseFlowMigration.apply();
         if (staminaLevelMigration != null) staminaLevelMigration.apply();
+        RapierFencingMigration.migrate(directory);
     }
     private JsonElement read(String name) throws IOException {
         Path path = directory.resolve(name);

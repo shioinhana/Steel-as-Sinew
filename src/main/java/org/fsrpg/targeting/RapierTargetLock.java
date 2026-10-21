@@ -65,10 +65,14 @@ public final class RapierTargetLock {
         update(player,actor,weaponEquipped);return true;
     }
     public void unlock(ServerPlayer player,CombatActor actor) {
-        states.put(player.getUUID(),new Snapshot(actor.rules().rapierTargetLock().enabled(),-1,"",player.getYRot(),player.getXRot(),actor.rules().rapierTargetLock().range()));
+        states.put(player.getUUID(),new Snapshot(enabled(player,actor,true),-1,"",player.getYRot(),player.getXRot(),actor.rules().rapierTargetLock().range()));
     }
 
     public Snapshot snapshot(ServerPlayer player, CombatActor actor) {
+        if(actor.style()!=null&&(actor.style().controls().spear()||actor.style().weaponGroup().equals("spear"))){
+            states.remove(player.getUUID());
+            return new Snapshot(false,-1,"",AttackAim.wrap(player.getYRot()),Math.clamp(player.getXRot(),-80,80),actor.rules().rapierTargetLock().range());
+        }
         return states.getOrDefault(player.getUUID(), new Snapshot(false, -1, "", AttackAim.wrap(player.getYRot()),
                 Math.clamp(player.getXRot(), -80, 80), actor.rules().rapierTargetLock().range()));
     }

@@ -222,11 +222,14 @@ public final class PlayerAnimations {
                 next.spearTurn = previous.spearTurn;
             }
         }
-        // A new sword binding used to show its neutral first frame, then resurrect
-        // the preceding stroke through OffsetDecay on the next frame. Keep authored
-        // sword attack handoffs direct; their existing contact-time mapping stays intact.
+        var nextClip=asset.full().rig().clips().get(state.action());
+        var previousClip=previous==null?null:previous.asset.full().rig().clips().get(previous.state.action());
+        boolean fencingEntry=RapierMotion.fencing(nextClip)&&previous!=null&&!RapierMotion.directHandoff(previousClip,nextClip,
+                previous.sampledElapsedTicks,previous.state.windupTicks(),previous.state.activeTicks());
+        // Queued fencing phrases share the actual ACTIVE-end pose. A late click
+        // after natural recovery starts from the real guard with a short entry blend.
         if (previous != null && previous.lastPose != null
-                && !(SwordMotion.applies(asset.full())&&PoseLayers.attackElapsed(state.phase(),state.phaseRemaining(),state.windupTicks(),state.activeTicks(),state.recoveryTicks())>=0)) {
+                && (!(SwordMotion.applies(asset.full())&&PoseLayers.attackElapsed(state.phase(),state.phaseRemaining(),state.windupTicks(),state.activeTicks(),state.recoveryTicks())>=0)||fencingEntry)) {
             var clip = asset.full().rig().clips().get(state.action());
             next.transitionFrom = previous.lastPose;
             next.swordPending = previous.lastPose;
@@ -236,6 +239,7 @@ public final class PlayerAnimations {
             next.transitionTicks = PoseLayers.transitionTicks(clip, ClientOptions.ACTION_BLEND.get(), state.windupTicks(),
                     state.phase().equals("WINDUP") || state.phase().equals("ACTIVE") || state.phase().equals("RECOVERY"));
             if (elapsed >= 0) next.transitionTicks = PoseLayers.entryWindupTicks(next.transitionTicks, elapsed, state.windupTicks());
+            if(fencingEntry)next.transitionTicks=Math.min(1.25,next.transitionTicks);
         }
         if (previous != null && previous.lastAim != null && state.style().equals("spear")) {
             next.aimTransitionFrom = previous.lastAim;
@@ -465,7 +469,7 @@ public final class PlayerAnimations {
         RapierMotion.Lean swordLean=null;
         if(sword){
             var target=RapierMotion.combine(binding.motion.lateralLean(),binding.motion.forwardLean(),leanDegrees,leanStrength,
-                    elapsed>=0?RapierMotion.reaction(clip,binding.sampledClipSeconds):0);
+                    elapsed>=0?RapierMotion.recoil(clip,binding.sampledClipSeconds):new RapierMotion.Lean(0,0));
             swordLean=binding.swordLean.advance(renderTick,target,ClientOptions.MOTION_RESPONSE.get());
             pose=PresentationMotion.lean(pose,swordLean.lateral(),swordLean.forward(),ClientOptions.HEAD_LEAN_FOLLOW.get().floatValue());
         } else pose = binding.motion.applyLean(pose, leanDegrees, leanStrength, ClientOptions.HEAD_LEAN_FOLLOW.get().floatValue());
@@ -483,7 +487,9 @@ public final class PlayerAnimations {
             var lowerWorld = binding.asset.full().worldMatrices(pose);
             if (server.style().equals("spear"))
                 aimCrouchCm = SpearMotion.aimCrouchCm(authoredPitch, ClientOptions.SPEAR_AIM_CROUCH.get().floatValue());
-            supportedLower = Locomotion.supported(lowerWorld.get("right_leg"), lowerWorld.get("left_leg"), lowerWeight,
+            var rightSupport=sword?RapierMotion.fencingFoot(lowerWorld.get("right_leg"),false,clip,binding.sampledClipSeconds,sample.movingWeight()):lowerWorld.get("right_leg");
+            var leftSupport=sword?RapierMotion.fencingFoot(lowerWorld.get("left_leg"),true,clip,binding.sampledClipSeconds,sample.movingWeight()):lowerWorld.get("left_leg");
+            supportedLower = Locomotion.supported(rightSupport, leftSupport, lowerWeight,
                     visualWalkPhase, state.walkAnimationSpeed, sample.movingWeight(),
                     binding.motion.lateralLean(), binding.motion.forwardLean(), strideScale,
                     ClientOptions.KNEE_BEND.get().floatValue(), hipBalance,

@@ -81,7 +81,7 @@
       "id": "rapier",
       "tree": "rapier",
       "label": "西洋剑入门",
-      "description": "学会旧版单剑四连斩。左键依次四刀，右键突刺随修行解锁。已有冒险存档保留基础招式。",
+      "description": "学会西洋剑五连击：直刺、脱剑换线刺、拨压后刺、短回锋横切、弓步终刺。右键突刺随修行解锁。",
       "automatic": false,
       "cost": {
         "mind": 2,
@@ -105,6 +105,7 @@
         "rapier_downcut",
         "rapier_crosscut",
         "rapier_light_thrust",
+        "rapier_lunge_finish",
         "rapier_wrist_rise",
         "sword_right",
         "rapier_reprise"

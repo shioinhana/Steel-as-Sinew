@@ -27,11 +27,12 @@ public final class RapierTargeting {
         }
     }
 
-    /** Spear shares explicit selection, while its live weapon aim remains independently player controlled. */
+    /** Spear rotation and live weapon aim stay freely player controlled, without target locks. */
     public static boolean eligibleActor(CombatActor actor,boolean weaponEquipped,boolean alive,boolean spectator) {
         return actor.rules().rapierTargetLock().enabled() && alive && !spectator && weaponEquipped
                 && actor.drawn() && actor.phase()!=CombatPhase.SHEATHING && actor.style()!=null
-                && !actor.style().weaponGroup().equals("unarmed");
+                && !actor.style().weaponGroup().equals("unarmed") && !actor.style().weaponGroup().equals("spear")
+                && !actor.style().controls().spear();
     }
 
     /** A nearer same-priority arrival never steals a valid lock. A hostile can replace a passive. */

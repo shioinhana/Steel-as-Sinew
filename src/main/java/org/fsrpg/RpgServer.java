@@ -604,21 +604,14 @@ public final class RpgServer {
             // This lease must belong to a newly paid swing. General sword buffering
             // would otherwise attach a second press to the old ACTIVE swing and hold it forever.
             if(actor.currentSkill()!=null)return;
-            var previous=rapierTargets.target(p);
-            LivingEntity selected=null;
-            if(previous==null&&request.has("targetId")) {
-                int id=request.get("targetId").getAsBigDecimal().intValueExact();
-                String uuid=request.has("targetUuid")?request.get("targetUuid").getAsString():"";
-                selected=crosshairTarget(p,actor,id,uuid,aim.points().getFirst());
-            }
             SkillDefinition thrust=config.current().skills().get(actor.style().leftCombo().getFirst().skillId());
             accepted(actor.aimedLeftSkill(thrust,aim));
             state=new SpearHoldState();
             if(!state.begin(p.level().getGameTime(),actor.snapshot().swingSequence(),aim.points().getFirst(),p.getYRot()))
                 throw new IllegalStateException("spear press rejected");
             spearHolds.put(p.getUUID(),state);spearInputs.put(p.getUUID(),input);spearOrigins.put(p.getUUID(),p.getEyePosition());
-            // Lock only the accepted press. Keep its submitted world aim instead of snapping the pole to target center.
-            if(selected!=null)rapierTargets.acquire(p,actor,true,selected);
+            // Spear presses only own a paid swing and its submitted aim. Old target fields
+            // are ignored, so a legacy client cannot re-enable spear facing/target locks.
             refreshTargetLock(p,true);
         } else {
             if(state==null||!Objects.equals(spearInputs.get(p.getUUID()),input)||!actor.spearAttackHeld())return;

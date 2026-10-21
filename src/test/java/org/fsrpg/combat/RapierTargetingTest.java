@@ -118,7 +118,7 @@ public final class RapierTargetingTest {
         var actor=new CombatActor(UUID.randomUUID(),rules);actor.setStyle(style);
         check(!RapierTargeting.eligibleActor(actor,true,true,false),"An equipped spear cannot lock before its automatic draw completes");
         actor.requestDrawn();for(int i=0;i<rules.drawTicks();i++)actor.tick();
-        check(RapierTargeting.eligibleActor(actor,true,true,false),"Automatically drawn spear uses the shared explicit target-lock service");
+        check(!RapierTargeting.eligibleActor(actor,true,true,false),"Automatically drawn spear remains freely aimed without target locking");
         check(!RapierTargeting.eligibleActor(actor,false,true,false),"Removing the actual spear disables lock eligibility");
         check(!RapierTargeting.eligibleActor(actor,true,false,false)&&!RapierTargeting.eligibleActor(actor,true,true,true),"Dead and spectator players cannot retain spear locks");
         var original=AttackAim.at(31.5,28);
@@ -128,15 +128,23 @@ public final class RapierTargetingTest {
         check(actor.attackAim().equals(original)&&actor.spearAttackHeld(),"Target-facing updates cannot snap the current spear windup or cancel its hold");
         actor.tick();check(actor.phase()==CombatPhase.ACTIVE,"Spear fixture reaches its actual hit interval");
         var moved=AttackAim.at(-31.5,-28);actor.setSpearAttackHeld(true,moved);actor.trackLockedAim(AttackAim.at(80,10));
-        check(actor.attackAim().equals(moved)&&actor.spearAttackHeld(),"Player weapon-aim packets keep driving the held active spear while actor facing tracks its lock");
+        check(actor.attackAim().equals(moved)&&actor.spearAttackHeld(),"Player weapon-aim packets keep driving the held active spear even after a stale lock-aim call");
         var selected=target(900,10,false);var nearer=target(901,1,true);
-        check(RapierTargeting.selected(selected.uuid(),List.of(nearer,selected),rules.rapierTargetLock())==selected,"Spear's explicit ten-block passive selection survives nearer hostile arrivals");
+        check(RapierTargeting.selected(selected.uuid(),List.of(nearer,selected),rules.rapierTargetLock())==selected,"Other weapons retain their explicit ten-block selection without target stealing");
         check(RapierTargeting.selected(new UUID(0,902),List.of(selected),rules.rapierTargetLock())==null,"Submitted stale or mismatched target UUID cannot select another entity");
         actor.forceSheathed();check(!RapierTargeting.eligibleActor(actor,true,true,false),"Forced weapon removal clears shared lock eligibility immediately");
         actor=new CombatActor(UUID.randomUUID(),rules);actor.setStyle(new WeaponStyleDefinition("unarmed","Unarmed","unarmed",true,
                 List.of(new WeaponStyleDefinition.ComboStage("thrust")),"",WeaponStyleDefinition.GuardRules.from(rules)));
         actor.requestDrawn();for(int i=0;i<rules.drawTicks();i++)actor.tick();
-        check(!RapierTargeting.eligibleActor(actor,true,true,false),"Enabling spear selection does not enable unarmed targeting");
+        check(!RapierTargeting.eligibleActor(actor,true,true,false),"Free spear aim does not enable unarmed targeting");
+        actor=new CombatActor(UUID.randomUUID(),rules);actor.setStyle(new WeaponStyleDefinition("custom_spear","Custom spear","spear",true,
+                List.of(new WeaponStyleDefinition.ComboStage("thrust")),"",WeaponStyleDefinition.GuardRules.from(rules)));
+        actor.requestDrawn();for(int i=0;i<rules.drawTicks();i++)actor.tick();
+        check(!RapierTargeting.eligibleActor(actor,true,true,false),"A custom spear group cannot restore targeting through ordered controls");
+        actor=new CombatActor(UUID.randomUUID(),rules);actor.setStyle(new WeaponStyleDefinition("rapier","Rapier","sword",true,
+                List.of(new WeaponStyleDefinition.ComboStage("left")),"",WeaponStyleDefinition.GuardRules.from(rules)));
+        actor.requestDrawn();for(int i=0;i<rules.drawTicks();i++)actor.tick();
+        check(RapierTargeting.eligibleActor(actor,true,true,false),"Rapier explicit target locking remains enabled after removing spear locking");
     }
     private static void near(double actual,double expected,String message) {check(Math.abs(actual-expected)<1e-9,message+" "+actual);}
     private static void rejects(Runnable operation,String message) {try{operation.run();throw new AssertionError(message);}catch(IllegalArgumentException expected){checks++;}}

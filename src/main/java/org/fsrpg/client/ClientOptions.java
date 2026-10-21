@@ -22,6 +22,7 @@ final class ClientOptions {
     static final ModConfigSpec.DoubleValue SPEAR_READY_RETRACT;
     static final ModConfigSpec.DoubleValue CAMERA_DISTANCE,CAMERA_HEIGHT,CAMERA_TRANSITION,CAMERA_RESPONSE,CAMERA_ROLL;
     static final ModConfigSpec.DoubleValue SPEAR_LOCKED_RANGE;
+    static final ModConfigSpec.DoubleValue SPEAR_TURN_CENTER,SPEAR_TURN_EDGE,SPEAR_TURN_EDGE_START,SPEAR_TURN_RESPONSE;
     static final ModConfigSpec.BooleanValue IDLE_INSPECTIONS;
     static final ModConfigSpec.DoubleValue INSPECT_MIN, INSPECT_MAX, INSPECT_BLEND, ACTION_BLEND;
     static {
@@ -91,14 +92,18 @@ final class ClientOptions {
         SPEAR_TURN_STEP_ANGLE=builder.comment("Maximum heading change per turning step, in degrees.").defineInRange("spearTurnStepDegrees",28.0,6,45);
         SPEAR_TURN_STEP_LIFT=builder.comment("Small turning foot lift, in centimeters; the other sole remains planted.").defineInRange("spearTurnStepLiftCm",5.625,1.25,10);
         SPEAR_AIM_CROUCH=builder.comment("How far the aim lowers the pelvis, in centimeters. Aiming down folds both knees while the soles stay planted; aiming up rises slightly. Zero keeps the legs straight.").defineInRange("spearAimCrouchCm",6.0,0,12);
-        SHOULDER=builder.comment("Over-shoulder horizontal camera offset in blocks, shared by drawn weapons and camera-only exploration. Original key retained for existing user settings.").defineInRange("rapierShoulderOffset",.65,-1.5,1.5);
+        SHOULDER=builder.comment("Over-shoulder horizontal camera offset in blocks: positive is right. Shared by drawn weapons and camera-only exploration. Original key retained for existing user settings.").defineInRange("rapierShoulderOffset",.65,-1.5,1.5);
         CAMERA_DISTANCE=builder.comment("Over-shoulder camera distance behind the eyes, in blocks. Native block collision still limits actual travel.").defineInRange("shoulderCameraDistance",3.0,.5,6);
         CAMERA_HEIGHT=builder.comment("Additional over-shoulder camera height, in blocks.").defineInRange("shoulderCameraHeight",.12,-.5,1);
         CAMERA_TRANSITION=builder.comment("Seconds for a smooth eye-to-shoulder entry or return before restoring the previous camera type.").defineInRange("shoulderCameraTransitionSeconds",.5,.15,1.5);
         CAMERA_RESPONSE=builder.comment("Render-time position response for camera side, heading and wall-distance changes, in seconds. Final wall safety is applied after smoothing.").defineInRange("shoulderCameraResponseSeconds",.12,.02,.5);
         CAMERA_ROLL=builder.comment("Small over-shoulder camera roll in degrees, faded with the existing eye-to-shoulder transition. Zero keeps the horizon level.").defineInRange("shoulderCameraRollDegrees",2.0,-6,6);
-        SPEAR_LOCKED_RANGE=builder.comment("Physical spear yaw/pitch range while target-locked, relative to the original 45/40 degree limits. The invisible full viewport maps to this envelope; 0.7 reduces actual motion by 30 percent.").defineInRange("spearLockedAimRangeScale",.7,.1,1);
-        SPEAR_RECT_W=builder.comment("Legacy region-aim preference retained for compatibility. Live spear aiming always uses the shoulder camera center; this field no longer affects controls or HUD.").defineInRange("spearCursorWidth",.56,.2,.9);
+        SPEAR_LOCKED_RANGE=builder.comment("Physical free spear cursor range relative to the original 45/40 degree limits. Full viewport input maps into this envelope; legacy key retained, target locking removed.").defineInRange("spearLockedAimRangeScale",.7,.1,1);
+        SPEAR_TURN_CENTER=builder.comment("Base camera turn speed in degrees per second at full cursor deflection; small offsets turn proportionally.").defineInRange("spearCursorCenterTurnSpeed",28.0,1,120);
+        SPEAR_TURN_EDGE=builder.comment("Additional camera turn speed near the physical spear limit, in degrees per second.").defineInRange("spearCursorEdgeTurnSpeed",240.0,0,720);
+        SPEAR_TURN_EDGE_START=builder.comment("Normalized cursor deflection where the smooth near-limit turn acceleration begins.").defineInRange("spearCursorEdgeStart",.65,.1,.95);
+        SPEAR_TURN_RESPONSE=builder.comment("Camera angular acceleration response in seconds. Turning consumes cursor offset so the reticle gradually returns to center.").defineInRange("spearCursorTurnResponseSeconds",.06,.01,.4);
+        SPEAR_RECT_W=builder.comment("Legacy region width retained for compatibility. Free spear cursor uses full viewport input mapped to the physical range; this field no longer affects controls or HUD.").defineInRange("spearCursorWidth",.56,.2,.9);
         SPEAR_RECT_H=builder.defineInRange("spearCursorHeight",.5,.2,.85);
         SPEAR_DRAG=builder.comment("Minimum angular path length in degrees for a sweep.").defineInRange("spearDragDegrees",5.0,1,30);
         SPEAR_HOLD=builder.comment("Minimum held ticks before a dragged gesture becomes a sweep.").defineInRange("spearHoldTicks",3,1,20);

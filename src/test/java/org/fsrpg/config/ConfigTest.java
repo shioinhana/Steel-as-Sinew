@@ -163,7 +163,7 @@ public final class ConfigTest {
         try {
             RpgConfig config = new RpgConfig(directory);
             RpgConfig.Definitions initial = config.reload();
-            equal(21, initial.skills().size(), "default skills include legacy melee, combined slash and bow actions");
+            equal(22, initial.skills().size(), "default skills include five-stage fencing, combined slash and bow actions");
             equal(3, initial.quests().definitions().size(), "default tutorial count");
             for (String name : List.of("combat.json", "skills.json", "quests.json", "weapons.json", "styles.json", "collections.json", "skill_trees.json", "archery.json")) {
                 check(Files.isRegularFile(directory.resolve(name)), "seed creates " + name);
@@ -259,7 +259,7 @@ public final class ConfigTest {
         JsonElement combat = resource("combat.json"), skills = resource("skills.json"), quests = resource("quests.json"), weapons = resource("weapons.json"), styles = resource("styles.json");
         RpgConfig.Definitions definitions = RpgConfig.parse(combat, skills, quests, weapons, styles);
         equal(6, definitions.styles().size(), "melee, reserved unarmed and two bow style slots");
-        equal(4, definitions.styles().get("rapier").leftCombo().size(), "four legacy rapier combo stages");
+        equal(5, definitions.styles().get("rapier").leftCombo().size(), "five fencing rapier combo stages");
         equal("西洋剑", definitions.styles().get("rapier").label(), "user terminology preserved");
         check(definitions.styles().get("dual_blade").enabled() && definitions.styles().get("spear").enabled() && !definitions.styles().get("unarmed").enabled(), "dual and spear enabled; unarmed remains reserved");
         check(definitions.weapons().matches("unarmed", "minecraft:air", "minecraft:air"), "unarmed group matches an empty main hand");

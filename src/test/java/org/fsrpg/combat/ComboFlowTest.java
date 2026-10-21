@@ -12,6 +12,7 @@ public final class ComboFlowTest {
         var definitions=WeaponControlsTest.definitions();
         everyInputInstant(definitions);
         relaxedContinuation(definitions);
+        fiveStageContinuousBuffer(definitions);
         directionalAvailability(definitions);
         singleSlotAndResources(definitions);
         fullRecoveryQueue(definitions);
@@ -72,11 +73,39 @@ public final class ComboFlowTest {
             equal(pause<12?"rapier_downcut":"sword_left",actor.currentSkill().id(),"wide idle continuation with exact reset boundary "+pause);
         }
         var actor=actor(d,"rapier");
-        var sequence=List.of("sword_left","rapier_downcut","rapier_crosscut","rapier_light_thrust","sword_left","rapier_downcut");
+        var sequence=List.of("sword_left","rapier_downcut","rapier_crosscut","rapier_light_thrust","rapier_lunge_finish","sword_left","rapier_downcut");
         for(String expected:sequence) {
             check(actor.requestStyledAttack(SkillInput.LEFT,d.skills()).started(),"single click after a short pause accepted");
             equal(expected,actor.currentSkill().id(),"last stage loops automatically");
             ticks(actor,actor.currentSkill().durationTicks()+5);
+        }
+    }
+
+    private static void fiveStageContinuousBuffer(RpgConfig.Definitions d) {
+        var ids=List.of("sword_left","rapier_downcut","rapier_crosscut","rapier_light_thrust","rapier_lunge_finish");
+        equal(ids,d.styles().get("rapier").leftCombo().stream().map(WeaponStyleDefinition.ComboStage::skillId).toList(),"five stable configured stages");
+        var actor=actor(d,"rapier");
+        check(actor.requestStyledAttack(SkillInput.LEFT,d.skills()).started(),"first fencing thrust starts");
+        actor.drainStartedSkills();
+        for(int stage=0;stage<ids.size();stage++) {
+            var current=actor.currentSkill();
+            equal(ids.get(stage),current.id(),"authored five-stage order");
+            equal(stage==4?4:3,current.windupTicks(),"full authored preparation remains intact");
+            equal(3,current.activeTicks(),"all fencing contact frames remain intact");
+            equal(stage==4?5:3,current.recoveryTicks(),"natural return keeps its authored recovery");
+            double paid=actor.stamina();long sequence=actor.snapshot().swingSequence();
+            equal(ComboInputStatus.BUFFERED,actor.requestStyledAttack(SkillInput.LEFT,d.skills()).status(),"any early click queues the next fencing stage");
+            for(int mash=0;mash<6;mash++)equal(ComboInputStatus.ALREADY_QUEUED,actor.requestStyledAttack(SkillInput.LEFT,d.skills()).status(),"mashing keeps one next-stage slot");
+            near(paid,actor.stamina(),"pre-input charges no fee");
+            ticks(actor,current.windupTicks()+current.activeTicks()-1);
+            equal(sequence,actor.snapshot().swingSequence(),"next stage cannot truncate the final contact tick");
+            equal(CombatPhase.ACTIVE,actor.phase(),"final collision frame stays active");
+            actor.tick();
+            equal(sequence+1,actor.snapshot().swingSequence(),"buffer starts exactly one next stage");
+            equal(ids.get((stage+1)%ids.size()),actor.currentSkill().id(),"stage five loops directly into the first thrust");
+            equal(CombatPhase.WINDUP,actor.phase(),"continuous chain never exposes a default READY pose");
+            equal(0,actor.snapshot().skillElapsedTicks(),"each next stage gets its complete windup");
+            equal(1,actor.drainStartedSkills().size(),"one skill/cost event per actual follow-up");
         }
     }
 
@@ -145,7 +174,7 @@ public final class ComboFlowTest {
                 new WeaponStyleDefinition.CancelRules(false,false,false,false,false,false),s.controls()));
         actor.requestStyledAttack(SkillInput.LEFT,d.skills());
         equal(ComboInputStatus.BUFFERED,actor.requestStyledAttack(SkillInput.LEFT,d.skills()).status(),"custom recovery lock retains an early click");
-        ticks(actor,7);equal("sword_left",actor.currentSkill().id(),"custom noncancelable recovery is retained");
+        ticks(actor,d.skills().get("sword_left").durationTicks()-1);equal("sword_left",actor.currentSkill().id(),"custom noncancelable recovery is retained");
         equal(CombatPhase.RECOVERY,actor.phase(),"full recovery phase still runs");
         actor.tick();equal("rapier_downcut",actor.currentSkill().id(),"pending input runs at full completion without a new timing test");
         actor=actor(d,"dual_blade");s=actor.style();

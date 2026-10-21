@@ -53,10 +53,11 @@ public final class SwordTimingTest {
     /** The blade has to be moving while the server's contact window is open. */
     private static void contactWindowIsMoving(ModelDocument sword, ModelDocument spear) {
         record Stroke(String action, int windup, int active, int recovery) {}
-        var strokes = List.of(new Stroke("legacy_rapier_attack1_upper", 3, 4, 1),
-                new Stroke("legacy_rapier_attack2_upper", 3, 4, 1),
-                new Stroke("legacy_rapier_attack3_upper", 3, 4, 1),
-                new Stroke("legacy_rapier_attack4_upper", 4, 5, 1),
+        var strokes = List.of(new Stroke("legacy_rapier_attack1_upper", 3, 3, 3),
+                new Stroke("legacy_rapier_attack2_upper", 3, 3, 3),
+                new Stroke("legacy_rapier_attack3_upper", 3, 3, 3),
+                new Stroke("legacy_rapier_attack4_upper", 3, 3, 3),
+                new Stroke("legacy_rapier_attack5_upper", 4, 3, 5),
                 new Stroke("legacy_rapier_rapier_thrust_hit_upper", 7, 2, 2));
         for (var stroke : strokes) {
             var clip = sword.rig().clips().get(stroke.action());
@@ -75,7 +76,7 @@ public final class SwordTimingTest {
                 var tip = world.get("right_item").transformPosition(new Vector3f(0, 0, 0));
                 if (previous != null && tick > stroke.windup() + .001) {
                     float speed = (float) (tip.distance(previous) * HZ / 20);
-                    speeds.add(speed);
+                    if(tick<=stroke.windup()+stroke.active()+.001) speeds.add(speed);
                     if (speed > peak) { peak = speed; peakTick = tick; }
                 }
                 previous = tip;

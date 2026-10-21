@@ -15,7 +15,11 @@ final class LegacySkillMigration {
         Map<String,JsonElement> merged=new LinkedHashMap<>();
         for(String name:List.of("skills.json","styles.json","weapons.json")) {
             JsonElement current=JsonParser.parseString(Files.readString(directory.resolve(name)));
-            JsonElement previous=resource("/defaults/legacy-0.4/"+name),next=resource("/defaults/"+name);
+            JsonElement fresh=resource("/defaults/"+name);
+            if(current.equals(fresh)){merged.put(name,current);continue;}
+            // This historical upgrade must not pick up later five-stage defaults before
+            // the separate model-aware fencing migration has checked custom animations.
+            JsonElement previous=resource("/defaults/legacy-0.4/"+name),next=resource("/defaults/legacy-0.8.4/"+name);
             merged.put(name,name.equals("weapons.json")?fields(current,previous,next):catalog(current.getAsJsonArray(),previous.getAsJsonArray(),next.getAsJsonArray()));
         }
         // Validate all proposed catalogs together before changing any files.

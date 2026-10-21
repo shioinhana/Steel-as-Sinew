@@ -16,6 +16,9 @@
       },
       {
         "skillId": "rapier_light_thrust"
+      },
+      {
+        "skillId": "rapier_lunge_finish"
       }
     ],
     "rightSkill": "sword_thrust",
