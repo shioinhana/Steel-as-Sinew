@@ -192,11 +192,11 @@ public final class AirInertiaTest {
             for (float sign : new float[]{-1, 1}) {
                 var result = AirInertia.apply(model, reference, before, lower(), new AirInertia.Offset(sign * 3, sign * 1.6f, sign * 4, sign * 1.5f));
                 check(SpearAimPose.hasClearShaft(result.world()), "airborne common inertia retains whole pole clearance slim="+slim+" yaw="+yaw+" pitch="+pitch+" sign="+sign+" originalClear="+SpearAimPose.hasClearShaft(before));
-                double oldGrip = SpearRunCarry.leftShaftDistance(before), newGrip = SpearRunCarry.leftShaftDistance(result.world());
+                double oldGrip = SpearGrip.leftShaftDistance(before), newGrip = SpearGrip.leftShaftDistance(result.world());
                 near(oldGrip, newGrip, .0001, "airborne two-hand exact shaft relation");
                 for (String side : List.of("right", "left")) {
-                    var oldPalm = SpearRunCarry.palm(before, side); var oldElbow = before.get(side + "_forearm").getTranslation(new Vector3f());
-                    var newPalm = SpearRunCarry.palm(result.world(), side); var newElbow = result.world().get(side + "_forearm").getTranslation(new Vector3f());
+                    var oldPalm = SpearGrip.palm(before, side); var oldElbow = before.get(side + "_forearm").getTranslation(new Vector3f());
+                    var newPalm = SpearGrip.palm(result.world(), side); var newElbow = result.world().get(side + "_forearm").getTranslation(new Vector3f());
                     near(oldPalm.distance(oldElbow), newPalm.distance(newElbow), .0001, "arm length and wrist attachment exact");
                 }
             }

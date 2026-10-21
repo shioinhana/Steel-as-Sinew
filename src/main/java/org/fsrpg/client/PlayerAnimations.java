@@ -64,7 +64,6 @@ public final class PlayerAnimations {
         Map<String, Matrix4f> lastSpearWorld;
         PoseRemap.Knots swordKnots;
         SpearMotion.State spearMotion = new SpearMotion.State();
-        SpearRunCarry.State spearRunCarry = new SpearRunCarry.State();
         SpearTurn.State spearTurn = new SpearTurn.State();
         SpearTurn.State swordTurn = new SpearTurn.State();
         double lastSpearChestTick = Double.NaN;
@@ -138,10 +137,6 @@ public final class PlayerAnimations {
     public static long maxSpearSolveNanos() { return maxSpearSolveNanos; }
     public static long lastSpearSolveNanos() { return lastSpearSolveNanos; }
     public static long spearContinuationCalls() { return SpearAimPose.realtimeFallbackCalls(); }
-    public static float spearRunCarryWeight(UUID entity) {
-        var binding = bindings.get(entity); return binding == null ? 0 : binding.spearRunCarry.weight();
-    }
-    public static boolean spearRunCarryActive(UUID entity) { return spearRunCarryWeight(entity) > .0001f; }
     public static double lastSampleTick() { return lastSampleTick; }
     static void weaponSubmitted(int count) { weaponBatches += count; }
     public static boolean active(UUID entity) { world(); return bindings.containsKey(entity); }
@@ -221,7 +216,6 @@ public final class PlayerAnimations {
                 next.lastSpearChestTick = previous.lastSpearChestTick;
                 next.lastSpearWorld = previous.lastSpearWorld;
                 next.spearMotion = previous.spearMotion;
-                next.spearRunCarry = previous.spearRunCarry;
                 next.spearTurn = previous.spearTurn;
             }
         }
@@ -419,8 +413,6 @@ public final class PlayerAnimations {
         binding.motion.observePosition(entity.tickCount, entity.getX(), entity.getZ(), entity.getX() - entity.xo, entity.getZ() - entity.zo);
         binding.motion.advance(renderTick, binding.motion.velocityX(), binding.motion.velocityZ(), bodyYaw,
                 entity.isSprinting(), entity.onGround(), sample.movingWeight(), ClientOptions.MOTION_RESPONSE.get().floatValue());
-        float spearRunWeight = server.style().equals("spear") ? binding.spearRunCarry.advance(renderTick, server.phase(),
-                entity.isSprinting(), entity.onGround(), Math.hypot(binding.motion.velocityX(), binding.motion.velocityZ())) : 0;
         if (binding.neutralPlayback != null) {
             var neutral = binding.neutralPlayback.sample(0, renderTick / 20, renderTick, state.walkAnimationSpeed, -state.yRot,
                     ClientOptions.MOVING_FULL_BODY_LOWER_WEIGHT.get().floatValue(), ClientOptions.STANCE_FOOT_YAW_LIMIT.get().floatValue());
@@ -477,7 +469,7 @@ public final class PlayerAnimations {
         if (entity.onGround() && !entity.isPassenger() && !state.isFallFlying && state.swimAmount <= .5f) {
             var lowerWorld = binding.asset.full().worldMatrices(pose);
             if (server.style().equals("spear"))
-                aimCrouchCm = SpearMotion.aimCrouchCm(authoredPitch, ClientOptions.SPEAR_AIM_CROUCH.get().floatValue()) * (1 - spearRunWeight);
+                aimCrouchCm = SpearMotion.aimCrouchCm(authoredPitch, ClientOptions.SPEAR_AIM_CROUCH.get().floatValue());
             supportedLower = Locomotion.supported(lowerWorld.get("right_leg"), lowerWorld.get("left_leg"), lowerWeight,
                     visualWalkPhase, state.walkAnimationSpeed, sample.movingWeight(),
                     binding.motion.lateralLean(), binding.motion.forwardLean(), strideScale,
@@ -499,16 +491,7 @@ public final class PlayerAnimations {
         pose = retargetSkin(state, binding.asset.full(),pose);
         Vector3f spearSourceRear = null;
         Quaternionf spearSourceChest = null;
-        // A cosmetic action owning both hands (run carry, or an inspection) must
-        // bypass the forward two-hand aim solver; items still follow the same rig.
-        boolean ownsSpearHands = server.style().equals("spear") && spearRunWeight > 0 && binding.spearRunCarry.reference() != null;
-        var spearCarrySource = pose;
-        Map<String,Matrix4f> spearNormalWorld = null;
-        if (ownsSpearHands && !binding.spearRunCarry.returning()) {
-            pose = SpearRunCarry.apply(binding.asset.full(), pose, binding.spearRunCarry.reference(), spearRunWeight, visualWalkPhase,
-                    binding.motion.lateralLean(), binding.motion.forwardLean());
-            lastSpearSolveNanos = 0;
-        } else if(server.style().equals("spear")) {
+        if(server.style().equals("spear")) {
             var sourceWorld = binding.asset.full().worldMatrices(pose);
             boolean carrying=server.phase().equals("READY")||server.phase().equals("RECOVERY")||server.phase().equals("WINDUP");
             float backCm = ClientOptions.SPEAR_CARRY_BACK.get().floatValue() + ClientOptions.SPEAR_READY_RETRACT.get().floatValue()
@@ -558,8 +541,6 @@ public final class PlayerAnimations {
             // Keep the pole in the current forward field during packet latency and
             // spherical bridges as well. Legal authoritative contact directions are unchanged.
             aim = SpearAimField.constrain(aim, bodyYaw);
-            if (ownsSpearHands && binding.spearRunCarry.returning() && binding.lastAim != null)
-                aim = PoseLayers.blendAim(binding.lastAim, aim, binding.spearRunCarry.returnAimWeight());
             binding.lastAim = aim;
             // Ready aiming can carry its latest feasible grip around the body.
             // An attack keeps the authored anchor so its stroke cannot accumulate
@@ -580,18 +561,9 @@ public final class PlayerAnimations {
             lastSpearSolveNanos=System.nanoTime()-solveStarted;
             spearSolveNanos+=lastSpearSolveNanos;spearSolveCalls++;
             maxSpearSolveNanos=Math.max(maxSpearSolveNanos,lastSpearSolveNanos);
-            binding.spearRunCarry.remember(pose);
-            if (ownsSpearHands) {
-                // Aim can change while the pole is behind the back. Refresh the
-                // normal return target throughout recovery, before its weight
-                // reaches zero, so the final frame does not jump to a stale aim.
-                spearNormalWorld = binding.asset.full().worldMatrices(pose);
-                pose = SpearRunCarry.apply(binding.asset.full(), spearCarrySource, binding.spearRunCarry.reference(), spearRunWeight, visualWalkPhase,
-                    binding.motion.lateralLean(), binding.motion.forwardLean());
-            }
         }
         var finalWorld = binding.asset.full().worldMatrices(pose);
-        var spearSolvedWorld = spearNormalWorld == null ? finalWorld : spearNormalWorld;
+        var spearSolvedWorld = finalWorld;
         if (server.style().equals("spear") && supportedLower != null) {
             // Use this frame's solved chest, rather than the previous frame's cached heading:
             // a sudden target/root turn must obey the waist limit before it is rendered.
@@ -607,13 +579,12 @@ public final class PlayerAnimations {
             // Turning-step support is a common cosmetic translation after IK. Exclude
             // that translation from grip history so it cannot be accumulated as a stroke.
             binding.spearMotion.commit(spearSolvedWorld, renderTick);
-            var rememberedWorld = spearNormalWorld == null ? finalWorld : spearNormalWorld;
             binding.lastSpearSourceRear = spearSourceRear;
-            binding.lastSpearRear = rememberedWorld.get("right_hand").transformPosition(new Vector3f(0, -6.25f, 0));
+            binding.lastSpearRear = finalWorld.get("right_hand").transformPosition(new Vector3f(0, -6.25f, 0));
             binding.lastSpearSourceChest = spearSourceChest;
-            binding.lastSpearChest = rememberedWorld.get("body").getUnnormalizedRotation(new Quaternionf()).normalize();
+            binding.lastSpearChest = finalWorld.get("body").getUnnormalizedRotation(new Quaternionf()).normalize();
             binding.lastSpearChestTick = Double.isNaN(binding.lastSpearChestTick) ? renderTick : Math.max(binding.lastSpearChestTick, renderTick);
-            binding.lastSpearWorld = rememberedWorld;
+            binding.lastSpearWorld = finalWorld;
         }
         pose=inspectionPose(binding,living,pose,renderTick);
         if(supportedLower!=null&&binding.inspectionBase!=null&&!binding.inspection.action().isEmpty()){

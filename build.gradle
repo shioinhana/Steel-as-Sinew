@@ -532,8 +532,7 @@ tasks.register('stage078Config',JavaExec) {
  'inspectionSupportTest':'org.fsrpg.client.InspectionSupportTest',
  'weaponInspectionsTest':'org.fsrpg.client.WeaponInspectionsTest',
  'groundImpulseReceiptTest':'org.fsrpg.client.GroundImpulseReceiptTest',
- 'groundImpulseMigrationTest':'org.fsrpg.config.GroundImpulseMigrationTest',
- 'spearRunCarryTest':'org.fsrpg.client.SpearRunCarryTest'].each { taskName,className ->
+ 'groundImpulseMigrationTest':'org.fsrpg.config.GroundImpulseMigrationTest'].each { taskName,className ->
     tasks.register(taskName,JavaExec){dependsOn testClasses;classpath=sourceSets.test.runtimeClasspath;mainClass=className;jvmArgs '-Dfile.encoding=UTF-8'}
     tasks.named('check'){dependsOn taskName}
 }

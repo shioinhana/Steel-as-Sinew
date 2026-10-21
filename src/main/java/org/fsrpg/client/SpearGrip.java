@@ -52,6 +52,23 @@ public final class SpearGrip {
         return Math.clamp(spacingCm, MINIMUM_CM, MAXIMUM_CM);
     }
 
+    public static Vector3f palm(Map<String, Matrix4f> world, String side) {
+        return world.get(side + "_hand").transformPosition(new Vector3f(0, -6.25f, 0));
+    }
+    public static float leftShaftDistance(Map<String, Matrix4f> world) {
+        var delta = palm(world, "left").sub(palm(world, "right"));
+        var axis = world.get("right_hand").transformDirection(new Vector3f(0, 0, 1)).normalize();
+        return delta.fma(-delta.dot(axis), axis).length();
+    }
+    public record Measurements(Vector3f rear, Vector3f axis, Vector3f chestRear, Vector3f chestAxis,
+                               float freeHandDistanceCm, boolean clearShaft) {}
+    public static Measurements measure(Map<String, Matrix4f> world) {
+        var rear = palm(world, "right");
+        var axis = world.get("right_hand").transformDirection(new Vector3f(0, 0, 1)).normalize();
+        var inverse = new Matrix4f(world.get("body")).invert();
+        return new Measurements(rear, axis, inverse.transformPosition(new Vector3f(rear)),
+                inverse.transformDirection(new Vector3f(axis)).normalize(), leftShaftDistance(world), SpearAimPose.hasClearShaft(world));
+    }
     private static Vector3f palm(Matrix4f hand) {
         return hand == null ? null : hand.transformPosition(new Vector3f(0, -6.25f, 0));
     }
