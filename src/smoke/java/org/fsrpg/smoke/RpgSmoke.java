@@ -91,6 +91,8 @@ public final class RpgSmoke {
         if(Boolean.getBoolean("fsrpg.spearSolverSmoke")){new SpearSolverReview();return;}
         if(Boolean.getBoolean("fsrpg.legacySkillSmoke")){new LegacySkillReview();return;}
         if(Boolean.getBoolean("fsrpg.skillTreeSmoke")){new SkillTreeReview();return;}
+        if(Boolean.getBoolean("fsrpg.cameraPerfSmoke")){new CameraPerfReview();return;}
+        if(Boolean.getBoolean("fsrpg.spearGuardSmoke")){new SpearGuardReview();return;}
         if(Boolean.getBoolean("fsrpg.collectionSmoke")) {new CollectionReview();return;}
         if(Boolean.getBoolean("fsrpg.hudSmoke")) {new HudReview();return;}
         if(Boolean.getBoolean("fsrpg.poseSmoke")) {new PosePreview();return;}

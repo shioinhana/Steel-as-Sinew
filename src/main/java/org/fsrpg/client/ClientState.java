@@ -13,16 +13,25 @@ import java.util.concurrent.CopyOnWriteArrayList;
 public final class ClientState {
     private static JsonObject snapshot = new JsonObject();
     private static long revision;
+    private static long acceptCalls,acceptNanos,acceptMaxNanos;
     private static final List<Consumer<JsonObject>> observers = new CopyOnWriteArrayList<>();
     private ClientState() {}
 
     public static void accept(String json) {
-        JsonElement value = JsonParser.parseString(json);
-        if (!value.isJsonObject()) throw new IllegalArgumentException("Expected RPG snapshot object");
-        snapshot = value.getAsJsonObject();
-        revision++;
-        for (var observer : observers) observer.accept(snapshot.deepCopy());
+        long started=System.nanoTime();
+        try {
+            JsonElement value = JsonParser.parseString(json);
+            if (!value.isJsonObject()) throw new IllegalArgumentException("Expected RPG snapshot object");
+            snapshot = value.getAsJsonObject();
+            revision++;
+            for (var observer : observers) observer.accept(snapshot.deepCopy());
+        } finally {
+            long elapsed=System.nanoTime()-started;
+            acceptCalls++;acceptNanos+=elapsed;acceptMaxNanos=Math.max(acceptMaxNanos,elapsed);
+        }
     }
+    public static void resetPerfCounters(){acceptCalls=acceptNanos=acceptMaxNanos=0;}
+    public static long[] perfSnapshot(){return new long[]{acceptCalls,acceptNanos,acceptMaxNanos};}
     public static void acceptTargetLock(String json) {
         JsonElement value=JsonParser.parseString(json);
         if(!value.isJsonObject())throw new IllegalArgumentException("Expected target lock object");

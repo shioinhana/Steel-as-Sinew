@@ -28,6 +28,13 @@ public final class CombatCamera {
     private static boolean cameraOnly;
     private static CameraType previousCamera;
     private static final ShoulderCameraMotion cameraTravel=new ShoulderCameraMotion();
+    private static final CameraClipSmoother clipSmoother=new CameraClipSmoother();
+    private static long lastClipNanos;
+    private static long perfCalls,perfRays,perfNanos,perfMaxNanos;
+    private static String cachedStyle;private static long cachedStyleRevision=Long.MIN_VALUE;
+    public static void resetPerfCounters(){perfCalls=perfRays=perfNanos=perfMaxNanos=0;}
+    /** Render-thread camera cost, used by the DISPLAY5 movement acceptance report. */
+    public static long[] perfSnapshot(){return new long[]{perfCalls,perfRays,perfNanos,perfMaxNanos};}
     private static long nextSpearInput,spearInput,lastSpearSentTick;
     private static boolean spearBlockedUntilRelease,spearAimDirty;
     private static final ArrayList<AttackAim.Point> path=new ArrayList<>();
@@ -57,10 +64,10 @@ public final class CombatCamera {
         if(cameraOnly&&!itemAvailable())cameraOnly=false;
         if(game.player==null||game.level==null||!game.player.isAlive()||game.player.isSpectator()||game.getCameraEntity()!=game.player){
             if(previousCamera!=null)game.options.setCameraType(previousCamera);
-            previousCamera=null;cameraTravel.reset();return;
+            previousCamera=null;cameraTravel.reset();clipSmoother.reset();lastClipNanos=0;return;
         }
         if(wantsShoulder()){
-            if(previousCamera==null){previousCamera=game.options.getCameraType();cameraTravel.reset();}
+            if(previousCamera==null){previousCamera=game.options.getCameraType();cameraTravel.reset();clipSmoother.reset();lastClipNanos=0;}
             game.options.setCameraType(CameraType.THIRD_PERSON_BACK);
         }else if(previousCamera!=null&&cameraTravel.settledOff()){
             game.options.setCameraType(previousCamera);previousCamera=null;
@@ -71,12 +78,16 @@ public final class CombatCamera {
         var game=Minecraft.getInstance();
         if(entity!=game.player||game.getCameraEntity()!=game.player||previousCamera==null)return null;
         Vec3 eye=entity.getEyePosition(partial);
+        long started=System.nanoTime();
         var local=new org.joml.Vector3f(shoulder(),ClientOptions.CAMERA_HEIGHT.get().floatValue(),ClientOptions.CAMERA_DISTANCE.get().floatValue()).rotate(camera.rotation());
-        Vec3 safe=clipCamera(level,entity,eye,new Vec3(local));
-        var offset=cameraTravel.sample(wantsShoulder(),System.nanoTime()/1e9,new ShoulderCameraMotion.Offset(safe.x,safe.y,safe.z),
+        // Smooth the orbit first, then clip the final offset once. Smoothing before the safety clip
+        // keeps the same wall protection without a second eight-corner sweep on every frame.
+        var offset=cameraTravel.sample(wantsShoulder(),System.nanoTime()/1e9,new ShoulderCameraMotion.Offset(local.x,local.y,local.z),
                 ClientOptions.CAMERA_TRANSITION.get(),ClientOptions.CAMERA_RESPONSE.get());
-        // Reclip after smoothing: a sudden obstruction may never put the retained camera inside a block.
-        return eye.add(clipCamera(level,entity,eye,new Vec3(offset.x(),offset.y(),offset.z())));
+        Vec3 result=eye.add(clipCamera(level,entity,eye,new Vec3(offset.x(),offset.y(),offset.z())));
+        long elapsed=System.nanoTime()-started;
+        perfCalls++;perfNanos+=elapsed;perfMaxNanos=Math.max(perfMaxNanos,elapsed);
+        return result;
     }
     private static Vec3 clipCamera(net.minecraft.world.level.Level level,net.minecraft.world.entity.Entity entity,Vec3 eye,Vec3 offset){
         double length=offset.length();if(length<1e-7)return offset;
@@ -85,9 +96,14 @@ public final class CombatCamera {
             Vec3 corner=new Vec3((i&1)==0?-.1:.1,(i&2)==0?-.1:.1,(i&4)==0?-.1:.1);
             Vec3 from=eye.add(corner),end=from.add(offset);
             var hit=level.clip(new ClipContext(from,end,ClipContext.Block.VISUAL,ClipContext.Fluid.NONE,entity));
+            perfRays++;
             if(hit.getType()!=net.minecraft.world.phys.HitResult.Type.MISS)fraction=Math.min(fraction,Math.max(0,from.distanceTo(hit.getLocation())-.05)/length);
         }
-        return offset.scale(Math.clamp(fraction,0,1));
+        long now=System.nanoTime();
+        double frameSeconds=lastClipNanos==0?0:Math.clamp((now-lastClipNanos)/1e9,0,.25);
+        lastClipNanos=now;
+        double eased=clipSmoother.advance(Math.clamp(fraction,0,1),frameSeconds);
+        return offset.scale(Math.clamp(eased,0,1));
     }
     public static Vec3 burstDirection(){
         var game=Minecraft.getInstance();if(game.player==null)return Vec3.ZERO;
@@ -96,6 +112,11 @@ public final class CombatCamera {
         return game.player.getLookAngle().multiply(1,0,1).normalize();
     }
     public static String style() {
+        long revision=ClientState.revision();
+        if(revision==cachedStyleRevision&&cachedStyle!=null)return cachedStyle;
+        cachedStyle=resolveStyle();cachedStyleRevision=revision;return cachedStyle;
+    }
+    private static String resolveStyle() {
         var snapshot = ClientState.snapshot();
         String mode = ClientState.text(snapshot, "weaponMode", "");
         if (!mode.isEmpty()) return mode;
@@ -134,7 +155,7 @@ public final class CombatCamera {
     }
     public static void reset() {
         var game=Minecraft.getInstance();if(previousCamera!=null)game.options.setCameraType(previousCamera);
-        previousCamera=null;cameraOnly=false;cameraTravel.reset();mode="";held=false;spearInput=0;spearBlockedUntilRelease=spearAimDirty=false;dualFacingLocked=false;path.clear();steering.reset();cachedFieldKey=null;cachedField=null;
+        previousCamera=null;cameraOnly=false;cameraTravel.reset();clipSmoother.reset();lastClipNanos=0;mode="";held=false;spearInput=0;spearBlockedUntilRelease=spearAimDirty=false;dualFacingLocked=false;path.clear();steering.reset();cachedFieldKey=null;cachedField=null;
     }
     public static boolean mouse(double dx,double dy) {
         sync();var g=Minecraft.getInstance();

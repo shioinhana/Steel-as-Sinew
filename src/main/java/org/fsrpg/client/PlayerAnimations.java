@@ -15,6 +15,7 @@ import net.neoforged.neoforge.client.event.RenderFrameEvent;
 import org.fsrpg.network.RpgAnimationPayload;
 import org.fsrpg.combat.AttackAim;
 import org.fsrpg.combat.SpearAimField;
+import org.fsvoxel.animation.FsvoxAnimation;
 import org.fsvoxel.animation.FsvoxAnimation.Pose;
 import org.fsvoxel.render.ModelDocument;
 import org.joml.Matrix4f;
@@ -137,8 +138,7 @@ public final class PlayerAnimations {
     public static long spearSolveNanos() { return spearSolveNanos; }
     public static long maxSpearSolveNanos() { return maxSpearSolveNanos; }
     public static long lastSpearSolveNanos() { return lastSpearSolveNanos; }
-    public static long spearContinuationCalls() { return SpearAimPose.realtimeFallbackCalls(); }
-    public static double lastSampleTick() { return lastSampleTick; }
+    public static long spearContinuationCalls() { return SpearAimPose.realtimeFallbackCalls(); }    public static double lastSampleTick() { return lastSampleTick; }
     static void weaponSubmitted(int count) { weaponBatches += count; }
     public static boolean active(UUID entity) { world(); return bindings.containsKey(entity); }
     public static String inspectionAction(UUID entity) {
@@ -519,6 +519,15 @@ public final class PlayerAnimations {
                     SpearMotion.underarmSource(sourceWorld,ClientOptions.SPEAR_CARRY_DOWN.get().floatValue(),backCm,ClientOptions.SPEAR_CARRY_SIDE.get().floatValue());
             spearSourceRear = sourceWorld.get("right_hand").transformPosition(new Vector3f(0, -6.25f, 0));
             spearSourceChest = sourceWorld.get("body").getUnnormalizedRotation(new Quaternionf()).normalize();
+            if (server.phase().equals("GUARDING")) {
+                // The spear is a staff, not a pointed warning: both hands hold it across the chest
+                // while guarding. The right hand's palm -Y is the carrier shaft axis; turn it to the
+                // body's lateral axis so the pole visibly blocks the incoming line instead of aiming.
+                pose = spearGuardHands(pose, binding.asset.full());
+                // The guard pose is authored, not solved: do not commit a solve that was never prepared.
+                spearSourceRear = null;
+                spearSourceChest = null;
+            } else {
             double chestReturn = server.phase().equals("READY") || server.phase().equals("RECOVERY") ? ClientOptions.SPEAR_CHEST_RETURN.get() : 0;
             AttackAim.Point aim;
             if(server.aim()!=null && authoritativeElapsed>=0) {
@@ -580,6 +589,7 @@ public final class PlayerAnimations {
             lastSpearSolveNanos=System.nanoTime()-solveStarted;
             spearSolveNanos+=lastSpearSolveNanos;spearSolveCalls++;
             maxSpearSolveNanos=Math.max(maxSpearSolveNanos,lastSpearSolveNanos);
+            }
         }
         var finalWorld = binding.asset.full().worldMatrices(pose);
         var spearSolvedWorld = finalWorld;
@@ -792,6 +802,109 @@ public final class PlayerAnimations {
         if (world.containsKey("left_arm")) arm(model.leftArm, world.get("left_arm"));
         // 1.21.11 skin overlays are children of their corresponding limbs and inherit these transforms.
         appliedModels++;
+    }
+    /**
+     * Guard is a staff hold, not an aim: pick a chest-height lateral shaft line and place both
+     * hands on it with a closed two-bone solve, then turn each palm onto that shaft. The official
+     * spear carrier follows the rear palm's -Y, so the pole is rendered across the body.
+     */
+    private static Map<String, Pose> spearGuardHands(Map<String, Pose> pose, ModelDocument model) {
+        if (!pose.containsKey("body") || !pose.containsKey("right_arm") || !pose.containsKey("left_arm")) return pose;
+        var world = model.worldMatrices(pose);
+        Matrix4f body = world.get("body");
+        if (body == null) return pose;
+        Vector3f up = body.transformDirection(new Vector3f(0, 1, 0)).normalize();
+        Vector3f forward = body.transformDirection(new Vector3f(0, 0, 1)).normalize();
+        Vector3f lateral = body.transformDirection(new Vector3f(1, 0, 0));
+        lateral.y = 0;
+        if (lateral.lengthSquared() < 1e-6) return pose;
+        lateral.normalize();
+        Matrix4f rightArm = world.get("right_arm"), leftArm = world.get("left_arm");
+        if (rightArm == null || leftArm == null) return pose;
+        Vector3f rightShoulder = rightArm.getTranslation(new Vector3f());
+        Vector3f leftShoulder = leftArm.getTranslation(new Vector3f());
+        Vector3f center = new Vector3f(rightShoulder).add(leftShoulder).mul(.5f).fma(28, forward).fma(-8, up);
+        Vector3f rightTarget = new Vector3f(center).fma(-27, lateral);
+        Vector3f leftTarget = new Vector3f(center).fma(27, lateral);
+        Quaternionf bodyRotation = new Quaternionf(body.getUnnormalizedRotation(new Quaternionf())).normalize();
+        var result = new HashMap<>(pose);
+        if (!guardArm(result, world, "right", bodyRotation, rightTarget, lateral, up)) return pose;
+        var after = result;
+        var world2 = model.worldMatrices(after);
+        if (!guardArm(result, world2, "left", bodyRotation, leftTarget, new Vector3f(lateral).negate(), up)) return pose;
+        return Map.copyOf(result);
+    }
+
+    /** Closed two-bone arm solve with a chest-forward elbow pole, then palm alignment to the shaft. */
+    private static boolean guardArm(Map<String, Pose> pose, Map<String, Matrix4f> world, String side,
+                                    Quaternionf bodyRotation, Vector3f target, Vector3f shaftDirection, Vector3f up) {
+        String upperId = side + "_arm", foreId = side + "_forearm", handId = side + "_hand";
+        Matrix4f upper = world.get(upperId), fore = world.get(foreId), hand = world.get(handId);
+        if (upper == null || fore == null || hand == null) return false;
+        Vector3f shoulder = upper.getTranslation(new Vector3f());
+        Vector3f elbow = fore.getTranslation(new Vector3f());
+        Vector3f wrist = hand.getTranslation(new Vector3f());
+        float upperLength = shoulder.distance(elbow);
+        float foreLength = elbow.distance(wrist);
+        if (upperLength < 1e-3 || foreLength < 1e-3) return false;
+        Vector3f toTarget = new Vector3f(target).sub(shoulder);
+        float distance = toTarget.length();
+        if (distance < 1e-4) return false;
+        float clamped = Math.clamp(distance, Math.abs(upperLength - foreLength) + .01f, upperLength + foreLength - .01f);
+        Vector3f direction = new Vector3f(toTarget).normalize();
+        float along = (upperLength * upperLength - foreLength * foreLength + clamped * clamped) / (2 * clamped);
+        float height = (float) Math.sqrt(Math.max(0, upperLength * upperLength - along * along));
+        Vector3f pole = new Vector3f(up).fma(-new Vector3f(up).dot(direction), direction);
+        if (pole.lengthSquared() < 1e-6) pole = new Vector3f(direction).cross(0, 0, 1);
+        pole.normalize();
+        Vector3f newElbow = new Vector3f(shoulder).fma(along, direction).fma(height, pole);
+        Vector3f desiredUpper = new Vector3f(newElbow).sub(shoulder).normalize();
+        Vector3f currentUpper = new Vector3f(elbow).sub(shoulder).normalize();
+        Quaternionf upperLocal = rotateBone(upperId, pose, bodyRotation, currentUpper, desiredUpper);
+        if (upperLocal == null) return false;
+        Quaternionf newUpperWorld = new Quaternionf(bodyRotation).mul(upperLocal).normalize();
+        Vector3f desiredFore = new Vector3f(target).sub(newElbow).normalize();
+        Vector3f currentFore = new Vector3f(wrist).sub(elbow).normalize();
+        Quaternionf foreLocal = rotateBone(foreId, pose, newUpperWorld, currentFore, desiredFore);
+        if (foreLocal == null) return false;
+        Quaternionf newForeWorld = new Quaternionf(newUpperWorld).mul(foreLocal).normalize();
+        // Align the actual carrier shaft, not an assumed palm axis: the official spear display
+        // transform puts the long axis on a diagonal inside the item model.
+        Vector3f itemAxis = new Vector3f(0, -1, 0);
+        if (side.equals("right")) {
+            // Texture-space shaft tip is upper-left; with the generated-item UV origin this maps to
+            // model (-X,-Y). The authored guard pose points it at body forward (dot 0.91), so this is
+            // the axis that must be turned onto the body's lateral line for a staff guard.
+            var carrier = HeldItemTransform.spearCarrier(hand);
+            Vector3f measured = carrier.transformDirection(new Vector3f(-1, -1, 0).normalize());
+            if (measured.lengthSquared() > 1e-6) itemAxis = measured.normalize();
+        }
+        Quaternionf forearmBefore = new Quaternionf(fore.getUnnormalizedRotation(new Quaternionf())).normalize();
+        Quaternionf carried = new Quaternionf(newForeWorld).mul(new Quaternionf(forearmBefore).invert());
+        Vector3f rotatedAxis = carried.transform(new Vector3f(itemAxis)).normalize();
+        Quaternionf handLocal = rotateBone(handId, pose, newForeWorld, rotatedAxis, shaftDirection);
+        if (handLocal != null && side.equals("right")) {
+            Quaternionf handWorld = new Quaternionf(newForeWorld).mul(handLocal).normalize();
+            Vector3f achieved = handWorld.transform(new Vector3f(itemAxis)).normalize();
+            guardWristHeightCm = target.y;
+            guardReachErrorCm = (float) (new Vector3f(newElbow).fma(foreLength, desiredFore).distance(target));
+        }
+        return handLocal != null;
+    }
+    private static volatile float guardWristHeightCm = Float.NaN, guardReachErrorCm = Float.NaN;
+    /** Read-only DISPLAY5 acceptance data: both-hand reach and chest height. */
+    public static float guardWristHeightCm() { return guardWristHeightCm; }
+    public static float guardReachErrorCm() { return guardReachErrorCm; }
+
+    private static Quaternionf rotateBone(String id, Map<String, Pose> pose, Quaternionf parentRotation,
+                                          Vector3f currentWorldDirection, Vector3f desiredWorldDirection) {
+        Pose original = pose.get(id);
+        if (original == null || currentWorldDirection.lengthSquared() < 1e-12) return null;
+        Quaternionf delta = new Quaternionf().rotationTo(currentWorldDirection.normalize(), desiredWorldDirection.normalize());
+        Quaternionf currentLocal = new Quaternionf(original.fsQuaternion()).normalize();
+        Quaternionf local = new Quaternionf(parentRotation).invert().mul(delta).mul(parentRotation).mul(currentLocal).normalize();
+        pose.put(id, new Pose(FsvoxAnimation.fromQuaternion(local), original.position(), original.scale()));
+        return local;
     }
     private static void supportedLeg(ModelPart part, Locomotion.PartPose pose) {
         part.setPos(pose.x(), pose.y(), pose.z());

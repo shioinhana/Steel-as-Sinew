@@ -82,6 +82,19 @@ neoForge {
                 jvmArgument "-Dfsrpg.skillTreeWorld=${project.property('smokeWorld')}"
                 jvmArgument "-Dfsrpg.smokeEvidence=${project.hasProperty('smokeEvidence') ? file(project.property('smokeEvidence')).absolutePath : file('verification/skill-tree-20261022/game').absolutePath}"
             }
+            if(project.hasProperty('cameraPerfSmoke')) {
+                if(!project.hasProperty('smokeWorld'))throw new GradleException('cameraPerfSmoke requires a copied test world');
+                jvmArgument '-Dfsrpg.cameraPerfSmoke=true'
+                jvmArgument "-Dfsrpg.cameraPerfWorld=${project.property('smokeWorld')}"
+                jvmArgument "-Dfsrpg.smokeEvidence=${project.hasProperty('smokeEvidence') ? file(project.property('smokeEvidence')).absolutePath : file('verification/camera-perf-20261022/game').absolutePath}"
+            }
+            if(project.hasProperty('spearGuardSmoke')) {
+                if(!project.hasProperty('smokeWorld'))throw new GradleException('spearGuardSmoke requires a copied test world');
+                jvmArgument '-Dfsrpg.spearGuardSmoke=true'
+                jvmArgument "-Dfsrpg.spearGuardWorld=${project.property('smokeWorld')}"
+                jvmArgument "-Dfsrpg.smokeEvidence=${project.hasProperty('smokeEvidence') ? file(project.property('smokeEvidence')).absolutePath : file('verification/spear-guard-20261022/game').absolutePath}"
+            }
+            if(project.hasProperty('perfJfr')) jvmArgument "-XX:StartFlightRecording=filename=${file(project.property('perfJfr')).absolutePath},settings=profile,dumponexit=true"
             if(project.hasProperty('spearSolverSmoke')) {
                 if(!project.hasProperty('smokeWorld'))throw new GradleException('spearSolverSmoke requires a copied spear test world');
                 jvmArgument '-Dfsrpg.spearSolverSmoke=true'
@@ -622,7 +635,8 @@ tasks.register('stage090Config', JavaExec) {
  'footworkProgressionTest':'org.fsrpg.progression.FootworkProgressionTest',
  'footworkSkillMigrationTest':'org.fsrpg.config.FootworkSkillMigrationTest',
  'rapierTechniquesMigrationTest':'org.fsrpg.config.RapierTechniquesMigrationTest',
- 'skillTreeLayoutTest':'org.fsrpg.client.SkillTreeLayoutTest'].each { taskName, className ->
+ 'skillTreeLayoutTest':'org.fsrpg.client.SkillTreeLayoutTest',
+ 'cameraClipSmootherTest':'org.fsrpg.client.CameraClipSmootherTest'].each { taskName, className ->
     tasks.register(taskName, JavaExec) { dependsOn testClasses; classpath = sourceSets.test.runtimeClasspath; mainClass = className; jvmArgs '-Dfile.encoding=UTF-8' }
     tasks.named('check') { dependsOn taskName }
 }
