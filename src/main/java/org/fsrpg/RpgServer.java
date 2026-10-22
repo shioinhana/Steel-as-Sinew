@@ -379,9 +379,26 @@ public final class RpgServer {
                     archery.cancelCharge(p);archery.reconcile(p,a,archeryProgress(p));
                 }
                 case "learnSkill" -> {
-                    var result=progression.learn(p.getUUID(),argument);
+                    boolean creative = p.isCreative();
+                    var result = creative ? progression.learnFree(p.getUUID(),argument) : progression.learn(p.getUUID(),argument);
                     if(!result.success())throw new IllegalStateException(result.reason());
-                    save();reconcileWeapon(p);message="技能已学会";
+                    save();reconcileWeapon(p);message = creative ? result.reason() : "技能已学会";
+                }
+                case "unlearnSkill" -> {
+                    requireCreative(p);
+                    var result=progression.unlearn(p.getUUID(),argument);
+                    if(!result.success())throw new IllegalStateException(result.reason());
+                    save();reconcileWeapon(p);message=result.reason();
+                }
+                case "progressionFill" -> {
+                    requireCreative(p);
+                    progression.creativeFill(p.getUUID());
+                    save();reconcileWeapon(p);message="已补满修行进度";
+                }
+                case "progressionReset" -> {
+                    requireCreative(p);
+                    progression.creativeReset(p.getUUID());
+                    save();reconcileWeapon(p);message="已清空修行与已学技能，可重新选择";
                 }
                 case "archeryCharge" -> accepted(archery.charge(p,a,archeryProgress(p),booleanArgument(argument)));
                 case "archeryCancel" -> archery.cancelCharge(p);
@@ -713,6 +730,7 @@ public final class RpgServer {
         return new Vec3(direction.x(), 0, direction.z());
     }
     private void requireEditor(ServerPlayer p) { if (!canEdit(p)) throw new IllegalStateException("修改服务端配置需要管理员权限"); }
+    private static void requireCreative(ServerPlayer p) { if (!p.isCreative()) throw new IllegalStateException("仅创造模式可用"); }
     private static JsonObject editResult(String id, boolean ok, String message) { var result = new JsonObject(); result.addProperty("id", id); result.addProperty("ok", ok); result.addProperty("message", message); return result; }
     private SkillDefinition selectSkill(ServerPlayer p, String arg) {
         if (arg.equals("skill")) {
@@ -1636,7 +1654,7 @@ public final class RpgServer {
         snapshot.add("burstDash",RpgConfig.JSON.toJsonTree(actor(p).burstDashSnapshot()));
         snapshot.add("burstDashRules",RpgConfig.JSON.toJsonTree(actor(p).rules().burstDash()));
         snapshot.addProperty("skill", actor(p).snapshot().skillId());
-        snapshot.addProperty("canEdit", canEdit(p)); snapshot.addProperty("message", message);
+        snapshot.addProperty("canEdit", canEdit(p)); snapshot.addProperty("creative", p.isCreative()); snapshot.addProperty("message", message);
         snapshot.add("skills", RpgConfig.JSON.toJsonTree(config.current().skills().values()));
         snapshot.add("styles", RpgConfig.JSON.toJsonTree(config.current().styles().values()));
         snapshot.addProperty("weaponStyle", actor(p).style() == null ? "" : actor(p).style().id());

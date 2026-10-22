@@ -21,7 +21,7 @@ public final class ProgressionService {
     public record NodeView(String id, String tree, String effect, String label, String description, boolean automatic,
                            boolean learned, boolean available, List<String> blockers, Cost cost,
                            Requirements requirements, List<String> prerequisites,
-                           String exclusiveGroup, List<String> skills) {}
+                           String exclusiveGroup, List<String> skills, boolean creative) {}
     public record LearnResult(boolean success, String reason) {}
     public record BowProgress(boolean unlocked, int score, String branch150, String branch250) {}
     public record FootworkView(boolean enabled, FootworkStyle style, int cloudTier, int lightTier,
@@ -47,7 +47,7 @@ public final class ProgressionService {
             int minedRemainder, double bodyMetres, double footworkMetres, double hostileHpLoss,
             boolean aptitudesInitialized, int physiquePercent, int insightBasePercent, int bossInsightBonus,
             boolean physiqueRerolled, Map<String, Double> gainRemainders, Map<String, Long> growthDays,
-            long lastDecayDay, long dualLastHitTick) {}
+            long lastDecayDay, long dualLastHitTick, Set<String> creativeNodes) {}
     public record Snapshot(int schemaVersion, Map<UUID, SavedProgress> players) {}
 
     private SkillTreeCatalog catalog;
@@ -74,7 +74,8 @@ public final class ProgressionService {
             boolean unlocked = unlocked(p, node); List<String> blockers = blockers(p, node, true);
             result.add(new NodeView(node.id(), node.tree(), node.effect().name(), node.label(), node.description(), node.automatic(),
                     unlocked, !node.automatic() && !unlocked && blockers.isEmpty(), List.copyOf(blockers),
-                    node.cost(), node.requirements(), node.prerequisites(), node.exclusiveGroup(), node.skills()));
+                    node.cost(), node.requirements(), node.prerequisites(), node.exclusiveGroup(), node.skills(),
+                    p.creative.contains(node.id())));
         }
         return List.copyOf(result);
     }
@@ -89,6 +90,80 @@ public final class ProgressionService {
         p = edit(player); p.learned.add(node.id()); Cost cost = node.cost();
         p.mind = spend(p.mind, cost.mind()); p.body = spend(p.body, cost.body()); p.footwork = spend(p.footwork, cost.footwork());
         changed(p); return new LearnResult(true, "已学习 " + node.label());
+    }
+    /** Creative-only: learn one manual node for free, replacing any exclusive sibling. */
+    public synchronized LearnResult learnFree(UUID player, String nodeId) {
+        Optional<Node> found = catalog.find(nodeId);
+        if (found.isEmpty()) return new LearnResult(false, "未知技能节点");
+        Node node = found.get();
+        if (node.automatic()) return new LearnResult(false, "该节点达到条件后自动解锁");
+        Player current = read(player);
+        if (current.learned.contains(node.id())) return new LearnResult(false, "已学习");
+        Player p = edit(player);
+        // Creative learning is a real choice, so the other branch of the same group is replaced.
+        if (!node.exclusiveGroup().isEmpty()) for (Node other : catalog.nodes())
+            if (!other.id().equals(node.id()) && other.exclusiveGroup().equals(node.exclusiveGroup())) {
+                p.learned.remove(other.id()); p.creative.remove(other.id());
+            }
+        p.learned.add(node.id()); p.creative.add(node.id());
+        changed(p); return new LearnResult(true, "创造模式：已学习 " + node.label());
+    }
+    /** Creative-only: remove one manual node from learned and creative selections; effects stop immediately. */
+    public synchronized LearnResult unlearn(UUID player, String nodeId) {
+        Optional<Node> found = catalog.find(nodeId);
+        if (found.isEmpty()) return new LearnResult(false, "未知技能节点");
+        Node node = found.get();
+        if (node.automatic()) return new LearnResult(false, "自动解锁节点不能移除");
+        Player p = read(player);
+        if (!p.learned.contains(node.id())) return new LearnResult(false, "尚未学习该技能");
+        p = edit(player); p.learned.remove(node.id()); p.creative.remove(node.id());
+        changed(p); return new LearnResult(true, "已移除 " + node.label());
+    }
+    /**
+     * Creative-only one-shot fill: totals are the highest requirement of each stat plus every manual cost,
+     * so all automatic gates (including exclusive branches) become available without rewriting learned IDs.
+     */
+    public synchronized void creativeFill(UUID player) {
+        Player p = edit(player); TrainingRules training = catalog.rules().training();
+        long mindRequirement = 0, bodyRequirement = 0, mindCosts = 0, bodyCosts = 0;
+        int rapierScore = 0, dualScore = 0, bowScore = 0;
+        for (Node node : catalog.nodes()) {
+            Requirements requirements = node.requirements();
+            mindRequirement = Math.max(mindRequirement, requirements.mind());
+            bodyRequirement = Math.max(bodyRequirement, requirements.body());
+            switch (node.tree()) {
+                case "rapier" -> rapierScore = Math.max(rapierScore, requirements.score());
+                case "dual_blade" -> dualScore = Math.max(dualScore, requirements.score());
+                case "bow" -> bowScore = Math.max(bowScore, requirements.score());
+                default -> { }
+            }
+            if (!node.automatic()) { mindCosts += node.cost().mind(); bodyCosts += node.cost().body(); }
+        }
+        int mind = (int) Math.min(MAX, mindRequirement + mindCosts), body = (int) Math.min(MAX, bodyRequirement + bodyCosts);
+        p.mindUnlocked = true; p.bodyUnlocked = true; p.footworkUnlocked = true;
+        p.mind = new Points(mind, mind); p.body = new Points(body, body);
+        p.footwork = new Points(training.footworkCap(), training.footworkCap());
+        p.rapierKills = rapierScore; p.dualHits = dualScore; p.archeryScore = bowScore;
+        p.dualStacks = 0; p.trialPassed = true; p.dragonKilled = true;
+        p.aptitudesInitialized = true; p.physiquePercent = 0; p.insightBasePercent = 100;
+        p.activeTicks = 0; p.hungerRemainder = 0; p.minedRemainder = 0;
+        p.bodyMetres = 0; p.footworkMetres = 0; p.hostileHpLoss = 0;
+        p.remainders.clear(); p.growthDays.clear(); p.incoming.clear();
+        p.incomingTick = UNSET; p.dualLastHitTick = UNSET;
+        changed(p);
+    }
+    /** Creative-only one-shot reset: drop every learned node and earned point, keeping unlocks and world flags. */
+    public synchronized void creativeReset(UUID player) {
+        Player p = edit(player);
+        p.learned.clear(); p.creative.clear();
+        p.mind = new Points(0, 0); p.body = new Points(0, 0); p.footwork = new Points(0, 0);
+        p.rapierKills = 0; p.dualHits = 0; p.archeryScore = 0; p.dualStacks = 0;
+        p.mindUnlocked = true; p.bodyUnlocked = true; p.footworkUnlocked = true;
+        p.activeTicks = 0; p.hungerRemainder = 0; p.minedRemainder = 0;
+        p.bodyMetres = 0; p.footworkMetres = 0; p.hostileHpLoss = 0;
+        p.remainders.clear(); p.growthDays.clear(); p.incoming.clear();
+        p.incomingTick = UNSET; p.dualLastHitTick = UNSET;
+        changed(p);
     }
     public synchronized boolean unlocked(UUID player, String nodeId) {
         return catalog.find(nodeId).map(node -> unlocked(read(player), node)).orElse(false);
@@ -291,6 +366,8 @@ public final class ProgressionService {
         p = edit(player); gain(p, tree, 1); p.growthDays.put(tree, Math.max(epochDay, p.lastDecayDay)); changed(p); return true;
     }
     private boolean unlocked(Player p, Node node) {
+        // Free creative selections are real unlocks: active effects, prerequisites and rendering follow them.
+        if (p.creative.contains(node.id())) return true;
         if (!node.automatic()) {
             if (!p.learned.contains(node.id())) return false;
             // Learned roots are permanent; branch choices keep their old score/stat eligibility.
@@ -375,7 +452,7 @@ public final class ProgressionService {
         long revision; boolean mindUnlocked, bodyUnlocked, footworkUnlocked, trialPassed, dragonKilled, migrated, aptitudesInitialized, physiqueRerolled;
         Points mind = new Points(0, 0), body = new Points(0, 0), footwork = new Points(0, 0);
         int rapierKills, dualHits, archeryScore, dualStacks, hungerRemainder, minedRemainder, physiquePercent, insightBasePercent, bossInsightBonus;
-        Set<String> learned = new LinkedHashSet<>(), eatenFoods = new LinkedHashSet<>();
+        Set<String> learned = new LinkedHashSet<>(), eatenFoods = new LinkedHashSet<>(), creative = new LinkedHashSet<>();
         long activeTicks, lastDecayDay = UNSET, dualLastHitTick = UNSET, incomingTick = UNSET;
         double bodyMetres, footworkMetres, hostileHpLoss;
         Map<String, Double> remainders = new LinkedHashMap<>(); Map<String, Long> growthDays = new LinkedHashMap<>();
@@ -392,7 +469,10 @@ public final class ProgressionService {
             if (s.dualStacks() < 0 || s.dualStacks() > 12) throw bad("invalid combo stacks"); dualStacks = s.dualStacks();
             trialPassed = s.trialPassed(); dragonKilled = s.dragonKilled(); migrated = s.migrated();
             learned = new LinkedHashSet<>(Objects.requireNonNull(s.learnedNodes())); eatenFoods = new LinkedHashSet<>(Objects.requireNonNull(s.eatenFoods()));
-            if (learned.size() > 1024 || eatenFoods.size() > 100_000) throw bad("excessive progression IDs"); learned.forEach(SkillTreeCatalog::validId); eatenFoods.forEach(SkillTreeCatalog::validId);
+            // Older saves and older JSON snapshots have no creativeNodes field; they must restore as no free learning.
+            creative = s.creativeNodes() == null ? new LinkedHashSet<>() : new LinkedHashSet<>(s.creativeNodes());
+            if (learned.size() > 1024 || eatenFoods.size() > 100_000 || creative.size() > 1024) throw bad("excessive progression IDs");
+            learned.forEach(SkillTreeCatalog::validId); eatenFoods.forEach(SkillTreeCatalog::validId); creative.forEach(SkillTreeCatalog::validId);
             if (s.activeTicks() < 0 || s.activeTicks() > MAX || s.hungerRemainder() < 0 || s.hungerRemainder() > MAX || s.minedRemainder() < 0 || s.minedRemainder() > MAX) throw bad("invalid training remainder");
             activeTicks = s.activeTicks(); hungerRemainder = s.hungerRemainder(); minedRemainder = s.minedRemainder();
             finite(s.bodyMetres(), 0, 1_000_000, "body metres"); finite(s.footworkMetres(), 0, 1_000_000, "footwork metres"); finite(s.hostileHpLoss(), 0, 100_000, "HP loss");
@@ -409,7 +489,8 @@ public final class ProgressionService {
             return new SavedProgress(revision, mindUnlocked, bodyUnlocked, footworkUnlocked, mind, body, footwork,
                     rapierKills, dualHits, archeryScore, dualStacks, trialPassed, dragonKilled, migrated, immutable(learned), immutable(eatenFoods),
                     activeTicks, hungerRemainder, minedRemainder, bodyMetres, footworkMetres, hostileHpLoss, aptitudesInitialized,
-                    physiquePercent, insightBasePercent, bossInsightBonus, physiqueRerolled, Map.copyOf(remainders), Map.copyOf(growthDays), lastDecayDay, dualLastHitTick);
+                    physiquePercent, insightBasePercent, bossInsightBonus, physiqueRerolled, Map.copyOf(remainders), Map.copyOf(growthDays), lastDecayDay, dualLastHitTick,
+                    immutable(creative));
         }
     }
 }

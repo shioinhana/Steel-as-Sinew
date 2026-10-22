@@ -76,6 +76,12 @@ neoForge {
                 jvmArgument "-Dfsrpg.legacySkillWorld=${project.property('smokeWorld')}"
                 jvmArgument "-Dfsrpg.smokeEvidence=${project.hasProperty('smokeEvidence') ? file(project.property('smokeEvidence')).absolutePath : file('verification/legacy-skills-20261012-001758/game').absolutePath}"
             }
+            if(project.hasProperty('skillTreeSmoke')) {
+                if(!project.hasProperty('smokeWorld'))throw new GradleException('skillTreeSmoke requires a copied test world');
+                jvmArgument '-Dfsrpg.skillTreeSmoke=true'
+                jvmArgument "-Dfsrpg.skillTreeWorld=${project.property('smokeWorld')}"
+                jvmArgument "-Dfsrpg.smokeEvidence=${project.hasProperty('smokeEvidence') ? file(project.property('smokeEvidence')).absolutePath : file('verification/skill-tree-20261022/game').absolutePath}"
+            }
             if(project.hasProperty('spearSolverSmoke')) {
                 if(!project.hasProperty('smokeWorld'))throw new GradleException('spearSolverSmoke requires a copied spear test world');
                 jvmArgument '-Dfsrpg.spearSolverSmoke=true'
@@ -615,7 +621,8 @@ tasks.register('stage090Config', JavaExec) {
 ['footworkTest':'org.fsrpg.movement.FootworkTest',
  'footworkProgressionTest':'org.fsrpg.progression.FootworkProgressionTest',
  'footworkSkillMigrationTest':'org.fsrpg.config.FootworkSkillMigrationTest',
- 'rapierTechniquesMigrationTest':'org.fsrpg.config.RapierTechniquesMigrationTest'].each { taskName, className ->
+ 'rapierTechniquesMigrationTest':'org.fsrpg.config.RapierTechniquesMigrationTest',
+ 'skillTreeLayoutTest':'org.fsrpg.client.SkillTreeLayoutTest'].each { taskName, className ->
     tasks.register(taskName, JavaExec) { dependsOn testClasses; classpath = sourceSets.test.runtimeClasspath; mainClass = className; jvmArgs '-Dfile.encoding=UTF-8' }
     tasks.named('check') { dependsOn taskName }
 }

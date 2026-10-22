@@ -17,6 +17,8 @@ public final class ProgressionTest {
         strictCatalog(catalog); groundFilter(); firstCharacter(catalog); swordMilestones(catalog);
         bowBranches(catalog); aptitudeGrowth(catalog); dailyDecay(catalog);
         durableIsolation(catalog); reloadAndInvalidSaves(catalog);
+        creativeFill(catalog); creativeFreeLearning(catalog); creativeUnlearn(catalog);
+        creativeReset(catalog); creativePersistence(catalog);
         System.out.println("ProgressionTest passed: " + checks + " checks");
     }
     private static void groundFilter() {
@@ -202,6 +204,181 @@ public final class ProgressionTest {
         JsonObject nan=JSON.toJsonTree(before).getAsJsonObject(); player(nan).addProperty("bodyMetres",Double.NaN); rejects(() -> s.restore(JSON.fromJson(nan,Snapshot.class)),"savednonfinitecounter rejected");
         ProgressionService migrated=new ProgressionService(c); check(migrated.migrateExistingCombat(B),"existingadventuregetsrootmigration"); Snapshot once=migrated.snapshot(); check(!migrated.migrateExistingCombat(B),"migrationonce"); equal(once,migrated.snapshot(),"repeatedmigrationnopoints");
         check(migrated.weaponUnlocked(B,"rapier") && migrated.weaponUnlocked(B,"dual_blade") && migrated.weaponUnlocked(B,"bow_snipe"),"oldbasiccombatremainsusable"); check(!migrated.effects(B).rapierThrust(),"migrationdoesnotgrantadvancedabilities");
+    }
+    // The creative cultivation tools are server-authority helpers: fill computes every gate from the catalog,
+    // free learning is a real unlock, removal really disables effects, and reset keeps world achievements.
+    private static void creativeFill(SkillTreeCatalog c) {
+        ProgressionService s = new ProgressionService(c); s.initializeAptitudes(A, 0, 0, DAY);
+        check(s.learnFree(A, "cloud_step").success(), "free learning works before any real training");
+        s.creativeFill(A);
+        View v = s.view(A);
+        equal(new Points(91, 91), v.mind(), "fill mind total is the max mind requirement plus every manual mind cost");
+        equal(new Points(102, 102), v.body(), "fill body total is the max body requirement plus every manual body cost");
+        equal(new Points(600, 600), v.footwork(), "fill footwork total is the configured training cap");
+        check(v.mindUnlocked() && v.bodyUnlocked() && v.footworkUnlocked(), "fill unlocks the three real training tracks");
+        equal(301, v.rapierKills(), "fill reaches the highest rapier score requirement");
+        equal(400, v.dualHits(), "fill reaches the highest dual score requirement");
+        equal(300, v.archeryScore(), "fill reaches the highest bow score requirement");
+        equal(0, v.dualStacks(), "fill starts the dual combo at zero stacks");
+        check(v.trialPassed() && v.dragonKilled(), "fill records the trial and dragon world gates");
+        equal(100, v.insightPercent(), "fill maxes insight efficiency");
+        equal(0, v.physiquePercent(), "fill removes the physique growth bonus");
+        SavedProgress saved = s.snapshot().players().get(A);
+        check(saved.learnedNodes().contains("cloud_step") && saved.creativeNodes().contains("cloud_step"), "fill keeps existing learned and creative selections");
+        equal(Map.of(), saved.gainRemainders(), "fill clears fractional training remainders");
+        equal(Map.of(), saved.growthDays(), "fill clears mastery growth anchors");
+        equal(0L, saved.activeTicks(), "fill clears the active-tick remainder");
+        for (String root : List.of("rapier", "dual_sword", "archery")) check(s.learn(A, root).success(), "filled points fund a real root purchase: " + root);
+        for (SkillTreeCatalog.Node node : c.nodes()) {
+            if (!node.automatic()) continue;
+            check(s.unlocked(A, node.id()), "filled stats unlock automatic node: " + node.id());
+            equal(List.of(), nodeView(s, node.id()).blockers(), "filled automatic node has no blockers: " + node.id());
+        }
+        check(s.learn(A, "archery_ru_suo").success(), "filled score funds the first archery_150 branch");
+        check(!s.learn(A, "archery_nie_shi").success(), "the other archery_150 branch remains exclusive");
+        check(s.learn(A, "archery_yan_xia_dian").success(), "filled score funds one archery_250 branch");
+        check(!s.learn(A, "archery_chuan_tang_feng").success(), "the other archery_250 branch remains exclusive");
+        check(s.learn(A, "rabbit").success(), "filled footwork stats fund one movement school");
+        check(!s.learn(A, "flying_swan").success(), "the other movement school remains exclusive");
+        check(s.learn(A, "light_body").success(), "filled footwork grants technique selection credits");
+        equal(new Points(91, 85), s.view(A).mind(), "fill leaves exactly the configured manual mind costs spent");
+        equal(new Points(102, 90), s.view(A).body(), "fill leaves exactly the configured manual body costs spent");
+        equal(new Points(600, 592), s.view(A).footwork(), "fill leaves exactly the configured manual footwork costs spent");
+    }
+    private static void creativeFreeLearning(SkillTreeCatalog c) {
+        ProgressionService s = new ProgressionService(c);
+        check(s.learnFree(A, "rapier").success(), "free learning bypasses the sleep, cost and requirement gates");
+        check(s.weaponUnlocked(A, "rapier") && s.effects(A).rapier(), "a free-learned root is really active");
+        equal(new Points(0, 0), s.view(A).mind(), "free learning does not spend earned points");
+        check(!s.learnFree(A, "rapier_thrust").success(), "automatic nodes cannot be free-learned");
+        check(!s.learnFree(A, "missing_node").success(), "unknown nodes cannot be free-learned");
+        check(s.learnFree(A, "archery_ru_suo").success(), "free learning bypasses prerequisites and score gates");
+        check(s.unlocked(A, "archery_ru_suo"), "a free-learned branch is unlocked");
+        equal("RU_SUO", s.archeryView(A).branch150(), "a free-learned branch drives the real branch view");
+        check(s.learnFree(A, "archery_nie_shi").success(), "free learning replaces the exclusive sibling");
+        check(!s.unlocked(A, "archery_ru_suo"), "the replaced sibling is no longer unlocked");
+        equal("NIE_SHI", s.archeryView(A).branch150(), "the replacement drives the real branch view");
+        SavedProgress saved = s.snapshot().players().get(A);
+        check(saved.learnedNodes().contains("rapier") && saved.learnedNodes().contains("archery_nie_shi"), "free learning is durable in learned IDs");
+        check(saved.creativeNodes().contains("archery_nie_shi") && saved.creativeNodes().contains("rapier"), "free learning is durable in the creative set");
+        check(!saved.learnedNodes().contains("archery_ru_suo") && !saved.creativeNodes().contains("archery_ru_suo"), "exclusive replacement clears both sets");
+        check(nodeView(s, "rapier").creative() && nodeView(s, "archery_nie_shi").creative(), "node views mark free-learned selections");
+        check(!nodeView(s, "dual_sword").creative() && !nodeView(s, "rabbit").creative(), "untouched nodes are not marked creative");
+        check(s.learnFree(A, "dual_sword").success(), "free learning bypasses a weapon root's prerequisites");
+        check(s.effects(A).dual(), "a free-learned dual root activates the real dual stance");
+        check(!s.learnFree(A, "dual_combo").success(), "automatic effect nodes cannot be free-learned");
+        check(s.learnFree(A, "cloud_step_ii").success(), "free learning bypasses a missing prerequisite chain");
+        check(s.unlocked(A, "cloud_step_ii"), "the chained free-learned technique is unlocked");
+        check(s.learnFree(A, "cloud_step_iii").success(), "free learning bypasses the longer technique chain");
+        equal(3, s.footworkView(A).cloudTier(), "a free-learned footwork technique drives the real effect view");
+        check(!s.learnFree(A, "archery_nie_shi").success(), "an already learned free node is not learned twice");
+    }
+    private static void creativeUnlearn(SkillTreeCatalog c) {
+        ProgressionService s = new ProgressionService(c);
+        check(s.learnFree(A, "rapier").success(), "fixture free root");
+        check(s.weaponUnlocked(A, "rapier") && s.effects(A).rapier(), "free root active before removal");
+        check(s.unlearn(A, "rapier").success(), "free-learned manual node can be removed");
+        check(!s.weaponUnlocked(A, "rapier") && !s.effects(A).rapier(), "removing the root disables the weapon immediately");
+        check(s.snapshot().players().get(A).creativeNodes().isEmpty(), "removal clears the creative set");
+        check(!s.unlearn(A, "rapier").success(), "a node that is not learned cannot be removed");
+        check(!s.unlearn(A, "rapier_thrust").success(), "automatic nodes cannot be removed");
+        check(!s.unlearn(A, "missing_node").success(), "unknown nodes cannot be removed");
+        check(s.learnFree(A, "dual_sword").success(), "dual fixture free learned");
+        check(s.effects(A).dual(), "dual stance active before removal");
+        check(s.unlearn(A, "dual_sword").success() && !s.effects(A).dual(), "dual stance disappears with its removed root");
+        check(s.learnFree(A, "cloud_step_ii").success(), "footwork effect fixture");
+        equal(2, s.footworkView(A).cloudTier(), "free-learned footwork technique drives the real effect view");
+        check(s.unlearn(A, "cloud_step_ii").success(), "effect-bearing free node is removable");
+        equal(0, s.footworkView(A).cloudTier(), "footwork effect disappears with its removed node");
+        ProgressionService chain = fixture(c, 100, 100, 600, 0, 0, 150);
+        check(chain.learn(A, "archery_ru_suo").success(), "ordinary branch learned before root removal");
+        equal("RU_SUO", chain.archeryView(A).branch150(), "ordinary branch active while its root is learned");
+        check(chain.unlearn(A, "archery").success(), "removing an ordinary root is allowed");
+        equal("NONE", chain.archeryView(A).branch150(), "removing the root disables dependent effects that were not free-learned");
+        ProgressionService m = fixture(c, 100, 100, 600, 0, 0, 150);
+        check(m.weaponUnlocked(A, "rapier"), "fixture root learned through ordinary progression");
+        check(m.unlearn(A, "rapier").success(), "unlearn also removes an ordinarily learned manual node");
+        check(!m.weaponUnlocked(A, "rapier"), "ordinary learned root effect stops after removal");
+        check(m.snapshot().players().get(A).creativeNodes().isEmpty(), "ordinary learning never enters the creative set");
+    }
+    private static void creativeReset(SkillTreeCatalog c) {
+        ProgressionService s = fixture(c, 100, 100, 600, 0, 50, 0);
+        JsonObject aptitudes = JSON.toJsonTree(s.snapshot()).getAsJsonObject();
+        player(aptitudes).addProperty("physiquePercent", 25); player(aptitudes).addProperty("insightBasePercent", 40);
+        s.restore(JSON.fromJson(aptitudes, Snapshot.class));
+        s.onFood(A, "minecraft:apple", 20); s.trialPassed(A); s.dragonKilled(A);
+        check(s.learnFree(A, "cloud_step_ii").success(), "reset fixture free learning");
+        s.recordRapierKill(A, DAY); s.recordDualHit(A, 100, DAY);
+        View before = s.view(A);
+        check(before.mind().total() > 0 && before.rapierKills() > 0 && before.dualHits() > 0 && before.dualStacks() > 0, "reset fixture has real progress");
+        check(before.trialPassed() && before.dragonKilled(), "reset fixture has world achievements");
+        s.creativeReset(A);
+        View v = s.view(A);
+        equal(new Points(0, 0), v.mind(), "reset clears mind total and available");
+        equal(new Points(0, 0), v.body(), "reset clears body total and available");
+        equal(new Points(0, 0), v.footwork(), "reset clears footwork total and available");
+        equal(0, v.rapierKills(), "reset clears rapier score");
+        equal(0, v.dualHits(), "reset clears dual hits");
+        equal(0, v.archeryScore(), "reset clears archery score");
+        equal(0, v.dualStacks(), "reset clears combo stacks");
+        check(v.mindUnlocked() && v.bodyUnlocked() && v.footworkUnlocked(), "reset keeps the training tracks unlocked for immediate creative reselection");
+        check(v.trialPassed() && v.dragonKilled(), "reset preserves world achievements");
+        equal(25, v.physiquePercent(), "reset preserves the physique aptitude");
+        equal(40, v.insightPercent(), "reset preserves the insight aptitude");
+        SavedProgress saved = s.snapshot().players().get(A);
+        equal(Set.of(), saved.learnedNodes(), "reset clears learned IDs");
+        equal(Set.of(), saved.creativeNodes(), "reset clears the creative set");
+        equal(Map.of(), saved.gainRemainders(), "reset clears fractional training remainders");
+        equal(Map.of(), saved.growthDays(), "reset clears mastery growth anchors");
+        equal(0L, saved.activeTicks(), "reset clears the active-tick remainder");
+        check(saved.eatenFoods().contains("minecraft:apple"), "reset preserves discovered foods");
+        for (NodeView node : s.nodes(A)) check(!node.learned() && !node.creative(), "reset clears every node flag: " + node.id());
+        check(!s.learn(A, "rapier").success(), "reset removes earned points so ordinary learning still needs real progress");
+        check(s.learnFree(A, "rapier").success() && s.weaponUnlocked(A, "rapier"), "creative reselection works immediately after reset");
+        ProgressionService fresh = new ProgressionService(c); fresh.creativeReset(A);
+        View freshView = fresh.view(A);
+        check(freshView.mindUnlocked() && freshView.bodyUnlocked() && freshView.footworkUnlocked(), "reset itself unlocks the tracks for immediate creative reselection");
+        equal(new Points(0, 0), freshView.mind(), "reset on a fresh player stays at zero points");
+    }
+    private static void creativePersistence(SkillTreeCatalog c) throws Exception {
+        ProgressionService s = new ProgressionService(c);
+        check(s.learnFree(A, "rapier").success() && s.learnFree(A, "archery_nie_shi").success(), "persistence fixture free learning");
+        Snapshot snap = s.snapshot();
+        JsonObject json = JSON.toJsonTree(snap).getAsJsonObject();
+        check(player(json).has("creativeNodes"), "saved JSON writes creativeNodes beside learnedNodes");
+        check(JSON.toJsonTree(nodeView(s, "archery_nie_shi")).getAsJsonObject().get("creative").getAsBoolean(), "node JSON exposes the creative flag");
+        ProgressionService restored = new ProgressionService(c); restored.restore(JSON.fromJson(json, Snapshot.class));
+        equal(snap, restored.snapshot(), "creative IDs survive an in-memory save and restore exactly");
+        check(restored.unlocked(A, "rapier") && restored.unlocked(A, "archery_nie_shi"), "restored creative selections stay really unlocked");
+        check(nodeView(restored, "archery_nie_shi").creative(), "restored node view keeps the creative marker");
+        Path folder = Files.createTempDirectory("fsrpg-creative-test-"); Path file = folder.resolve("cultivation.json");
+        try {
+            ProgressionStore store = new ProgressionStore(file, JSON); store.save(restored.snapshot());
+            ProgressionService loaded = new ProgressionService(c); loaded.restore(store.load());
+            equal(restored.snapshot(), loaded.snapshot(), "world-scoped store round-trips creative IDs");
+            check(loaded.unlocked(A, "archery_nie_shi"), "stored creative node still unlocks effects");
+        } finally { Files.deleteIfExists(file); Files.deleteIfExists(folder); }
+        JsonObject legacy = JSON.toJsonTree(snap).getAsJsonObject(); player(legacy).remove("creativeNodes");
+        ProgressionService old = new ProgressionService(c); old.restore(JSON.fromJson(legacy, Snapshot.class));
+        SavedProgress oldSave = old.snapshot().players().get(A);
+        equal(Set.of(), oldSave.creativeNodes(), "an old save without creativeNodes restores as an empty set");
+        check(oldSave.learnedNodes().contains("archery_nie_shi"), "an old save keeps its ordinary learned IDs");
+        check(!old.unlocked(A, "archery_nie_shi"), "an old save never invents a free unlock");
+        JsonObject nullField = JSON.toJsonTree(snap).getAsJsonObject(); player(nullField).add("creativeNodes", JsonNull.INSTANCE);
+        ProgressionService nullRestored = new ProgressionService(c); nullRestored.restore(JSON.fromJson(nullField, Snapshot.class));
+        equal(Set.of(), nullRestored.snapshot().players().get(A).creativeNodes(), "a JSON null creativeNodes restores as an empty set");
+        Snapshot before = restored.snapshot();
+        JsonObject invalid = JSON.toJsonTree(before).getAsJsonObject(); player(invalid).getAsJsonArray("creativeNodes").add("Not A Valid ID");
+        rejects(() -> restored.restore(JSON.fromJson(invalid, Snapshot.class)), "an invalid creative node ID is rejected");
+        equal(before, restored.snapshot(), "a rejected creative restore leaves memory untouched");
+        JsonObject excessive = JSON.toJsonTree(before).getAsJsonObject(); JsonArray many = new JsonArray();
+        for (int i = 0; i < 1025; i++) many.add("node_" + i);
+        player(excessive).add("creativeNodes", many);
+        rejects(() -> restored.restore(JSON.fromJson(excessive, Snapshot.class)), "an excessive creative ID list is rejected");
+    }
+    private static NodeView nodeView(ProgressionService s, String id) {
+        for (NodeView node : s.nodes(A)) if (node.id().equals(id)) return node;
+        throw new AssertionError("missing node view: " + id);
     }
     private static ProgressionService fixture(SkillTreeCatalog c,int mind,int body,int foot,int rapier,int dual,int bow) {
         ProgressionService s=new ProgressionService(c); s.initializeAptitudes(A,0,0,DAY); s.migrateExistingCombat(A); s.onSleep(A);

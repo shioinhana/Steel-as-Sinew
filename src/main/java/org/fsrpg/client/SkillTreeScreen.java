@@ -1,235 +1,503 @@
 package org.fsrpg.client;
 
-import com.google.gson.*;
-import java.util.*;
+import com.google.gson.JsonElement;
+import com.google.gson.JsonObject;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.screens.Screen;
+import net.minecraft.client.input.MouseButtonEvent;
 import net.minecraft.network.chat.Component;
 import net.minecraft.util.FormattedCharSequence;
 
-/** Scrollable diagram and independent details; all learning conditions come from the server. */
+/**
+ * One clean cultivation page: a category rail, every node of the selected tree on the same page
+ * grouped by branch family, and one detail panel. There is no chart pagination; a category click
+ * or a mouse wheel is the only navigation. Creative-mode tools expose fill/free-learn/reset, but
+ * every condition is still validated by the server.
+ */
 public final class SkillTreeScreen extends Screen {
-    private static final int ROW_HEIGHT=42,TEXT=0xffc6d4e0,MUTED=0xff9badbd,GREEN=0xffafd59f,GOLD=0xffecd29d;
-    private String tree="rapier",selected="",lastSelected="",lastTree="",feedback="";
-    private int left,top,panelWidth,panelHeight,chartX,chartY,chartWidth,chartHeight,detailX,detailWidth,bodyY,bodyHeight;
-    private int chartPage,visibleRows,detailScroll,detailPixels;
-    private boolean learning;
+    private static final int TEXT = 0xffd2dee8, MUTED = 0xff93a6b5, GREEN = 0xffa9d49b,
+            GOLD = 0xffe8cf98, PURPLE = 0xffb9a7e6, DIM = 0xff6c7f8f, BG = 0xff0e1620,
+            PANEL = 0xff15212d, PANEL2 = 0xff101a24, BORDER = 0xff2d4152, ACCENT = 0xff86a978;
+    private static final int FOOTER = 30, HEADER = 64, NAV_WIDTH = 122, CARD = 22;
+    private static final String[] TREES = {"rapier", "dual_blade", "bow", "footwork"};
+    private static final String[] LABELS = {"西洋剑", "双刀", "弓", "步法"};
+
+    private String tree = "rapier", selected = "", lastSelected = "", lastTree = "";
+    private String feedback = "";
+    private int resetConfirm;
+    private boolean learning, creative;
     private long learnRevision;
-    private final Map<String,int[]> positions=new LinkedHashMap<>();
-    private final Map<String,JsonObject> byId=new LinkedHashMap<>();
-    private List<JsonObject> nodes=List.of();
-    private List<Stage> stages=List.of();
-    private Button detailUp,detailDown;
-    private record Stage(String caption,List<JsonObject> nodes) {}
-    private record TextLine(FormattedCharSequence text,int color) {}
-    public SkillTreeScreen(){super(Component.literal("修行 · 技能树"));}
-    private JsonObject progress(){return ClientState.object(ClientState.snapshot(),"progression");}
-    private JsonObject footworkView(){return ClientState.object(progress(),"footwork");}
-    private boolean footworkNode(JsonObject node){return ClientState.text(node,"tree","").equals("footwork");}
-    private boolean footworkStyleNode(JsonObject node){
-        return footworkNode(node)&&java.util.Set.of("RABBIT","FLYING_SWAN").contains(ClientState.text(node,"effect",""));
-    }
-    private boolean footworkTechniqueNode(JsonObject node){return footworkNode(node)&&!footworkStyleNode(node);}
-    private JsonObject chosen(){return byId.getOrDefault(selected,new JsonObject());}
+    private int left, top, panelWidth, panelHeight;
+    private int navX, navY, navWidth, navHeight;
+    private int bodyX, bodyY, bodyWidth, bodyHeight;
+    private int detailX, detailY, detailWidth, detailHeight;
+    private int contentScroll, detailScroll;
+    private final List<Card> cards = new ArrayList<>();
+    private final List<Heading> headings = new ArrayList<>();
+    private final Map<String, JsonObject> byId = new LinkedHashMap<>();
+    private List<JsonObject> allNodes = List.of();
+    private List<JsonObject> nodes = List.of();
+    private List<SkillTreeLayout.Group> groups = List.of();
+    private List<Line> detailCache;
+
+    private record Card(String id, int x, int y, int width, int height, JsonObject node) {}
+    private record Heading(String caption, int x, int y) {}
+    private record Line(FormattedCharSequence text, int color) {}
+
+    public SkillTreeScreen() { super(Component.literal("修行 · 技能树")); }
+
     @Override protected void init() {
-        panelWidth=Math.min(680,width-16);panelHeight=Math.min(420,height-16);
-        left=(width-panelWidth)/2;top=(height-panelHeight)/2;
-        chartX=left+10;chartY=top+77;chartWidth=Math.max(122,(panelWidth-32)*44/100);
-        chartHeight=Math.max(42,panelHeight-113);visibleRows=Math.max(1,chartHeight/ROW_HEIGHT);
-        detailX=chartX+chartWidth+12;detailWidth=left+panelWidth-12-detailX;
-        bodyY=chartY+29;bodyHeight=Math.max(12,top+panelHeight-38-bodyY);
-        positions.clear();byId.clear();
-        String[] ids={"rapier","dual_blade","bow","footwork"},labels={"西洋剑","双刀","弓","步法"};int tabWidth=(panelWidth-24)/4;
-        for(int i=0;i<ids.length;i++) {
-            String id=ids[i];addRenderableWidget(Button.builder(Component.literal((tree.equals(id)?"● ":"")+labels[i]),b->{
-                tree=id;selected="";chartPage=detailScroll=0;feedback="";learning=false;rebuild();
-            }).bounds(left+12+i*tabWidth,top+30,tabWidth-3,20).build());
+        panelWidth = Math.min(960, width - 12);
+        panelHeight = Math.min(560, height - 12);
+        left = (width - panelWidth) / 2;
+        top = (height - panelHeight) / 2;
+        navX = left + 10;
+        navY = top + HEADER;
+        boolean wide = panelWidth >= 700;
+        navWidth = wide ? NAV_WIDTH : 96;
+        bodyY = navY;
+        detailWidth = wide ? Math.min(304, Math.max(240, panelWidth * 30 / 100))
+                : Math.max(150, panelWidth * 36 / 100);
+        bodyX = navX + navWidth + 10;
+        bodyWidth = left + panelWidth - 10 - detailWidth - 10 - bodyX;
+        bodyHeight = panelHeight - HEADER - FOOTER - 6;
+        navHeight = bodyHeight;
+        detailX = left + panelWidth - 10 - detailWidth;
+        detailY = navY;
+        detailHeight = bodyHeight;
+        creative = ClientState.bool(ClientState.snapshot(), "creative", false);
+
+        allNodes = ClientState.objects(progress(), "nodes");
+        List<JsonObject> categoryNodes = allNodes.stream()
+                .filter(node -> ClientState.text(node, "tree", "").equals(tree)).toList();
+        nodes = categoryNodes;
+        byId.clear();
+        for (JsonObject node : nodes) byId.put(ClientState.text(node, "id", ""), node);
+        if (!byId.containsKey(selected)) selected = nodes.isEmpty() ? "" : ClientState.text(nodes.getFirst(), "id", "");
+        groups = SkillTreeLayout.groups(tree, nodes);
+
+        int navButtonHeight = 26;
+        for (int i = 0; i < TREES.length; i++) {
+            String id = TREES[i];
+            String label = LABELS[i] + " " + learnedIn(id) + "/" + countIn(id);
+            addRenderableWidget(Button.builder(Component.literal((tree.equals(id) ? "● " : "") + label), button -> {
+                tree = id;
+                selected = "";
+                contentScroll = 0;
+                detailScroll = 0;
+                feedback = "";
+                learning = false;
+                rebuild();
+            }).bounds(navX, navY + i * (navButtonHeight + 5), navWidth, navButtonHeight).build());
         }
-        nodes=ClientState.objects(progress(),"nodes").stream().filter(n->ClientState.text(n,"tree","").equals(tree)).toList();
-        for(var node:nodes)byId.put(ClientState.text(node,"id",""),node);
-        if(!byId.containsKey(selected))selected=nodes.isEmpty()?"":ClientState.text(nodes.getFirst(),"id","");
-        stages=stageRows();
-        chartPage=Math.clamp(chartPage,0,Math.max(0,stages.size()-visibleRows));
-        if(!selected.equals(lastSelected)||!tree.equals(lastTree)) {
-            detailScroll=0;feedback="";
-            for(int row=0;row<stages.size();row++)for(var node:stages.get(row).nodes())if(ClientState.text(node,"id","").equals(selected)) {
-                if(row<chartPage)chartPage=row;else if(row>=chartPage+visibleRows)chartPage=row-visibleRows+1;
+        layoutCards();
+
+        if (!selected.equals(lastSelected) || !tree.equals(lastTree)) {
+            detailScroll = 0;
+            lastSelected = selected;
+            lastTree = tree;
+        }
+        int footerY = top + panelHeight - FOOTER + 4;
+        if (creative) {
+            boolean compact = panelWidth < 640;
+            int fillWidth = compact ? 72 : 82, resetWidth = compact ? 88 : 96;
+            addRenderableWidget(Button.builder(Component.literal("补满进度"), button -> {
+                learning = true;
+                learnRevision = ClientState.revision();
+                feedback = "";
+                ClientHooks.send("progressionFill", "");
+                rebuild();
+            }).bounds(left + 10, footerY, fillWidth, 20).build());
+            addRenderableWidget(Button.builder(Component.literal(resetConfirm > 0 ? "再次点击确认" : "清空重选"), button -> {
+                if (resetConfirm > 0) {
+                    resetConfirm = 0;
+                    learning = true;
+                    learnRevision = ClientState.revision();
+                    feedback = "";
+                    ClientHooks.send("progressionReset", "");
+                } else {
+                    resetConfirm = 80;
+                }
+                rebuild();
+            }).bounds(left + 14 + fillWidth, footerY, resetWidth, 20).build());
+        }
+        boolean learned = ClientState.bool(chosen(), "learned", false);
+        boolean automatic = ClientState.bool(chosen(), "automatic", false);
+        boolean available = ClientState.bool(chosen(), "available", false);
+        boolean creativeNode = ClientState.bool(chosen(), "creative", false);
+        String action = creative ? (!learned ? (automatic ? "自动节点" : "学习（自由）")
+                : (automatic ? "自动节点" : "移除技能"))
+                : (learned ? "已学会" : automatic ? "条件达成后自动解锁" : "学习所选技能");
+        Button actionButton = addRenderableWidget(Button.builder(Component.literal(action), button -> {
+            if (learning || !byId.containsKey(selected)) return;
+            if (creative && learned) {
+                learning = true;
+                learnRevision = ClientState.revision();
+                feedback = "";
+                ClientHooks.send("unlearnSkill", selected);
+            } else if (!learned && !automatic && (creative || available)) {
+                learning = true;
+                learnRevision = ClientState.revision();
+                feedback = "";
+                ClientHooks.send("learnSkill", selected);
             }
-            lastSelected=selected;lastTree=tree;
-        }
-        for(int row=0;row<stages.size();row++) {
-            var stage=stages.get(row);int count=stage.nodes().size(),nodeWidth=(chartWidth-12-(count-1)*6)/count;
-            for(int column=0;column<count;column++) {
-                JsonObject node=stage.nodes().get(column);String id=ClientState.text(node,"id","");
-                int x=chartX+6+column*(nodeWidth+6),y=chartY+(row-chartPage)*ROW_HEIGHT+13;
-                positions.put(id,new int[]{x,y,nodeWidth,row});
-                if(row<chartPage||row>=chartPage+visibleRows)continue;
-                boolean learned=ClientState.bool(node,"learned",false),available=ClientState.bool(node,"available",false);
-                String marker=learned?"✓ ":available?"+ ":"· ";
-                addRenderableWidget(Button.builder(Component.literal(font.plainSubstrByWidth(marker+ClientState.text(node,"label",id),nodeWidth-8)),b->{
-                    selected=id;detailScroll=0;feedback="";learning=false;rebuild();
-                }).bounds(x,y,nodeWidth,20).build());
-                // The right column contains the complete description; hovering must not cover it.
+            rebuild();
+        }).bounds(detailX, detailY + detailHeight - 24, detailWidth, 20).build());
+        actionButton.active = !learning && byId.containsKey(selected)
+                && (creative ? !automatic : !learned && available);
+        addRenderableWidget(Button.builder(Component.literal("关闭"), button -> onClose())
+                .bounds(left + panelWidth - 62, footerY, 52, 20).build());
+        detailCache = null;
+    }
+
+    private void layoutCards() {
+        cards.clear();
+        headings.clear();
+        int columns = bodyWidth >= 340 ? 2 : 1;
+        int gap = 8;
+        int cardWidth = Math.max(80, (bodyWidth - 4 - gap * (columns - 1)) / columns);
+        int y = bodyY - contentScroll;
+        for (SkillTreeLayout.Group group : groups) {
+            headings.add(new Heading(group.caption(), bodyX + 2, y));
+            y += 16;
+            int rows = (group.nodes().size() + columns - 1) / columns;
+            for (int i = 0; i < group.nodes().size(); i++) {
+                JsonObject node = group.nodes().get(i);
+                int x = bodyX + 2 + (i % columns) * (cardWidth + gap);
+                int cardY = y + (i / columns) * (CARD + 4);
+                cards.add(new Card(ClientState.text(node, "id", ""), x, cardY, cardWidth, CARD, node));
             }
+            y += rows * (CARD + 4) + 4;
         }
-        int footer=top+panelHeight-27;
-        addRenderableWidget(Button.builder(Component.literal("▲"),b->{chartPage--;rebuild();}).bounds(chartX,footer,22,20).build()).active=chartPage>0;
-        addRenderableWidget(Button.builder(Component.literal("▼"),b->{chartPage++;rebuild();}).bounds(chartX+chartWidth-22,footer,22,20).build()).active=chartPage+visibleRows<stages.size();
-        detailUp=addRenderableWidget(Button.builder(Component.literal("▲"),b->scrollDetails(-33)).bounds(detailX+detailWidth-31,chartY,14,14).build());
-        detailDown=addRenderableWidget(Button.builder(Component.literal("▼"),b->scrollDetails(33)).bounds(detailX+detailWidth-15,chartY,14,14).build());
-        boolean learned=ClientState.bool(chosen(),"learned",false),automatic=ClientState.bool(chosen(),"automatic",false);
-        Button learn=addRenderableWidget(Button.builder(Component.literal(learning?"等待服务端…":learned?"已学会":automatic?"自动解锁":"学习所选技能"),b->{
-            learning=true;learnRevision=ClientState.revision();feedback="";ClientHooks.send("learnSkill",selected);rebuild();
-        }).bounds(detailX,footer,Math.max(55,detailWidth-59),20).build());
-        learn.active=!learning&&ClientState.bool(chosen(),"available",false)&&!learned&&!automatic;
-        addRenderableWidget(Button.builder(Component.literal("关闭"),b->onClose()).bounds(left+panelWidth-63,footer,51,20).build());
+        int contentHeight = Math.max(0, y - (bodyY - contentScroll));
+        contentScroll = Math.clamp(contentScroll, 0, Math.max(0, contentHeight - bodyHeight));
     }
-    private List<Stage> stageRows() {
-        Map<String,Integer> depths=new HashMap<>();for(var node:nodes)depths.put(ClientState.text(node,"id",""),depth(node,new HashSet<>()));
-        List<JsonObject> ordered=new ArrayList<>(nodes);
-        ordered.sort(Comparator.comparingInt((JsonObject n)->depths.get(ClientState.text(n,"id","")))
-                .thenComparingInt(this::scoreOrder).thenComparingInt(this::pointStage));
-        Map<String,List<JsonObject>> groups=new LinkedHashMap<>();
-        for(var node:ordered) {
-            String key=depths.get(ClientState.text(node,"id",""))+":"+scoreOrder(node)+":"+pointStage(node)+":"+ClientState.text(node,"exclusiveGroup","");
-            groups.computeIfAbsent(key,x->new ArrayList<>()).add(node);
+
+    private JsonObject progress() { return ClientState.object(ClientState.snapshot(), "progression"); }
+    private JsonObject footworkView() { return ClientState.object(progress(), "footwork"); }
+    private JsonObject chosen() { return byId.getOrDefault(selected, new JsonObject()); }
+    private JsonObject find(String id) {
+        JsonObject node = byId.get(id);
+        if (node != null) return node;
+        for (JsonObject candidate : allNodes)
+            if (ClientState.text(candidate, "id", "").equals(id)) return candidate;
+        return new JsonObject();
+    }
+    private int countIn(String treeId) {
+        int count = 0;
+        for (JsonObject node : allNodes) if (ClientState.text(node, "tree", "").equals(treeId)) count++;
+        return count;
+    }
+    private int learnedIn(String treeId) {
+        int count = 0;
+        for (JsonObject node : allNodes)
+            if (ClientState.text(node, "tree", "").equals(treeId) && ClientState.bool(node, "learned", false)) count++;
+        return count;
+    }
+    private void rebuild() { clearWidgets(); init(); }
+
+    private List<Line> detailLines() {
+        List<Line> lines = new ArrayList<>();
+        JsonObject node = chosen();
+        if (node.size() == 0) {
+            prose(lines, "等待服务端技能配置…", MUTED);
+            return lines;
         }
-        List<Stage> result=new ArrayList<>();
-        for(var group:groups.values())for(int start=0;start<group.size();start+=2) {
-            var node=group.get(start);var req=ClientState.object(node,"requirements");int score=(int)ClientState.number(req,"score",0);
-            String caption=footworkNode(node)?(pointStage(node)>0?"步法总值 "+pointStage(node):"入门")
-                    :depths.get(ClientState.text(node,"id",""))==0?"入门":score>0?"熟练度 "+score:
-                    ClientState.bool(req,"trial",false)?"完成试炼":ClientState.bool(req,"dragon",false)?"击败末影龙":"修行总值 "+pointStage(node);
-            if(!ClientState.text(node,"exclusiveGroup","").isBlank())caption+=" · 二选一";
-            result.add(new Stage(caption,List.copyOf(group.subList(start,Math.min(start+2,group.size())))));
+        boolean learned = ClientState.bool(node, "learned", false);
+        boolean automatic = ClientState.bool(node, "automatic", false);
+        boolean creativeNode = ClientState.bool(node, "creative", false);
+        var requirements = ClientState.object(node, "requirements");
+        var cost = ClientState.object(node, "cost");
+        String category = switch (tree) {
+            case "rapier" -> "西洋剑";
+            case "dual_blade" -> "双刀";
+            case "bow" -> "弓术";
+            default -> "步法";
+        };
+        prose(lines, category + " · " + (learned ? (creativeNode ? "创造授予" : "已学会")
+                : automatic ? (ClientState.bool(node, "available", false) ? "已自动生效" : "条件未达成")
+                : creative ? "创造模式可自由学习" : ClientState.bool(node, "available", false) ? "可学习" : "条件不足"),
+                learned ? GREEN : creative ? PURPLE : GOLD);
+        if (creative) {
+            prose(lines, "创造模式：学习/移除不消耗点数、不受前置与条件限制，由服务端校验创造模式。", PURPLE);
         }
-        return List.copyOf(result);
-    }
-    private int scoreOrder(JsonObject node) {
-        var req=ClientState.object(node,"requirements");int score=(int)ClientState.number(req,"score",0);
-        return score==0&&(ClientState.bool(req,"trial",false)||ClientState.bool(req,"dragon",false))?Integer.MAX_VALUE:score;
-    }
-    private int pointStage(JsonObject node) {
-        var req=ClientState.object(node,"requirements");return (int)Math.max(ClientState.number(req,"mind",0),Math.max(ClientState.number(req,"body",0),ClientState.number(req,"footwork",0)));
-    }
-    private int depth(JsonObject node,Set<String> visited) {
-        String id=ClientState.text(node,"id","");if(!visited.add(id))return 0;int result=0;
-        var parents=node.get("prerequisites");if(parents!=null&&parents.isJsonArray())for(var parent:parents.getAsJsonArray()) {
-            var definition=byId.get(parent.getAsString());if(definition!=null)result=Math.max(result,1+depth(definition,new HashSet<>(visited)));
+        if (!feedback.isBlank()) prose(lines, feedback, GOLD);
+        if (!ClientState.text(node, "description", "").isBlank())
+            prose(lines, ClientState.text(node, "description", ""), TEXT);
+        List<String> requirementsText = new ArrayList<>();
+        for (String key : List.of("score", "mind", "body", "footwork")) {
+            int value = (int) ClientState.number(requirements, key, 0);
+            if (value <= 0) continue;
+            requirementsText.add(switch (key) {
+                case "score" -> "熟练度 " + value;
+                case "mind" -> "心法 " + value;
+                case "body" -> "煅体 " + value;
+                default -> "步法 " + value;
+            });
         }
+        if (ClientState.bool(requirements, "trial", false)) requirementsText.add("完整通过试炼刷怪笼");
+        if (ClientState.bool(requirements, "dragon", false)) requirementsText.add("击杀末影龙");
+        if (!requirementsText.isEmpty()) prose(lines, "条件：" + String.join("；", requirementsText), MUTED);
+        List<String> parents = new ArrayList<>();
+        var prerequisites = node.get("prerequisites");
+        if (prerequisites != null && prerequisites.isJsonArray())
+            for (JsonElement parent : prerequisites.getAsJsonArray())
+                parents.add(ClientState.text(find(parent.getAsString()), "label", parent.getAsString()));
+        if (!parents.isEmpty()) prose(lines, "前置：" + String.join("、", parents), GREEN);
+        if (!learned || creative)
+            for (String blocker : strings(node, "blockers"))
+                if (!creative || automatic) prose(lines, "· " + blocker, GOLD);
+        String exclusive = ClientState.text(node, "exclusiveGroup", "");
+        if (!exclusive.isBlank()) {
+            List<String> peers = new ArrayList<>();
+            for (JsonObject peer : nodes)
+                if (!ClientState.text(peer, "id", "").equals(selected)
+                        && exclusive.equals(ClientState.text(peer, "exclusiveGroup", "")))
+                    peers.add(ClientState.text(peer, "label", ""));
+            if (!peers.isEmpty()) prose(lines, "与 " + String.join("、", peers) + " 互斥，同组只能选一项。", GOLD);
+        }
+        if (!automatic) {
+            boolean footwork = tree.equals("footwork");
+            String effect = ClientState.text(node, "effect", "");
+            boolean style = effect.equals("RABBIT") || effect.equals("FLYING_SWAN");
+            if (footwork && style) {
+                prose(lines, "流派二选一，不占选学额度。", GREEN);
+            } else if (footwork) {
+                var fw = footworkView();
+                prose(lines, "选学额度：剩余 " + (int) ClientState.number(fw, "selectionsAvailable", 0)
+                        + " / 已获得 " + (int) ClientState.number(fw, "selectionsEarned", 0)
+                        + "（每 150 步法总值 1 次，服务端判定）。", GREEN);
+            }
+            if (creative) prose(lines, "成本：自由学习忽略。", MUTED);
+            else prose(lines, "成本：心 " + (int) ClientState.number(cost, "mind", 0)
+                    + " / 体 " + (int) ClientState.number(cost, "body", 0)
+                    + " / 步 " + (int) ClientState.number(cost, "footwork", 0), MUTED);
+        }
+        return lines;
+    }
+
+    private static List<String> strings(JsonObject node, String field) {
+        List<String> result = new ArrayList<>();
+        JsonElement value = node.get(field);
+        if (value != null && value.isJsonArray())
+            for (JsonElement entry : value.getAsJsonArray()) if (entry.isJsonPrimitive()) result.add(entry.getAsString());
         return result;
     }
-    private void prose(List<TextLine> rows,String text,int color) {
-        for(var line:font.split(Component.literal(text),Math.max(20,detailWidth-10)))rows.add(new TextLine(line,color));
+
+    private void prose(List<Line> lines, String text, int color) {
+        for (FormattedCharSequence line : font.split(Component.literal(text), Math.max(20, detailWidth - 16)))
+            lines.add(new Line(line, color));
     }
-    private List<TextLine> detailRows() {
-        List<TextLine> rows=new ArrayList<>();JsonObject node=chosen();
-        if(node.size()==0){prose(rows,"等待服务端技能配置…",MUTED);return rows;}
-        if(!feedback.isBlank())prose(rows,feedback,GOLD);
-        if(!ClientState.bool(node,"learned",false))for(String blocker:strings(node,"blockers"))prose(rows,"• "+blocker,GOLD);
-        prose(rows,ClientState.text(node,"description",""),TEXT);
-        List<String> parents=new ArrayList<>();for(String id:strings(node,"prerequisites"))parents.add(ClientState.text(byId.getOrDefault(id,new JsonObject()),"label",id));
-        if(!parents.isEmpty())prose(rows,"前置："+String.join("、",parents),GREEN);
-        var req=ClientState.object(node,"requirements");List<String> requirements=new ArrayList<>();
-        for(String key:List.of("score","mind","body","footwork")) {
-            int value=(int)ClientState.number(req,key,0);if(value<=0)continue;
-            requirements.add(switch(key){case "score"->"熟练度 "+value;case "mind"->"心法 "+value;case "body"->"煅体 "+value;default->"步法 "+value;});
+
+    @Override public void tick() {
+        if (resetConfirm > 0) {
+            if (--resetConfirm == 0) rebuild();
         }
-        if(ClientState.bool(req,"trial",false))requirements.add("完整通过试炼刷怪笼");
-        if(ClientState.bool(req,"dragon",false))requirements.add("击杀末影龙");
-        if(!requirements.isEmpty())prose(rows,"要求："+String.join("；",requirements),MUTED);
-        if(footworkNode(node)) {
-            var fw=footworkView();
-            int available=(int)ClientState.number(fw,"selectionsAvailable",0),earned=(int)ClientState.number(fw,"selectionsEarned",0);
-            if(footworkTechniqueNode(node))prose(rows,"选学额度：剩余 "+available+" / 已获得 "+earned+"（每 150 步法总值获得 1 次，可存，服务端判定）。",GREEN);
-            else prose(rows,"流派选择与另一流派永久互斥，不占选学额度。",GREEN);
-        }
-        String exclusive=ClientState.text(node,"exclusiveGroup","");
-        if(!exclusive.isBlank()) {
-            List<String> peers=nodes.stream().filter(n->!ClientState.text(n,"id","").equals(selected)&&ClientState.text(n,"exclusiveGroup","").equals(exclusive))
-                    .map(n->ClientState.text(n,"label","")).toList();
-            prose(rows,"与 "+String.join("、",peers)+" 互斥，同阶段只能选一项。",GOLD);
-        }
-        return rows;
     }
-    private static List<String> strings(JsonObject node,String field) {
-        List<String> result=new ArrayList<>();var value=node.get(field);
-        if(value!=null&&value.isJsonArray())for(var entry:value.getAsJsonArray())if(entry.isJsonPrimitive())result.add(entry.getAsString());
-        return result;
-    }
-    private void scrollDetails(int delta){detailScroll=Math.clamp(detailScroll+delta,0,Math.max(0,detailPixels-bodyHeight));}
-    private void rebuild(){clearWidgets();init();}
+
     public void acceptSnapshot() {
-        if(learning&&ClientState.revision()>learnRevision) {feedback=ClientState.text(ClientState.snapshot(),"message","");learning=false;}
-        if(panelWidth>0)rebuild();
-    }
-    @Override public boolean mouseScrolled(double mouseX,double mouseY,double scrollX,double scrollY) {
-        if(scrollY!=0&&mouseY>=chartY&&mouseY<top+panelHeight-34) {
-            if(mouseX>=chartX&&mouseX<chartX+chartWidth) {chartPage=Math.clamp(chartPage-(int)Math.signum(scrollY),0,Math.max(0,stages.size()-visibleRows));rebuild();return true;}
-            if(mouseX>=detailX&&mouseX<detailX+detailWidth) {scrollDetails(-(int)Math.signum(scrollY)*33);return true;}
+        if (learning && ClientState.revision() > learnRevision) {
+            feedback = ClientState.text(ClientState.snapshot(), "message", "");
+            learning = false;
         }
-        return super.mouseScrolled(mouseX,mouseY,scrollX,scrollY);
+        if (panelWidth > 0) rebuild();
     }
-    @Override public void render(GuiGraphics gui,int mouseX,int mouseY,float partialTick) {
-        gui.fill(left,top,left+panelWidth,top+panelHeight,0xf016202c);gui.fill(left,top,left+panelWidth,top+3,0xffb8d19c);
-        var view=ClientState.object(progress(),"view");
-        String header;
-        if(tree.equals("footwork")) {
-            var fw=footworkView();
-            int earned=(int)ClientState.number(fw,"selectionsEarned",0),used=(int)ClientState.number(fw,"selectionsUsed",0),available=(int)ClientState.number(fw,"selectionsAvailable",0);
-            header=title.getString()+" · 步法总值 "+(int)ClientState.number(ClientState.object(view,"footwork"),"total",0)
-                    +" · 选学 剩余 "+available+"（已用 "+used+"/获得 "+earned+"）";
-        } else {
-            int mastery=(int)ClientState.number(view,tree.equals("rapier")?"rapierKills":tree.equals("dual_blade")?"dualHits":"archeryScore",0);
-            header=title.getString()+" · 熟练度 "+mastery;
-        }
-        gui.drawString(font,font.plainSubstrByWidth(header,panelWidth-24),left+12,top+12,0xffe9f4dc);
-        String stats="可用/总值 · 心法 "+points(view,"mind")+"  煅体 "+points(view,"body")+"  步法 "+points(view,"footwork");
-        gui.drawString(font,font.plainSubstrByWidth(stats,panelWidth-24),left+12,top+57,TEXT);
-        gui.fill(chartX-2,chartY-3,chartX+chartWidth+2,top+panelHeight-35,0xb9101720);
-        gui.fill(detailX-4,chartY-3,detailX+detailWidth+3,top+panelHeight-35,0xb9101720);
-        gui.enableScissor(chartX,chartY,chartX+chartWidth,chartY+chartHeight);
-        for(var node:nodes) {
-            var to=positions.get(ClientState.text(node,"id",""));if(to==null)continue;
-            for(String parent:strings(node,"prerequisites")) {
-                var from=positions.get(parent);if(from==null)continue;
-                int x1=from[0]+from[2]/2,y1=from[1]+20,x2=to[0]+to[2]/2,y2=to[1],gutter=chartX+2,turn=y2-4;
-                int color=ClientState.bool(node,"learned",false)?0xff63876e:0xff3e515e;
-                gui.hLine(gutter,x1,y1+3,color);gui.vLine(gutter,y1+3,turn,color);gui.hLine(gutter,x2,turn,color);
-                gui.vLine(x1,y1,y1+3,color);gui.vLine(x2,turn,y2,color);
+
+    @Override public boolean mouseScrolled(double mouseX, double mouseY, double scrollX, double scrollY) {
+        if (scrollY != 0 && mouseY >= bodyY && mouseY < bodyY + bodyHeight) {
+            if (mouseX >= bodyX - 4 && mouseX < bodyX + bodyWidth) {
+                contentScroll = Math.clamp(contentScroll - (int) Math.signum(scrollY) * 24, 0, Math.max(0, contentHeight() - bodyHeight));
+                rebuild();
+                return true;
+            }
+            if (mouseX >= detailX && mouseX < detailX + detailWidth) {
+                detailScroll = Math.clamp(detailScroll - (int) Math.signum(scrollY) * 22, 0, Math.max(0, detailHeight() - 24));
+                return true;
             }
         }
-        for(int row=chartPage;row<Math.min(stages.size(),chartPage+visibleRows);row++) {
-            int y=chartY+(row-chartPage)*ROW_HEIGHT;String caption=font.plainSubstrByWidth(stages.get(row).caption(),chartWidth-12);
-            gui.fill(chartX+6,y,chartX+8+font.width(caption),y+10,0xff101720);gui.drawString(font,caption,chartX+6,y+1,MUTED);
-        }
-        var selection=positions.get(selected);if(selection!=null&&selection[3]>=chartPage&&selection[3]<chartPage+visibleRows)
-            gui.fill(selection[0]-3,selection[1],selection[0]-1,selection[1]+20,GREEN);
-        gui.disableScissor();
-        gui.drawCenteredString(font,(stages.isEmpty()?"0":(chartPage+1)+"–"+Math.min(stages.size(),chartPage+visibleRows))+" / "+stages.size(),chartX+chartWidth/2,top+panelHeight-21,MUTED);
-        JsonObject node=chosen();gui.drawString(font,font.plainSubstrByWidth(ClientState.text(node,"label","技能详情"),detailWidth-36),detailX,chartY+2,GOLD);
-        var cost=ClientState.object(node,"cost");String state=ClientState.bool(node,"learned",false)?"已学会":ClientState.bool(node,"available",false)?"可学习":ClientState.bool(node,"automatic",false)?"条件达成自动解锁":"尚未解锁";
-        String costText;
-        if(ClientState.bool(node,"automatic",false))costText=" · 自动节点";
-        else if(footworkStyleNode(node))costText=" · 流派二选一，不占选学额度";
-        else if(footworkTechniqueNode(node))costText=" · 消耗 选学 ×1（不扣心/体/步点数）";
-        else costText=" · 消耗 心"+(int)ClientState.number(cost,"mind",0)+"/体"+(int)ClientState.number(cost,"body",0)+"/步"+(int)ClientState.number(cost,"footwork",0);
-        String meta=state+costText;
-        gui.drawString(font,font.plainSubstrByWidth(meta,detailWidth),detailX,chartY+18,ClientState.bool(node,"learned",false)?GREEN:MUTED);
-        var lines=detailRows();detailPixels=lines.size()*11;detailScroll=Math.clamp(detailScroll,0,Math.max(0,detailPixels-bodyHeight));
-        detailUp.active=detailScroll>0;detailDown.active=detailScroll<Math.max(0,detailPixels-bodyHeight);
-        gui.enableScissor(detailX,bodyY,detailX+detailWidth,bodyY+bodyHeight);int y=bodyY-detailScroll;
-        for(var line:lines) {if(y+11>bodyY&&y<bodyY+bodyHeight)gui.drawString(font,line.text(),detailX,y,line.color());y+=11;}
-        gui.disableScissor();
-        if(detailPixels>bodyHeight) {
-            int thumb=Math.max(8,bodyHeight*bodyHeight/detailPixels),track=bodyHeight-thumb;
-            int offset=track*detailScroll/Math.max(1,detailPixels-bodyHeight);
-            gui.fill(detailX+detailWidth-2,bodyY,detailX+detailWidth,bodyY+bodyHeight,0xff293b4c);
-            gui.fill(detailX+detailWidth-2,bodyY+offset,detailX+detailWidth,bodyY+offset+thumb,0xffa9c5a0);
-        }
-        super.render(gui,mouseX,mouseY,partialTick);
+        return super.mouseScrolled(mouseX, mouseY, scrollX, scrollY);
     }
-    private String points(JsonObject view,String id){var p=ClientState.object(view,id);return (int)ClientState.number(p,"available",0)+"/"+(int)ClientState.number(p,"total",0);}
-    @Override public boolean isPauseScreen(){return false;}
+
+    private int contentHeight() {
+        int max = bodyY;
+        for (Card card : cards) max = Math.max(max, card.y() + card.height());
+        for (Heading heading : headings) max = Math.max(max, heading.y() + 12);
+        return Math.max(0, max + contentScroll + 8 - bodyY);
+    }
+
+    private int detailHeight() {
+        return detail().size() * 11;
+    }
+
+    private List<Line> detail() {
+        if (detailCache == null) detailCache = detailLines();
+        return detailCache;
+    }
+
+    @Override public boolean mouseClicked(MouseButtonEvent event, boolean doubleClick) {
+        for (Card card : cards) {
+            if (event.x() < card.x() || event.x() >= card.x() + card.width()
+                    || event.y() < card.y() || event.y() >= card.y() + card.height()) continue;
+            if (event.button() == 0) {
+                selected = card.id();
+                detailScroll = 0;
+                feedback = "";
+                learning = false;
+                rebuild();
+            } else if (event.button() == 1 && creative) {
+                boolean learned = ClientState.bool(card.node(), "learned", false);
+                if (!ClientState.bool(card.node(), "automatic", false)) {
+                    learning = true;
+                    learnRevision = ClientState.revision();
+                    feedback = "";
+                    ClientHooks.send(learned ? "unlearnSkill" : "learnSkill", card.id());
+                    rebuild();
+                }
+            }
+            return true;
+        }
+        return super.mouseClicked(event, doubleClick);
+    }
+
+    @Override public void render(GuiGraphics gui, int mouseX, int mouseY, float partialTick) {
+        gui.fill(0, 0, width, height, 0x8c05090d);
+        gui.fill(left - 1, top - 1, left + panelWidth + 1, top + panelHeight + 1, ACCENT);
+        gui.fill(left, top, left + panelWidth, top + panelHeight, PANEL);
+        gui.fill(left, top, left + panelWidth, top + 3, 0xff9fbe8b);
+        var view = ClientState.object(progress(), "view");
+        gui.drawString(font, title.getString(), left + 12, top + 10, 0xffeef3df);
+        if (creative) gui.drawString(font, "创造模式", left + panelWidth - 12 - font.width("创造模式"), top + 10, PURPLE);
+        drawStats(gui, view);
+        gui.fill(navX - 1, navY - 1, navX + navWidth + 1, navY + navHeight + 1, BORDER);
+        gui.fill(navX, navY, navX + navWidth, navY + navHeight, PANEL2);
+        gui.fill(bodyX - 1, bodyY - 1, bodyX + bodyWidth + 1, bodyY + bodyHeight + 1, BORDER);
+        gui.fill(bodyX, bodyY, bodyX + bodyWidth, bodyY + bodyHeight, PANEL2);
+        gui.fill(detailX - 1, detailY - 1, detailX + detailWidth + 1, detailY + detailHeight + 1, BORDER);
+        gui.fill(detailX, detailY, detailX + detailWidth, detailY + detailHeight, PANEL2);
+        int selectedIndex = 0;
+        for (int i = 0; i < TREES.length; i++) if (TREES[i].equals(tree)) selectedIndex = i;
+        gui.fill(navX, navY + selectedIndex * 31, navX + 3, navY + selectedIndex * 31 + 26, ACCENT);
+        drawLegend(gui);
+        drawCards(gui, mouseX, mouseY);
+        drawDetail(gui);
+        if (creative) {
+            boolean compact = panelWidth < 640;
+            int fillWidth = compact ? 72 : 82, resetWidth = compact ? 88 : 96;
+            int buttonsEnd = left + 14 + fillWidth + resetWidth;
+            int closeX = left + panelWidth - 62;
+            if (!compact) {
+                String hint = resetConfirm > 0 ? "再次点击「清空重选」确认" : "右键节点可直接学习/移除";
+                int width = Math.max(20, closeX - buttonsEnd - 24);
+                gui.drawString(font, font.plainSubstrByWidth(hint, width), buttonsEnd + 10,
+                        top + panelHeight - FOOTER + 10, MUTED);
+            }
+        } else {
+            gui.drawString(font, font.plainSubstrByWidth("点击左侧分类切换；本页展示该分支全部节点，无需翻页",
+                    Math.max(20, panelWidth - 80)), left + 10, top + panelHeight - FOOTER + 10, MUTED);
+        }
+        super.render(gui, mouseX, mouseY, partialTick);
+    }
+
+    private void drawLegend(GuiGraphics gui) {
+        if (navHeight < 210) return;
+        int y = navY + navHeight - 62;
+        gui.hLine(navX + 8, navX + navWidth - 8, y, BORDER);
+        gui.drawString(font, "图例", navX + 8, y + 5, MUTED);
+        gui.drawString(font, "✓ 已学会 · ◆ 创造授予", navX + 8, y + 18, GREEN);
+        gui.drawString(font, "+ 可学习 · ✦ 自动生效", navX + 8, y + 31, DIM);
+        gui.drawString(font, "分类共 " + TREES.length + " 个，一页看全", navX + 8, y + 44, DIM);
+    }
+
+    private void drawStats(GuiGraphics gui, JsonObject view) {
+        var mind = ClientState.object(view, "mind");
+        var body = ClientState.object(view, "body");
+        var footwork = ClientState.object(view, "footwork");
+        String points = "心法 " + points(mind) + " · 煅体 " + points(body) + " · 步法 " + points(footwork);
+        String mastery = "成长  剑 " + (int) ClientState.number(view, "rapierKills", 0)
+                + " · 刀 " + (int) ClientState.number(view, "dualHits", 0)
+                + " · 弓 " + (int) ClientState.number(view, "archeryScore", 0);
+        var fw = footworkView();
+        int earned = (int) ClientState.number(fw, "selectionsEarned", 0);
+        int available = (int) ClientState.number(fw, "selectionsAvailable", 0);
+        if (earned > 0) points += " · 选学 " + available + "/" + earned;
+        if (ClientState.bool(view, "trialPassed", false)) mastery += " · 试炼 ✓";
+        if (ClientState.bool(view, "dragonKilled", false)) mastery += " · 末影龙 ✓";
+        gui.drawString(font, font.plainSubstrByWidth(points, panelWidth - 24), left + 12, top + 20, TEXT);
+        gui.drawString(font, font.plainSubstrByWidth(mastery, panelWidth - 24), left + 12, top + 35, MUTED);
+        gui.drawString(font, font.plainSubstrByWidth("分类：西洋剑 / 双刀 / 弓术 / 步法 · 同类分支归组，一页看全",
+                panelWidth - 24), left + 12, top + 49, DIM);
+    }
+
+    private void drawCards(GuiGraphics gui, int mouseX, int mouseY) {
+        gui.enableScissor(bodyX, bodyY, bodyX + bodyWidth, bodyY + bodyHeight);
+        for (Heading heading : headings) {
+            if (heading.y() + 12 < bodyY || heading.y() > bodyY + bodyHeight) continue;
+            gui.drawString(font, heading.caption(), heading.x(), heading.y() + 1, MUTED);
+            gui.hLine(heading.x() + font.width(heading.caption()) + 6, bodyX + bodyWidth - 6, heading.y() + 8, BORDER);
+        }
+        for (Card card : cards) {
+            if (card.y() + card.height() < bodyY || card.y() > bodyY + bodyHeight) continue;
+            JsonObject node = card.node();
+            boolean learned = ClientState.bool(node, "learned", false);
+            boolean available = ClientState.bool(node, "available", false);
+            boolean automatic = ClientState.bool(node, "automatic", false);
+            boolean creativeNode = ClientState.bool(node, "creative", false);
+            boolean chosen = card.id().equals(selected);
+            boolean hover = mouseX >= card.x() && mouseX < card.x() + card.width()
+                    && mouseY >= card.y() && mouseY < card.y() + card.height();
+            int fill = learned ? 0xff1d3327 : creativeNode ? 0xff2a2340 : available ? 0xff1b2b39 : 0xff131c25;
+            int border = learned ? 0xff5c8b69 : creativeNode ? 0xff8d7bc4 : available ? 0xff6d8ca5 : 0xff33424f;
+            if (chosen) { fill = 0xff23342d; border = GOLD; } else if (hover) fill = 0xff223140;
+            gui.fill(card.x(), card.y(), card.x() + card.width(), card.y() + card.height(), fill);
+            gui.fill(card.x(), card.y(), card.x() + card.width(), card.y() + 1, border);
+            gui.fill(card.x(), card.y() + card.height() - 1, card.x() + card.width(), card.y() + card.height(), border);
+            gui.fill(card.x(), card.y(), card.x() + 1, card.y() + card.height(), border);
+            gui.fill(card.x() + card.width() - 1, card.y(), card.x() + card.width(), card.y() + card.height(), border);
+            String marker = learned ? (creativeNode ? "◆ " : "✓ ") : automatic ? (available ? "✦ " : "· ") : available ? "+ " : "· ";
+            int color = learned ? GREEN : creativeNode ? PURPLE : available ? TEXT : DIM;
+            String label = marker + ClientState.text(node, "label", card.id());
+            gui.drawString(font, font.plainSubstrByWidth(label, card.width() - 8), card.x() + 5, card.y() + 7, color);
+        }
+        gui.disableScissor();
+        if (contentHeight() > bodyHeight) {
+            int thumb = Math.max(12, bodyHeight * bodyHeight / contentHeight());
+            int offset = (bodyHeight - thumb) * contentScroll / Math.max(1, contentHeight() - bodyHeight);
+            gui.fill(bodyX + bodyWidth - 2, bodyY, bodyX + bodyWidth, bodyY + bodyHeight, 0xff233442);
+            gui.fill(bodyX + bodyWidth - 2, bodyY + offset, bodyX + bodyWidth, bodyY + offset + thumb, 0xff8fae82);
+        }
+    }
+
+    private void drawDetail(GuiGraphics gui) {
+        JsonObject node = chosen();
+        gui.drawString(font, font.plainSubstrByWidth(ClientState.text(node, "label", "技能详情"), detailWidth - 16),
+                detailX + 8, detailY + 7, GOLD);
+        List<Line> lines = detail();
+        int top = detailY + 22;
+        int bottom = detailY + detailHeight - 28;
+        detailScroll = Math.clamp(detailScroll, 0, Math.max(0, lines.size() * 11 - (bottom - top)));
+        gui.enableScissor(detailX + 4, top, detailX + detailWidth - 4, bottom);
+        int y = top - detailScroll;
+        for (Line line : lines) {
+            if (y + 11 >= top && y <= bottom) gui.drawString(font, line.text(), detailX + 8, y, line.color());
+            y += 11;
+        }
+        gui.disableScissor();
+        if (lines.size() * 11 > bottom - top) {
+            int thumb = Math.max(10, (bottom - top) * (bottom - top) / (lines.size() * 11));
+            int offset = ((bottom - top) - thumb) * detailScroll / Math.max(1, lines.size() * 11 - (bottom - top));
+            gui.fill(detailX + detailWidth - 4, top, detailX + detailWidth - 2, bottom, 0xff233442);
+            gui.fill(detailX + detailWidth - 4, top + offset, detailX + detailWidth - 2, top + offset + thumb, 0xff8fae82);
+        }
+    }
+
+    private static String points(JsonObject points) {
+        return (int) ClientState.number(points, "available", 0) + "/" + (int) ClientState.number(points, "total", 0);
+    }
+
+    @Override public boolean isPauseScreen() { return false; }
 }
