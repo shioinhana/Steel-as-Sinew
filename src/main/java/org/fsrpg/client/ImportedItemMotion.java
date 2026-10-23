@@ -7,17 +7,19 @@ public final class ImportedItemMotion {
     public enum Kind { NONE, POUCH, COIN, BADGE }
 
     public record Settings(double pouchSeconds, double coinSeconds, double badgeSeconds,
-                           double tossHeight, double heftHeight) {
-        public static final Settings DEFAULT = new Settings(1.0, 1.05, .35, .18, .10);
+                           double tossHeight, double heftHeight, double pouchTossSeconds, double pouchTossHeight) {
+        public static final Settings DEFAULT = new Settings(1.0, 1.05, .35, .18, .10, .70, .22);
         public Settings {
             bounded(pouchSeconds, .5, 2, "pouch seconds");
             bounded(coinSeconds, .45, 2, "coin seconds");
             bounded(badgeSeconds, .15, 1, "badge seconds");
             bounded(tossHeight, .04, .3, "toss height");
             bounded(heftHeight, 0, .18, "heft height");
+            bounded(pouchTossSeconds, .35, 1.5, "pouch toss seconds");
+            bounded(pouchTossHeight, .06, .4, "pouch toss height");
         }
         public double duration(Kind kind) {
-            return switch (kind) { case POUCH -> pouchSeconds; case COIN -> coinSeconds; case BADGE -> badgeSeconds; default -> 0; };
+            return switch (kind) { case POUCH -> pouchTossSeconds + 2 * pouchSeconds; case COIN -> coinSeconds; case BADGE -> badgeSeconds; default -> 0; };
         }
     }
 
@@ -103,8 +105,21 @@ public final class ImportedItemMotion {
         double draw = smooth(phase / (kind == Kind.BADGE ? 1 : .22));
         double arm = 0, tilt = 0, lift = 0, spin = 0;
         if (kind == Kind.POUCH) {
-            // Weight first loads the hand, then accelerates upward, drops into
-            // a softer catch, and settles. Each boundary has zero velocity.
+            draw = smooth(elapsed / (settings.pouchTossSeconds * .22));
+            if (elapsed < settings.pouchTossSeconds) {
+                // The initial toss is the only intentional separation. The hand
+                // gives a small push, waits beneath the flight, then cushions it.
+                double toss = elapsed / settings.pouchTossSeconds;
+                lift = settings.pouchTossHeight * bump((toss - .12) / .68);
+                arm = .30 * settings.heftHeight * bump(toss / .36)
+                        - .30 * settings.heftHeight * bump((toss - .72) / .28);
+                tilt = 3 * bump(toss / .36) - 3 * bump((toss - .72) / .28);
+                return new Pose(arm, tilt, lift, 0, draw, elapsed, false);
+            }
+            // Two full weight checks follow the landing. Each completes its
+            // load, upward heft and cushioned return before the next begins.
+            double heftTime = elapsed - settings.pouchTossSeconds;
+            phase = (heftTime % settings.pouchSeconds) / settings.pouchSeconds;
             if (phase < .22) {
                 arm = blend(0, -.4, phase / .22); tilt = blend(0, -6, phase / .22);
             } else if (phase < .50) {

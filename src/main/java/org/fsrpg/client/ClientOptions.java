@@ -28,7 +28,7 @@ final class ClientOptions {
     static final ModConfigSpec.BooleanValue IMPORTED_ITEM_HANDS, IMPORTED_ITEM_EQUIP_ANIMATIONS;
     static final ModConfigSpec.DoubleValue IMPORTED_ITEM_SCALE, IMPORTED_POUCH_SECONDS, IMPORTED_COIN_SECONDS,
             IMPORTED_BADGE_SECONDS, IMPORTED_COIN_TOSS_HEIGHT, IMPORTED_POUCH_HEFT_HEIGHT,
-            IMPORTED_POUCH_SCALE, IMPORTED_POUCH_RAISE;
+            IMPORTED_POUCH_SCALE, IMPORTED_POUCH_RAISE, IMPORTED_POUCH_TOSS_SECONDS, IMPORTED_POUCH_TOSS_HEIGHT;
     static {
         var builder = new ModConfigSpec.Builder();
         RPG_HUD = builder.comment("Use the material HUD: health/experience left, spirit/stamina right of the vanilla hotbar. Disable to restore vanilla health and experience.")
@@ -116,7 +116,9 @@ final class ClientOptions {
         IMPORTED_ITEM_SCALE=builder.comment("Scale of imported first-person objects on the native palm. Smaller values obstruct less of the view; skin arm size stays vanilla.").defineInRange("importedItemScale",.65,.4,.85);
         IMPORTED_POUCH_SCALE=builder.comment("Independent first-person pouch scale: larger than coins/badges so its mouth, body and weight remain clear.").defineInRange("importedPouchScale",1.02,.7,1.3);
         IMPORTED_POUCH_RAISE=builder.comment("Extra raise of the pouch and supporting native skin hand together, in blocks, relative to the palm-support baseline. Existing custom values are preserved.").defineInRange("importedPouchRaise",.14,0,.3);
-        IMPORTED_POUCH_SECONDS=builder.comment("One-shot pouch load, lift, fall and cushioned catch duration, in seconds.").defineInRange("importedPouchEquipSeconds",1.0,.5,2);
+        IMPORTED_POUCH_SECONDS=builder.comment("Duration of each of the two pouch hefts after its initial toss and landing, in seconds. Existing custom timing is retained for each heft.").defineInRange("importedPouchEquipSeconds",1.0,.5,2);
+        IMPORTED_POUCH_TOSS_SECONDS=builder.comment("Initial pouch toss and cushioned landing duration before the two hefts, in seconds.").defineInRange("importedPouchTossSeconds",.70,.35,1.5);
+        IMPORTED_POUCH_TOSS_HEIGHT=builder.comment("Initial pouch flight apex above the supporting hand, in blocks. Cosmetic only.").defineInRange("importedPouchTossHeight",.22,.06,.4);
         IMPORTED_COIN_SECONDS=builder.comment("One-shot coin toss/catch duration, in seconds.").defineInRange("importedCoinEquipSeconds",1.05,.45,2);
         IMPORTED_BADGE_SECONDS=builder.comment("Simple badge draw duration, in seconds.").defineInRange("importedBadgeEquipSeconds",.35,.15,1);
         IMPORTED_COIN_TOSS_HEIGHT=builder.comment("Coin flight height above the palm, in blocks. Cosmetic only.").defineInRange("importedCoinTossHeight",.18,.04,.3);

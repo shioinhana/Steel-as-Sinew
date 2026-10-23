@@ -46,6 +46,12 @@ final class ImportedItemHandsReview {
     private static final java.lang.reflect.Method LOCAL_INTENT = localIntentMethod();
     private static final String[] HANDS = {"mainHand", "offHand"};
     private static final List<String> MOVING_ITEMS = List.of("money_pouch", "gold_coin", "white_adventurer_badge");
+    // Preserve the existing regression sequence while extending only the three pouch cases.
+    private static final int STATIC_POUCH_EXTRA = 30, MOTION_POUCH_EXTRA = 22, SINGLE_POUCH_EXTRA = 30;
+    private static final int MOTION_START = 750 + STATIC_POUCH_EXTRA;
+    private static final int SINGLE_START = 940 + STATIC_POUCH_EXTRA + MOTION_POUCH_EXTRA;
+    private static final int FINAL_STAGE_OFFSET = STATIC_POUCH_EXTRA + MOTION_POUCH_EXTRA + SINGLE_POUCH_EXTRA;
+    private static final double POUCH_TOSS_SECONDS = .70, POUCH_HEFT_SECONDS = 1.0;
     private final Path root = Path.of(System.getProperty("fsrpg.smokeEvidence")).toAbsolutePath().normalize();
     private final RenderFrameCapture movie = new RenderFrameCapture(root);
     private final JsonArray checks = new JsonArray(), scenes = new JsonArray(), screenshots = new JsonArray();
@@ -53,15 +59,16 @@ final class ImportedItemHandsReview {
     private volatile boolean serverReady;
     private volatile Throwable failure;
     private boolean initialized, done, recording, oldPause, oldVsync, oldHidden, oldActive, oldRightSleeve, oldLeftSleeve, oldCombatShoulder;
-    private boolean checkLegacyFrame, staleSwitchPending, pouchPeakShot;
+    private boolean checkLegacyFrame, staleSwitchPending;
+    private int pouchKeyframeMask;
     private net.neoforged.neoforge.common.ModConfigSpec.BooleanValue combatShoulder;
     private int warmup, ticks, nativeFrames, oldScale, oldFps, oldDistance, oldFov;
     private int vanillaEvents, vanillaCanceled, outgoingEvents, outgoingFallback, staleIntentFrames;
     private long outgoingNativeCount, legacyBeforeFrame, legacyBeforeCase;
     private final java.util.Set<String> pouchSupportArms = new java.util.HashSet<>();
-    private int pouchSupportSamples;
+    private int pouchSupportSamples, pouchContactSamples, pouchFlightSamples;
     private double maximumPouchContactDistance, maximumPouchSideOffset, minimumPouchCenterAbovePalm = Double.POSITIVE_INFINITY,
-            minimumPouchUpY = Double.POSITIVE_INFINITY;
+            minimumPouchUpY = Double.POSITIVE_INFINITY, maximumPouchFlightGap, maximumPouchFlightResidual;
     private long started;
     private String capture;
     private JsonObject beforeStatic, settledStatic, contextBaseline, vanillaBaseline, movingSettled, invisibleBaseline;
@@ -134,7 +141,7 @@ final class ImportedItemHandsReview {
         Files.createDirectories(root.resolve("screenshots")); assertMonitor();
         var world = game.getSingleplayerServer().getWorldPath(LevelResource.ROOT).toAbsolutePath().normalize();
         String named = System.getProperty("fsrpg.importedItemHandsWorld", "");
-        check(named.startsWith("FSRPG Imported Item Hands Review ") && named.equals(world.getFileName().toString())
+        check((named.startsWith("FSRPG Imported Item Hands Review ") || named.startsWith("FSRPG Pouch Sequence Review ")) && named.equals(world.getFileName().toString())
                         && Files.isRegularFile(world.resolve(".fsrpg-imported-item-hands-test-world")),
                 "Only the explicitly marked copied imported-hand test world is modified");
         check(ImportedItems.IDS.size() == 10, "Ten imported resource items are available to the hand review");
@@ -206,7 +213,8 @@ final class ImportedItemHandsReview {
             check(number(values, "lastItemScale") >= .95, "Pouch uses its enlarged native presentation scale");
             check(number(values, "lastArmRaise") >= .10, "Pouch grip is raised into a readable lower-screen position");
             verifyPouchSupport(values);
-            check(true, "Actual submitted pouch bottom rests on the native palm with its body above the support point");
+            verifyNaturalPouchArm(values);
+            check(true, "Actual submitted pouch bottom rests above the naturally slanted native hand after toss and two hefts");
         }
     }
 
@@ -226,22 +234,44 @@ final class ImportedItemHandsReview {
         double dx = base[0] - palm[0], dy = base[1] - palm[1], dz = base[2] - palm[2];
         double distance = Math.sqrt(dx * dx + dy * dy + dz * dz), lateral = Math.abs(dx);
         double upLength = Math.sqrt(up[0] * up[0] + up[1] * up[1] + up[2] * up[2]);
-        double bodyHeight = (center[0] - palm[0]) * up[0] + (center[1] - palm[1]) * up[1] + (center[2] - palm[2]) * up[2];
-        if (distance > .00002 || lateral > .00002 || Math.abs(upLength - 1) > .001)
-            throw new AssertionError("Actual pouch bottom is detached from the palm or has invalid orientation: distance=" + distance + ", side=" + lateral + ", upLength=" + upLength);
+        double bodyHeight = (center[0] - base[0]) * up[0] + (center[1] - base[1]) * up[1] + (center[2] - base[2]) * up[2];
+        double lift = number(values, "lastPouchFlightLift"), gap = dx * up[0] + dy * up[1] + dz * up[2];
+        double rx = dx - up[0] * lift, ry = dy - up[1] * lift, rz = dz - up[2] * lift;
+        double residual = Math.sqrt(rx * rx + ry * ry + rz * rz);
+        boolean flying = lift > .00001;
+        if (!Double.isFinite(lift) || lift < 0 || residual > .00002 || Math.abs(gap - lift) > .00002 || Math.abs(upLength - 1) > .001)
+            throw new AssertionError("Actual pouch separation must equal its intentional flight above the native hand: gap=" + gap + ", lift=" + lift + ", residual=" + residual);
+        if (values.get("lastPouchInFlight").getAsBoolean() != flying || Math.abs(number(values, "lastPouchFlightGap") - gap) > .00002)
+            throw new AssertionError("Pouch flight diagnostics disagree with actual submitted bottom/support positions");
+        if (!flying && distance > .00003) throw new AssertionError("Pouch did not return to its actual supporting hand: " + distance);
         if (!(bodyHeight > .025 && center[1] > palm[1] && up[1] > .8))
             throw new AssertionError("Pouch body must stand above its palm support, not hang from its side or top: height=" + bodyHeight + ", upY=" + up[1]);
-        if (Math.abs(center[0] - palm[0]) > (center[1] - palm[1]) * .5 + .005)
+        if (Math.abs(center[0] - base[0]) > (center[1] - base[1]) * .5 + .005)
             throw new AssertionError("Pouch body is displaced sideways from the supporting palm");
         if (Math.abs(number(values, "lastPouchContactDistance") - distance) > .00002
                 || Math.abs(Math.abs(number(values, "lastPouchSideOffset")) - lateral) > .00002)
             throw new AssertionError("Pouch contact diagnostic does not match independently recomputed submitted points");
-        if (!text(values, "lastPouchSupportMode").equals("base_on_palm")) throw new AssertionError("Pouch still uses the side-hanging support mode");
+        if (!text(values, "lastPouchSupportMode").equals("base_on_native_edge")) throw new AssertionError("Pouch must use the actual naturally slanted native hand support");
         String arm = text(values, "lastPouchArm");
         if (!arm.equals("LEFT") && !arm.equals("RIGHT")) throw new AssertionError("Unknown pouch support arm " + arm);
         pouchSupportArms.add(arm); pouchSupportSamples++;
-        maximumPouchContactDistance = Math.max(maximumPouchContactDistance, distance); maximumPouchSideOffset = Math.max(maximumPouchSideOffset, lateral);
+        if (flying) pouchFlightSamples++;
+        else {
+            pouchContactSamples++; maximumPouchContactDistance = Math.max(maximumPouchContactDistance, distance);
+            maximumPouchSideOffset = Math.max(maximumPouchSideOffset, lateral);
+        }
+        maximumPouchFlightGap = Math.max(maximumPouchFlightGap, gap); maximumPouchFlightResidual = Math.max(maximumPouchFlightResidual, residual);
         minimumPouchCenterAbovePalm = Math.min(minimumPouchCenterAbovePalm, bodyHeight); minimumPouchUpY = Math.min(minimumPouchUpY, up[1]);
+    }
+
+    private void verifyNaturalPouchArm(JsonObject values) {
+        var normal = point(values, "lastPouchSupportNormal"); var direction = point(values, "lastPouchArmDirection");
+        double alignment = normal[0] * direction[0] + normal[1] * direction[1] + normal[2] * direction[2];
+        check(normal[1] > .25 && normal[1] < .8 && Math.abs(normal[0]) > .15 && Math.abs(normal[2]) > .35
+                        && alignment > .999 && alignment < 1.001,
+                "Actual resting skin arm retains its native diagonal angle instead of a horizontalized supporting fist");
+        check(!values.get("lastPouchInFlight").getAsBoolean() && number(values, "lastPouchContactDistance") < .00002,
+                "After the complete sequence the pouch bottom is back on the native hand");
     }
 
     private void sameSerial(JsonObject first, JsonObject second, String note) {
@@ -258,16 +288,19 @@ final class ImportedItemHandsReview {
     }
 
     private void staticItems(Minecraft game, int elapsed) {
-        int index = elapsed / 50, local = elapsed % 50; String name = ImportedItems.IDS.get(index);
+        int extra = elapsed < 50 + STATIC_POUCH_EXTRA ? STATIC_POUCH_EXTRA : 0;
+        int adjusted = elapsed - (extra == 0 ? STATIC_POUCH_EXTRA : 0);
+        int index = extra == 0 ? adjusted / 50 : 0, local = extra == 0 ? adjusted % 50 : elapsed;
+        String name = ImportedItems.IDS.get(index);
         if (local == 0) { beforeStatic = diagnostic(); equip(name, 1); }
-        if (local == 35) {
+        if (local == 35 + extra) {
             var values = diagnostic(); verifySettled(name, values, HumanoidArm.RIGHT);
             for (var key : List.of("armSubmissions", "itemSubmissions", "mainHandSubmissions", "offHandSubmissions"))
                 check(count(values, key) > count(beforeStatic, key) + 10, "Repeated actual native arm/item submissions " + name + "/" + key);
             settledStatic = values; scene("static-" + name, values); request("static-" + index + "-" + name + "-both-hands");
         }
-        if (local == 40) equip(name, item(name).getMaxStackSize() > 1 ? 2 : 1);
-        if (local == 49) {
+        if (local == 40 + extra) equip(name, item(name).getMaxStackSize() > 1 ? 2 : 1);
+        if (local == 49 + extra) {
             var values = diagnostic();
             sameSerial(settledStatic, values, "Idle or a fresh count-only stack does not replay equip " + name);
             check(game.player.getMainHandItem().getCount() == (item(name).getMaxStackSize() > 1 ? 2 : 1), "Count-only replacement reaches the real client " + name);
@@ -288,21 +321,24 @@ final class ImportedItemHandsReview {
     }
 
     private void movingItems(int elapsed) throws Exception {
-        int index = elapsed / 60, local = elapsed % 60; String name = MOVING_ITEMS.get(index);
-        if (local == 0) { equip(null, 1); movingSettled = null; if (name.equals("money_pouch")) pouchPeakShot = false; }
+        boolean pouch = elapsed < 60 + MOTION_POUCH_EXTRA;
+        int adjusted = elapsed - (pouch ? 0 : MOTION_POUCH_EXTRA);
+        int index = pouch ? 0 : adjusted / 60, local = pouch ? elapsed : adjusted % 60;
+        String name = MOVING_ITEMS.get(index);
+        if (local == 0) { equip(null, 1); movingSettled = null; if (pouch) pouchKeyframeMask = 0; }
         if (local == 4) {
             movie.start("equip-" + name.replace('_', '-'), "actual first-person both-hand equip: " + name, this::captureObservation);
             recording = true;
         }
         if (local == 8) equip(name, 1);
         if (local == 21 && !name.equals("money_pouch")) request("motion-" + name + "-active");
-        if (local == 44) {
+        if (local == (pouch ? 70 : 44)) {
             movingSettled = diagnostic(); verifySettled(name, movingSettled, HumanoidArm.RIGHT);
             scene("equip-settled-" + name, movingSettled); request("motion-" + name + "-settled");
         }
-        if (local == 47) equip(name, item(name).getMaxStackSize() > 1 ? 3 : 1);
-        if (local == 55) sameSerial(movingSettled, diagnostic(), "Recorded settled equip stays still after stack replacement " + name);
-        if (local == 59) { movie.stop(); recording = false; }
+        if (local == (pouch ? 73 : 47)) equip(name, item(name).getMaxStackSize() > 1 ? 3 : 1);
+        if (local == (pouch ? 79 : 55)) sameSerial(movingSettled, diagnostic(), "Recorded settled equip stays still after stack replacement " + name);
+        if (local == 59 + (pouch ? MOTION_POUCH_EXTRA : 0)) { movie.stop(); recording = false; }
     }
 
     private void tick(ClientTickEvent.Post event) {
@@ -317,91 +353,95 @@ final class ImportedItemHandsReview {
             if (ticks == 20) { grid = new ImportedAssetsScreen(); game.setScreen(grid); }
             if (ticks == 40) { check(grid.drawnFrames() > 10 && grid.observations.size() == 10, "All ten original GUI models remain loaded and visible"); originalGuiModels = grid.observations.deepCopy(); request("00-native-gui-models-unchanged"); }
             if (ticks == 50) game.setScreen(null);
-            if (ticks >= 60 && ticks < 560) staticItems(game, ticks - 60);
-            if (ticks == 570) { dominant(HumanoidArm.LEFT); equip("white_adventurer_badge", 1); }
-            if (ticks == 610) { var values = diagnostic(); verifySettled("white_adventurer_badge", values, HumanoidArm.LEFT); scene("left-dominant-both-hands", values); request("11-left-dominant-native-arms"); }
-            if (ticks == 625) { contextBaseline = diagnostic(); game.options.setCameraType(CameraType.THIRD_PERSON_FRONT); }
-            if (ticks == 645) { sameSubmissions(contextBaseline, diagnostic(), "Third person never invokes the custom first-person presentation"); request("12-third-person-unchanged"); }
-            if (ticks == 650) { grid = new ImportedAssetsScreen(); game.setScreen(grid); contextBaseline = diagnostic(); }
-            if (ticks == 670) {
+            if (ticks >= 60 && ticks < 590) staticItems(game, ticks - 60);
+            if (ticks == 600) { dominant(HumanoidArm.LEFT); equip("white_adventurer_badge", 1); }
+            if (ticks == 640) { var values = diagnostic(); verifySettled("white_adventurer_badge", values, HumanoidArm.LEFT); scene("left-dominant-both-hands", values); request("11-left-dominant-native-arms"); }
+            if (ticks == 655) { contextBaseline = diagnostic(); game.options.setCameraType(CameraType.THIRD_PERSON_FRONT); }
+            if (ticks == 675) { sameSubmissions(contextBaseline, diagnostic(), "Third person never invokes the custom first-person presentation"); request("12-third-person-unchanged"); }
+            if (ticks == 680) { grid = new ImportedAssetsScreen(); game.setScreen(grid); contextBaseline = diagnostic(); }
+            if (ticks == 700) {
                 check(grid.drawnFrames() > 10, "GUI continues rendering after equip animations");
                 check(grid.observations.equals(originalGuiModels), "GUI model IDs, textures and native bounds stay identical after first-person presentation");
             }
-            if (ticks == 675) {
+            if (ticks == 705) {
                 game.setScreen(null); game.options.setCameraType(CameraType.FIRST_PERSON); dominant(HumanoidArm.RIGHT);
                 server(player -> { player.setItemSlot(EquipmentSlot.MAINHAND, new ItemStack(Items.APPLE)); player.setItemSlot(EquipmentSlot.OFFHAND, new ItemStack(Items.DIAMOND_SWORD)); });
             }
-            if (ticks == 700) vanillaBaseline = diagnostic();
-            if (ticks == 725) {
+            if (ticks == 730) vanillaBaseline = diagnostic();
+            if (ticks == 755) {
                 sameSubmissions(vanillaBaseline, diagnostic(), "Vanilla items use their original rendering without imported-arm submissions");
                 check(vanillaEvents > 30 && vanillaCanceled == 0, "Actual vanilla RenderHandEvents remain uncanceled after switching away");
                 request("13-vanilla-fallback"); scene("vanilla-fallback", diagnostic());
             }
-            if (ticks >= 750 && ticks < 930) movingItems(ticks - 750);
-            if (ticks >= 940 && ticks < 1090) {
-                int index = (ticks - 940) / 50, local = (ticks - 940) % 50; String name = MOVING_ITEMS.get(index);
+            if (ticks >= 780 && ticks < 982) movingItems(ticks - MOTION_START);
+            if (ticks >= 992 && ticks < 1172) {
+                int elapsed = ticks - SINGLE_START;
+                boolean pouch = elapsed < 50 + SINGLE_POUCH_EXTRA;
+                int adjusted = elapsed - (pouch ? 0 : SINGLE_POUCH_EXTRA);
+                int index = pouch ? 0 : adjusted / 50, local = pouch ? elapsed : adjusted % 50;
+                String name = MOVING_ITEMS.get(index);
                 if (local == 0) server(player -> { player.setItemSlot(EquipmentSlot.MAINHAND, item(name)); player.setItemSlot(EquipmentSlot.OFFHAND, ItemStack.EMPTY); });
-                if (local == 40) {
+                if (local == 40 + (pouch ? SINGLE_POUCH_EXTRA : 0)) {
                     var values = diagnostic();
                     check(id(game.player.getMainHandItem()).equals("fsrpg:" + name) && game.player.getOffhandItem().isEmpty(), "Actual single-main-hand view " + name);
                     check(text(hand(values, "mainHand"), "itemId").equals("fsrpg:" + name) && hand(values, "mainHand").get("settled").getAsBoolean(), "Single-main-hand object settles on its native hand " + name);
                     if (name.equals("money_pouch")) {
-                        verifyPouchSupport(values);
+                        verifyPouchSupport(values); verifyNaturalPouchArm(values);
                         check(text(values, "lastPouchArm").equals("RIGHT"), "Single-main-hand pouch rests on the actual right palm");
                     }
                     scene("single-main-hand-" + name, values); request("single-main-hand-" + name);
                 }
             }
-            if (ticks == 1090) { game.options.setModelPart(PlayerModelPart.RIGHT_SLEEVE, false); game.options.broadcastOptions(); }
-            if (ticks == 1110) {
+            if (ticks == 1172) { game.options.setModelPart(PlayerModelPart.RIGHT_SLEEVE, false); game.options.broadcastOptions(); }
+            if (ticks == 1192) {
                 check(!game.player.isModelPartShown(PlayerModelPart.RIGHT_SLEEVE), "Sleeve visibility change reaches the real player");
                 check(!diagnostic().get("nativeArmSleeveVisible").getAsBoolean(), "Native renderer honors the hidden sleeve layer");
                 scene("native-sleeve-hidden", diagnostic()); request("native-sleeve-hidden");
             }
-            if (ticks == 1115) { game.options.setModelPart(PlayerModelPart.RIGHT_SLEEVE, true); game.options.broadcastOptions(); }
-            if (ticks == 1130) server(player -> player.setInvisible(true));
-            if (ticks == 1145) { check(game.player.isInvisible(), "Invisible state is synchronized from the server"); invisibleBaseline = diagnostic(); }
-            if (ticks == 1165) {
+            if (ticks == 1197) { game.options.setModelPart(PlayerModelPart.RIGHT_SLEEVE, true); game.options.broadcastOptions(); }
+            if (ticks == 1212) server(player -> player.setInvisible(true));
+            if (ticks == 1227) { check(game.player.isInvisible(), "Invisible state is synchronized from the server"); invisibleBaseline = diagnostic(); }
+            if (ticks == 1247) {
                 var values = diagnostic();
                 check(count(values, "armSubmissions") == count(invisibleBaseline, "armSubmissions"), "Invisible player never submits a native skin arm");
                 check(count(values, "itemSubmissions") > count(invisibleBaseline, "itemSubmissions") + 10, "Invisible player's official held item continues rendering");
                 scene("invisible-item-without-arm", values); request("invisible-item-without-arm");
             }
-            if (ticks == 1170) server(player -> player.setInvisible(false));
-            if (ticks == 1200) {
+            if (ticks == 1252) server(player -> player.setInvisible(false));
+            if (ticks == 1282) {
                 check(!game.player.isInvisible() && count(diagnostic(), "armSubmissions") > count(invisibleBaseline, "armSubmissions") + 10, "Native arms resume after invisibility ends");
                 CombatCamera.reset(); game.options.setCameraType(CameraType.FIRST_PERSON); game.player.getInventory().setSelectedSlot(0);
                 server(this::equipLegacyWeapon);
             }
-            if (ticks == 1230) {
+            if (ticks == 1312) {
                 var intent = localIntent();
                 check(ClientState.drawn() && intent != null && intent.model().startsWith("legacy_"), "Actual server-drawn legacy weapon reaches first-person presentation");
                 check(game.options.getCameraType().isFirstPerson(), "Legacy compatibility check remains in first person with automatic shoulder camera disabled");
                 legacyBeforeCase = LegacyFirstPersonAnimations.samples(); contextBaseline = diagnostic();
             }
-            if (ticks == 1250) {
+            if (ticks == 1332) {
                 check(LegacyFirstPersonAnimations.samples() > legacyBeforeCase + 10, "Legacy weapon's original authored arm pair continues rendering");
                 sameSubmissions(contextBaseline, diagnostic(), "Legacy weapon plus resource offhand does not add a second native arm pair");
                 request("legacy-weapon-before-resource-switch"); scene("legacy-weapon-with-resource-offhand", diagnostic());
             }
-            if (ticks == 1255) staleSwitchPending = true;
-            if (ticks == 1260) server(player -> player.getInventory().setSelectedSlot(1));
-            if (ticks == 1300) {
+            if (ticks == 1337) staleSwitchPending = true;
+            if (ticks == 1342) server(player -> player.getInventory().setSelectedSlot(1));
+            if (ticks == 1382) {
                 verifySettled("white_adventurer_badge", diagnostic(), HumanoidArm.RIGHT);
                 check(staleIntentFrames > 0, "Real predicted hotbar switch exercised frames with an outgoing legacy intent");
                 request("resource-after-live-legacy-switch"); scene("resource-owns-stale-legacy-intent", diagnostic());
             }
-            if (ticks == 1310) { game.player.getInventory().setSelectedSlot(0); server(this::equipLegacyWeapon); }
-            if (ticks == 1340) {
+            if (ticks == 1392) { game.player.getInventory().setSelectedSlot(0); server(this::equipLegacyWeapon); }
+            if (ticks == 1422) {
                 check(ClientState.drawn() && game.options.getCameraType().isFirstPerson(), "Switching back restores the drawn weapon in first person");
                 legacyBeforeCase = LegacyFirstPersonAnimations.samples(); contextBaseline = diagnostic();
             }
-            if (ticks == 1360) {
+            if (ticks == 1442) {
                 check(LegacyFirstPersonAnimations.samples() > legacyBeforeCase + 10, "Returning from a resource resumes the original legacy animation renderer");
                 sameSubmissions(contextBaseline, diagnostic(), "Returning weapon does not duplicate the imported native arms");
                 request("legacy-weapon-after-resource-switch"); scene("legacy-weapon-restored", diagnostic());
             }
-            if (ticks >= 1380 && capture == null && pendingShots.get() == 0 && movie.finish()) {
+            if (ticks >= 1462 && capture == null && pendingShots.get() == 0 && movie.finish()) {
                 validateCaptures(); finish(null);
             }
         } catch (Throwable error) { finish(error); }
@@ -410,13 +450,13 @@ final class ImportedItemHandsReview {
     private void observeHand(RenderHandEvent event) {
         if (!initialized || done) return;
         var game = Minecraft.getInstance();
-        if (ticks >= 60 && ticks <= 695 && ImportedItemPresentation.supports(event.getItemStack())
+        if (ticks >= 60 && ticks <= 725 && ImportedItemPresentation.supports(event.getItemStack())
                 && !ItemStack.isSameItemSameComponents(event.getItemStack(), game.player.getItemInHand(event.getHand()))) {
             outgoingEvents++; var values = diagnostic(); long submitted = count(values, "outgoingItemSubmissions");
             if (!event.isCanceled() || !values.get("lastOutgoing").getAsBoolean() || submitted <= outgoingNativeCount) outgoingFallback++;
             outgoingNativeCount = submitted;
         }
-        if (ticks >= 700 && ticks <= 725 && (event.getItemStack().is(Items.APPLE) || event.getItemStack().is(Items.DIAMOND_SWORD))) {
+        if (ticks >= 730 && ticks <= 755 && (event.getItemStack().is(Items.APPLE) || event.getItemStack().is(Items.DIAMOND_SWORD))) {
             vanillaEvents++; if (event.isCanceled()) vanillaCanceled++;
         }
     }
@@ -437,7 +477,7 @@ final class ImportedItemHandsReview {
             // This is the same local prediction as choosing a real hotbar slot; normal client ticks synchronize it.
             game.player.getInventory().setSelectedSlot(1); staleSwitchPending = false;
         }
-        checkLegacyFrame = ticks >= 1200 && ImportedItemPresentation.supports(game.player.getMainHandItem());
+        checkLegacyFrame = ticks >= 1282 && ImportedItemPresentation.supports(game.player.getMainHandItem());
         if (checkLegacyFrame) {
             legacyBeforeFrame = LegacyFirstPersonAnimations.samples();
             var intent = localIntent();
@@ -482,7 +522,7 @@ final class ImportedItemHandsReview {
                             verifyPouchSupport(nativeHands); pouchContactFrames++;
                             String supportArm = text(nativeHands, "lastPouchArm");
                             var supportState = text(main, "arm").equals(supportArm) ? main : hand(nativeHands, "offHand");
-                            double elapsed = number(supportState, "equipSeconds");
+                            double elapsed = number(supportState, "equipSeconds") - POUCH_TOSS_SECONDS;
                             if (elapsed >= .15 && elapsed <= 1.0) {
                                 // Use the submitted camera-space point, after every wrist/pivot transform.
                                 // The first .15 s is excluded because vanilla is still raising the incoming hand.
@@ -509,7 +549,8 @@ final class ImportedItemHandsReview {
                 check(pouchDipAt >= 0 && pouchDipAt < pouchHeftAt && pouchHeftAt < pouchReturnAt,
                         "Actual pouch frames show anticipation, upward heft and downward return in order");
                 check(maximumArmTilt > 5 && minimumArmTilt < -4, "Pouch and attached native arm tilt with the weighted heft");
-                check(pouchPeakShot, "Pouch active screenshot is captured from an actual raised-hand frame");
+                check(pouchKeyframeMask == 15, "Pouch toss apex, landing and both heft apex screenshots are actual rendered frames");
+                verifyPouchSequence(clip);
                 check(pouchContactFrames >= 30, "Actual pouch bottom remains on the native palm throughout at least thirty real load/heft/return frames");
                 check(pouchSupportMotionFrames >= 20 && supportMaxY - supportMinY > .10,
                         "Actual submitted palm and bag bottom travel more than ten centimetres after the incoming-hand raise");
@@ -529,9 +570,57 @@ final class ImportedItemHandsReview {
         check(totalSeconds <= 10, "Dynamic recording is bounded to ten source seconds total");
         check(pouchSupportArms.containsAll(java.util.Set.of("LEFT", "RIGHT")), "Actual submitted bag-bottom support is verified on both native palms");
         check(outgoingEvents > 0 && outgoingFallback == 0, "Every real outgoing cached resource keeps its native arm/item presentation until vanilla replacement");
-        check(screenshots.size() == 28, "GUI, ten both-hand items, handedness, third-person, fallback, six motion keyframes, three single-hand views, sleeve, invisible and three legacy-switch views captured");
+        check(screenshots.size() == 31, "GUI, ten both-hand items, handedness, third-person, fallback, nine motion keyframes, three single-hand views, sleeve, invisible and three legacy-switch views captured");
         for (var screenshot : screenshots) check(Files.size(root.resolve(text(screenshot.getAsJsonObject(), "file"))) > 1000,
                 "Native screenshot written " + text(screenshot.getAsJsonObject(), "file"));
+    }
+
+    /** Read actual submitted hand and bag positions, not only the authored curve. */
+    private void verifyPouchSequence(JsonObject clip) {
+        double flightAt = -1, landingAt = -1, maximumGap = 0;
+        int flightFrames = 0, contactFrames = 0;
+        double[] dip = {Double.POSITIVE_INFINITY, Double.POSITIVE_INFINITY}, peak = {Double.NEGATIVE_INFINITY, Double.NEGATIVE_INFINITY},
+                cushion = {Double.POSITIVE_INFINITY, Double.POSITIVE_INFINITY}, dipAt = {-1, -1}, peakAt = {-1, -1}, cushionAt = {-1, -1};
+        for (var frameValue : clip.getAsJsonArray("frames")) {
+            var frame = frameValue.getAsJsonObject(); double time = number(frame, "capturedAtSeconds");
+            var values = frame.getAsJsonObject("observation").getAsJsonObject("nativeHands");
+            var main = hand(values, "mainHand");
+            if (!text(values, "lastItemId").equals("fsrpg:money_pouch") || !text(main, "itemId").equals("fsrpg:money_pouch")) continue;
+            var state = text(main, "arm").equals(text(values, "lastPouchArm")) ? main : hand(values, "offHand");
+            double elapsed = number(state, "equipSeconds"), gap = number(values, "lastPouchFlightGap");
+            maximumGap = Math.max(maximumGap, gap);
+            if (gap > .05) { flightFrames++; if (flightAt < 0) flightAt = time; }
+            if (gap < .00002 && elapsed > .80 * POUCH_TOSS_SECONDS) {
+                contactFrames++; if (landingAt < 0) landingAt = time;
+            }
+            if (elapsed >= POUCH_TOSS_SECONDS && elapsed < POUCH_TOSS_SECONDS + 2 * POUCH_HEFT_SECONDS) {
+                double afterLanding = elapsed - POUCH_TOSS_SECONDS;
+                int heft = Math.min(1, (int) (afterLanding / POUCH_HEFT_SECONDS));
+                double phase = afterLanding / POUCH_HEFT_SECONDS - heft;
+                if (gap > .00002) throw new AssertionError("Pouch leaves hand during a post-landing heft");
+                double y = point(values, "lastPouchPalmSupport")[1];
+                if (phase >= .12 && phase <= .34 && y < dip[heft]) { dip[heft] = y; dipAt[heft] = time; }
+                if (phase >= .38 && phase <= .65 && y > peak[heft]) { peak[heft] = y; peakAt[heft] = time; }
+                if (phase >= .70 && phase <= .95 && y < cushion[heft]) { cushion[heft] = y; cushionAt[heft] = time; }
+            }
+        }
+        check(maximumGap > .20 && flightFrames >= 8 && flightAt >= 0 && landingAt > flightAt,
+                "Actual pouch first flies over twenty centimetres above the hand, then lands");
+        check(contactFrames >= 60, "Actual pouch stays supported during the two hefts and settled rest");
+        var sequence = new JsonObject(); sequence.addProperty("id", "pouch-toss-then-two-hefts");
+        sequence.addProperty("maximumFlightGapMeters", maximumGap); sequence.addProperty("flightAtSeconds", flightAt);
+        sequence.addProperty("landingAtSeconds", landingAt); sequence.addProperty("flightFrames", flightFrames);
+        sequence.addProperty("contactFrames", contactFrames); var hefts = new JsonArray();
+        for (int i = 0; i < 2; i++) {
+            check(dipAt[i] > landingAt && dipAt[i] < peakAt[i] && peakAt[i] < cushionAt[i]
+                            && peak[i] - dip[i] > .10 && peak[i] - cushion[i] > .08,
+                    "Actual hand and pouch bottom perform down/up/cushion heft " + (i + 1));
+            var h = new JsonObject(); h.addProperty("number", i + 1); h.addProperty("dipY", dip[i]); h.addProperty("peakY", peak[i]);
+            h.addProperty("catchY", cushion[i]); h.addProperty("dipAtSeconds", dipAt[i]); h.addProperty("peakAtSeconds", peakAt[i]);
+            h.addProperty("catchAtSeconds", cushionAt[i]); h.addProperty("verticalRangeMeters", peak[i] - dip[i]); hefts.add(h);
+        }
+        check(cushionAt[0] < dipAt[1], "Second heft follows first heft completion");
+        sequence.add("hefts", hefts); scenes.add(sequence);
     }
 
     private void request(String name) {
@@ -546,8 +635,12 @@ final class ImportedItemHandsReview {
             if (recording) {
                 assertMonitor(); movie.frame(event);
                 var main = hand(diagnostic(), "mainHand");
-                if (!pouchPeakShot && main != null && text(main, "itemId").equals("fsrpg:money_pouch") && number(main, "armLift") > .075) {
-                    request("motion-money_pouch-active"); pouchPeakShot = true;
+                if (capture == null && main != null && text(main, "itemId").equals("fsrpg:money_pouch")) {
+                    double elapsed = number(main, "equipSeconds"), lift = number(main, "itemLift"), armLift = number(main, "armLift");
+                    if ((pouchKeyframeMask & 1) == 0 && lift > .21) { request("motion-money_pouch-toss-apex"); pouchKeyframeMask |= 1; }
+                    else if ((pouchKeyframeMask & 2) == 0 && elapsed > .58 && elapsed < .70 && lift < .00001) { request("motion-money_pouch-landing"); pouchKeyframeMask |= 2; }
+                    else if ((pouchKeyframeMask & 4) == 0 && elapsed > .70 && elapsed < 1.70 && armLift > .095) { request("motion-money_pouch-heft-1"); pouchKeyframeMask |= 4; }
+                    else if ((pouchKeyframeMask & 8) == 0 && elapsed > 1.70 && armLift > .095) { request("motion-money_pouch-heft-2"); pouchKeyframeMask |= 8; }
                 }
             }
             if (capture == null) return;
@@ -567,6 +660,8 @@ final class ImportedItemHandsReview {
             report.addProperty("nativeRenderFrames", nativeFrames); report.addProperty("vanillaRenderHandEvents", vanillaEvents); report.addProperty("vanillaCanceledEvents", vanillaCanceled);
             report.addProperty("outgoingCachedItemEvents", outgoingEvents); report.addProperty("outgoingFallbackEvents", outgoingFallback); report.addProperty("staleLegacyIntentFrames", staleIntentFrames);
             var support = new JsonObject(); support.addProperty("verifiedActualSubmissionSamples", pouchSupportSamples);
+            support.addProperty("supportedSamples", pouchContactSamples); support.addProperty("flightSamples", pouchFlightSamples);
+            support.addProperty("maximumFlightGapMeters", maximumPouchFlightGap); support.addProperty("maximumFlightResidualMeters", maximumPouchFlightResidual);
             support.addProperty("maximumContactDistanceMeters", maximumPouchContactDistance); support.addProperty("maximumSideOffsetMeters", maximumPouchSideOffset);
             if (pouchSupportSamples > 0) { support.addProperty("minimumBodyCenterAbovePalmMeters", minimumPouchCenterAbovePalm); support.addProperty("minimumCameraUpComponent", minimumPouchUpY); }
             support.add("nativeArms", RpgConfig.JSON.toJsonTree(pouchSupportArms)); report.add("pouchBottomSupport", support);

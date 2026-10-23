@@ -1,6 +1,8 @@
 # FSRPG 冒险与动作战斗基础模组
 
-Minecraft Java **1.21.11 / NeoForge 21.11.45 / Java 21**，当前开发版本 **0.9.5**，网络协议 **12**。服务端管理战斗判定、资源、修行、任务与奖励；客户端提供常驻 HUD、任务页、技能树、动作预览和武器输入。动画使用独立的 FSVOXEL 依赖，手持物品仍由 Minecraft 官方 ItemStack 渲染。
+Minecraft Java **1.21.11 / NeoForge 21.11.45 / Java 21**，当前开发版本 **0.9.6**，网络协议 **12**。服务端管理战斗判定、资源、修行、任务与奖励；客户端提供常驻 HUD、任务页、技能树、动作预览和武器输入。动画使用独立的 FSVOXEL 依赖，手持物品仍由 Minecraft 官方 ItemStack 渲染。
+
+0.9.6 将钱袋改为**先抛起落手，再掂量两下**，手臂恢复原版自然斜握方向，袋底由真实手部上沿承托。默认全程 2.70 秒，完成后静止。完整构建、84 个自定义测试任务和 DISPLAY5 同包 431 项实机检查通过；已安装官方实例，安装 SHA-256 `d1aa810b81033c6cc3578ad83d537aa1b7ac330a3a3d778db116f1fae16cb31d` 与实测一致，旧版与配置已备份。详见 [0.9.6 版本说明](docs/release-0.9.6.md)。
 
 0.9.5 将钱袋改为**袋底托在手上**，袋身位于手的上方，保留 0.9.4 的大小与蓄力、上掂、缓冲动作。货币和冒险者牌保持原显示，详见 [0.9.5 版本说明](docs/release-0.9.5.md)。
 
@@ -72,7 +74,7 @@ Minecraft Java **1.21.11 / NeoForge 21.11.45 / Java 21**，当前开发版本 **
 
 ## 安装与开发启动
 
-客户端 `mods/` 使用 `fsrpg-neoforge-0.9.5.jar` 与随附的 `fsvoxel-renderer-neoforge-0.6.0.jar`；升级时备份并移走旧 FSRPG JAR。服务端安装 FSRPG，FSVOXEL 为客户端依赖。两端需要相同协议版本的 FSRPG 才能同步战斗、修行和任务数据，0.9.5 仍使用协议 12（无消息或快照字段变化）。
+客户端 `mods/` 使用 `fsrpg-neoforge-0.9.6.jar` 与随附的 `fsvoxel-renderer-neoforge-0.6.0.jar`；升级时备份并移走旧 FSRPG JAR。服务端安装 FSRPG，FSVOXEL 为客户端依赖。两端需要相同协议版本的 FSRPG 才能同步战斗、修行和任务数据，0.9.5 仍使用协议 12（无消息或快照字段变化）。
 
 源码使用 Gradle Wrapper 9.5.0、ModDevGradle 2.0.144 和 Java 21 工具链。`Build.cmd` 构建，`Run-Client.cmd` 启动开发客户端；也可执行：
 

@@ -36,13 +36,15 @@ public final class ImportedItemMotionTest {
             double maxLift = 0, maxHeft = 0;
             for (int i = 0; i <= 240; i++) {
                 var sample = pose(kind, settings.duration(kind) * i / 240, settings);
-                check(sample.itemLift() >= 0 && sample.itemLift() <= settings.tossHeight() + 1e-12, "bounded nonpenetrating flight");
+                double flightLimit = kind == Kind.POUCH ? settings.pouchTossHeight() : settings.tossHeight();
+                check(sample.itemLift() >= 0 && sample.itemLift() <= flightLimit + 1e-12, "bounded nonpenetrating flight");
                 check(sample.drawProgress() >= 0 && sample.drawProgress() <= 1, "draw cannot overshoot");
                 maxLift = Math.max(maxLift, sample.itemLift()); maxHeft = Math.max(maxHeft, sample.armLift());
             }
             if (kind == Kind.COIN) equal(settings.tossHeight(), maxLift, "coin reaches configured apex");
-            else equal(0, maxLift, "pouch/badge never detach from hand");
-            if (kind == Kind.POUCH) check(maxHeft > .99 * settings.heftHeight(), "pouch performs one mild heft");
+            else if (kind == Kind.POUCH) check(maxLift > .99 * settings.pouchTossHeight(), "pouch clearly leaves hand in initial toss");
+            else equal(0, maxLift, "badge never detaches from hand");
+            if (kind == Kind.POUCH) check(maxHeft > .99 * settings.heftHeight(), "pouch reaches full heft height");
         }
     }
 
@@ -137,12 +139,12 @@ public final class ImportedItemMotionTest {
     private static void invalidSettingsRejected() {
         for (double invalid : new double[]{Double.NaN, Double.POSITIVE_INFINITY, -.1, .44, 2.01}) {
             boolean rejected = false;
-            try { new Settings(.8, invalid, .35, .18, .028); } catch (IllegalArgumentException expected) { rejected = true; }
+            try { new Settings(.8, invalid, .35, .18, .028, .70, .22); } catch (IllegalArgumentException expected) { rejected = true; }
             check(rejected, "invalid duration rejected " + invalid);
         }
         for (double invalid : new double[]{Double.NaN, -.01, .301}) {
             boolean rejected = false;
-            try { new Settings(.8, 1.05, .35, invalid, .028); } catch (IllegalArgumentException expected) { rejected = true; }
+            try { new Settings(.8, 1.05, .35, invalid, .028, .70, .22); } catch (IllegalArgumentException expected) { rejected = true; }
             check(rejected, "invalid amplitude rejected " + invalid);
         }
     }
@@ -169,19 +171,57 @@ public final class ImportedItemMotionTest {
     }
     private static void pouchHasWeightAndCushionedCatch() {
         var settings = Settings.DEFAULT;
-        var anticipation = pose(Kind.POUCH, .22 * settings.pouchSeconds(), settings);
-        var lift = pose(Kind.POUCH, .50 * settings.pouchSeconds(), settings);
-        var catchPose = pose(Kind.POUCH, .82 * settings.pouchSeconds(), settings);
+        double landing = settings.pouchTossSeconds();
+        equal(2.7, settings.duration(Kind.POUCH), "one initial toss and two complete heft periods");
+        equal(settings.pouchTossHeight(), pose(Kind.POUCH, .46 * landing, settings).itemLift(), "initial toss reaches its own configured apex");
+        equal(0, pose(Kind.POUCH, .80 * landing, settings).itemLift(), "pouch lands before the two hefts begin");
+        for (int heft = 0; heft < 2; heft++) {
+        double start = landing + heft * settings.pouchSeconds();
+        var anticipation = pose(Kind.POUCH, start + .22 * settings.pouchSeconds(), settings);
+        var lift = pose(Kind.POUCH, start + .50 * settings.pouchSeconds(), settings);
+        var catchPose = pose(Kind.POUCH, start + .82 * settings.pouchSeconds(), settings);
         equal(-.04, anticipation.armLift(), "pouch visibly loads the hand before lifting");
         equal(.10, lift.armLift(), "pouch makes a full ten-centimeter heft");
         equal(-.025, catchPose.armLift(), "fall is caught below rest before easing home");
         equal(-6, anticipation.armTiltDegrees(), "loaded forearm follows the weight");
         equal(8, lift.armTiltDegrees(), "lift rolls the forearm with the bag");
         equal(-3, catchPose.armTiltDegrees(), "catch cushions the returning weight");
-        for (int frame = 0; frame <= 120; frame++) {
-            var sample = pose(Kind.POUCH, frame / 120.0, settings);
-            equal(0, sample.itemLift(), "bag never detaches from the moving hand");
+        }
+        int risingToFalling = 0; double previousLift = 0, previousSlope = 0;
+        for (int frame = 0; frame <= 240; frame++) {
+            double time = landing + frame / 120.0;
+            var sample = pose(Kind.POUCH, time, settings);
+            equal(0, sample.itemLift(), "after landing bag remains supported during both hefts");
             equal(0, sample.itemSpinDegrees(), "bag has no independent spin that tears its grip");
+            double slope = sample.armLift() - previousLift;
+            if (previousSlope > 0 && slope < 0 && previousLift > .09) risingToFalling++;
+            if (slope != 0) previousSlope = slope;
+            previousLift = sample.armLift();
+        }
+        equal(2, risingToFalling, "exactly two visible heft peaks follow the initial landing");
+        for (double boundary : new double[]{0, .12 * landing, .80 * landing, landing,
+                landing + .22, landing + .50, landing + .82, landing + 1,
+                landing + 1.22, landing + 1.50, landing + 1.82, landing + 2}) {
+            double e = 1e-6;
+            var a = pose(Kind.POUCH, Math.max(0, boundary - e), settings);
+            var b = pose(Kind.POUCH, boundary, settings);
+            var c = pose(Kind.POUCH, boundary + e, settings);
+            check(Math.abs(a.itemLift() - c.itemLift()) < 1e-5 && Math.abs(a.armLift() - c.armLift()) < 1e-5,
+                    "toss, landing, both hefts and stop join without position jumps");
+            check(Math.abs((b.itemLift() - a.itemLift()) / e - (c.itemLift() - b.itemLift()) / e) < .001,
+                    "toss release and landing are velocity continuous");
+            check(Math.abs((b.armLift() - a.armLift()) / e - (c.armLift() - b.armLift()) / e) < .001,
+                    "hand push, catches and repeat join with continuous velocity");
+        }
+        for (double invalid : new double[]{Double.NaN, .34, 1.51}) {
+            boolean rejected = false;
+            try { new Settings(1, 1.05, .35, .18, .10, invalid, .22); } catch (IllegalArgumentException expected) { rejected = true; }
+            check(rejected, "invalid pouch toss duration rejected");
+        }
+        for (double invalid : new double[]{Double.POSITIVE_INFINITY, .059, .401}) {
+            boolean rejected = false;
+            try { new Settings(1, 1.05, .35, .18, .10, .70, invalid); } catch (IllegalArgumentException expected) { rejected = true; }
+            check(rejected, "invalid pouch toss height rejected");
         }
     }
     private static EquipKey key(String item, int slot) { return new EquipKey(item, slot, "same components", false); }
