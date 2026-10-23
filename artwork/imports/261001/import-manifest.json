@@ -4,77 +4,425 @@
   "items": [
     {
       "id": "fsrpg:money_pouch",
-      "source": "qiandai.bbmodel",
+      "label": "钱袋",
+      "source": "artwork/imports/261001/qiandai.bbmodel",
       "sourceSha256": "ee304a0f6abd9f5d312ddf7e5d963a3425b34f170eddac7cf9c74b05115600c6",
       "elements": 53,
+      "sourceElements": 53,
+      "hiddenOrUnexportedElements": 0,
+      "groups": 1,
+      "rootGroups": 1,
+      "faces": 318,
+      "textures": [
+        {
+          "id": "fsrpg:textures/item/money_pouch_0.png",
+          "width": 64,
+          "height": 64,
+          "sha256": "8cdecaa2c13baf4668b93579ac3f8fc29682ce599d2caae668a6ddb739eeb015"
+        }
+      ],
       "textureOverride": null,
-      "label": "钱袋"
+      "boundsPixels": [
+        [
+          5.392034,
+          0.026,
+          6.338899
+        ],
+        [
+          9.307966,
+          5.186715,
+          9.597124
+        ]
+      ],
+      "profile": "pouch",
+      "displayContexts": [
+        "gui",
+        "ground",
+        "fixed",
+        "head",
+        "firstperson_righthand",
+        "firstperson_lefthand",
+        "thirdperson_righthand",
+        "thirdperson_lefthand",
+        "on_shelf"
+      ]
     },
     {
       "id": "fsrpg:gold_coin",
-      "source": "硬币.bbmodel",
+      "label": "金币",
+      "source": "artwork/imports/261001/硬币.bbmodel",
       "sourceSha256": "3cd64df9162c351dbbe844261ab947cea754c7815bf6fabec202336ff29783f6",
       "elements": 113,
+      "sourceElements": 113,
+      "hiddenOrUnexportedElements": 0,
+      "groups": 4,
+      "rootGroups": 1,
+      "faces": 678,
+      "textures": [
+        {
+          "id": "fsrpg:textures/item/gold_coin_0.png",
+          "width": 64,
+          "height": 64,
+          "sha256": "2c39cdb9e4c2246100e3e434961762df6e0a8c3e20dd7679f003cace8cd4fe16"
+        },
+        {
+          "id": "fsrpg:textures/item/gold_coin_1.png",
+          "width": 64,
+          "height": 64,
+          "sha256": "3e4974827aaaf009f259f98adb79e0d60d8622efbe821537c4bb370f4e963834"
+        }
+      ],
       "textureOverride": null,
-      "label": "金币"
+      "boundsPixels": [
+        [
+          1.0,
+          1.0,
+          6.44536
+        ],
+        [
+          25.0,
+          25.0,
+          11.65464
+        ]
+      ],
+      "profile": "upright_coin",
+      "displayContexts": [
+        "gui",
+        "ground",
+        "fixed",
+        "head",
+        "firstperson_righthand",
+        "firstperson_lefthand",
+        "thirdperson_righthand",
+        "thirdperson_lefthand",
+        "on_shelf"
+      ]
     },
     {
       "id": "fsrpg:silver_coin",
-      "source": "硬币.bbmodel",
+      "label": "银币",
+      "source": "artwork/imports/261001/硬币.bbmodel",
       "sourceSha256": "3cd64df9162c351dbbe844261ab947cea754c7815bf6fabec202336ff29783f6",
       "elements": 113,
+      "sourceElements": 113,
+      "hiddenOrUnexportedElements": 0,
+      "groups": 4,
+      "rootGroups": 1,
+      "faces": 678,
+      "textures": [
+        {
+          "id": "fsrpg:textures/item/silver_coin_0.png",
+          "width": 64,
+          "height": 64,
+          "sha256": "2c39cdb9e4c2246100e3e434961762df6e0a8c3e20dd7679f003cace8cd4fe16"
+        },
+        {
+          "id": "fsrpg:textures/item/silver_coin_1.png",
+          "width": 64,
+          "height": 64,
+          "sha256": "3e4974827aaaf009f259f98adb79e0d60d8622efbe821537c4bb370f4e963834"
+        }
+      ],
       "textureOverride": 0,
-      "label": "银币"
+      "boundsPixels": [
+        [
+          1.0,
+          1.0,
+          6.44536
+        ],
+        [
+          25.0,
+          25.0,
+          11.65464
+        ]
+      ],
+      "profile": "upright_coin",
+      "displayContexts": [
+        "gui",
+        "ground",
+        "fixed",
+        "head",
+        "firstperson_righthand",
+        "firstperson_lefthand",
+        "thirdperson_righthand",
+        "thirdperson_lefthand",
+        "on_shelf"
+      ]
     },
     {
       "id": "fsrpg:crystal_coin",
-      "source": "金币.bbmodel",
+      "label": "晶币",
+      "source": "artwork/imports/261001/金币.bbmodel",
       "sourceSha256": "032f2c4b113c10fbcc70a54cde055ee4828db195de72d0c3cfec5c553a75608e",
-      "elements": 62,
+      "elements": 61,
+      "sourceElements": 62,
+      "hiddenOrUnexportedElements": 1,
+      "groups": 1,
+      "rootGroups": 1,
+      "faces": 366,
+      "textures": [
+        {
+          "id": "fsrpg:textures/item/crystal_coin_0.png",
+          "width": 96,
+          "height": 96,
+          "sha256": "4f9f26b0d182ff5138367f771f658417c1b44aa6b57f4cac248bfeafa5243013"
+        }
+      ],
       "textureOverride": null,
-      "label": "晶币"
+      "boundsPixels": [
+        [
+          0.821921,
+          0.20051,
+          0.420503
+        ],
+        [
+          14.973309,
+          1.51968,
+          15.33408
+        ]
+      ],
+      "profile": "flat",
+      "displayContexts": [
+        "gui",
+        "ground",
+        "fixed",
+        "head",
+        "firstperson_righthand",
+        "firstperson_lefthand",
+        "thirdperson_righthand",
+        "thirdperson_lefthand",
+        "on_shelf"
+      ]
     },
     {
       "id": "fsrpg:nether_coin",
-      "source": "下届币.bbmodel",
+      "label": "下界币",
+      "source": "artwork/imports/261001/下届币.bbmodel",
       "sourceSha256": "53b6a1bf96edc1dc9923f07a46b0337c9d3c4c68b17ee91486f8943b4a3fbd15",
       "elements": 216,
+      "sourceElements": 216,
+      "hiddenOrUnexportedElements": 0,
+      "groups": 7,
+      "rootGroups": 1,
+      "faces": 1296,
+      "textures": [
+        {
+          "id": "fsrpg:textures/item/nether_coin_0.png",
+          "width": 80,
+          "height": 80,
+          "sha256": "bf5517f8d8c22305ab8e7ed39c99d6538e632b4dd324be04a77c687aaf05c150"
+        }
+      ],
       "textureOverride": null,
-      "label": "下界币"
+      "boundsPixels": [
+        [
+          0.314843,
+          -0.37597,
+          -0.523425
+        ],
+        [
+          17.137307,
+          1.77597,
+          16.880968
+        ]
+      ],
+      "profile": "flat",
+      "displayContexts": [
+        "gui",
+        "ground",
+        "fixed",
+        "head",
+        "firstperson_righthand",
+        "firstperson_lefthand",
+        "thirdperson_righthand",
+        "thirdperson_lefthand",
+        "on_shelf"
+      ]
     },
     {
       "id": "fsrpg:gold_adventurer_badge",
-      "source": "金色冒险者牌.bbmodel",
+      "label": "金色冒险者牌",
+      "source": "artwork/imports/261001/金色冒险者牌.bbmodel",
       "sourceSha256": "febba1af0fc06bbe860e46d18149545f9508afa1e3fa067b85475c223b3515f6",
       "elements": 113,
+      "sourceElements": 113,
+      "hiddenOrUnexportedElements": 0,
+      "groups": 4,
+      "rootGroups": 1,
+      "faces": 678,
+      "textures": [
+        {
+          "id": "fsrpg:textures/item/gold_adventurer_badge_0.png",
+          "width": 64,
+          "height": 64,
+          "sha256": "ebe48fdcbeea8a2425a366e2bb16221903b436ae1a31cb1f2c99a00a8a67bd64"
+        }
+      ],
       "textureOverride": null,
-      "label": "金色冒险者牌"
+      "boundsPixels": [
+        [
+          -2.0,
+          -0.03649,
+          2.0
+        ],
+        [
+          19.0,
+          2.23649,
+          15.0
+        ]
+      ],
+      "profile": "flat",
+      "displayContexts": [
+        "gui",
+        "ground",
+        "fixed",
+        "head",
+        "firstperson_righthand",
+        "firstperson_lefthand",
+        "thirdperson_righthand",
+        "thirdperson_lefthand",
+        "on_shelf"
+      ]
     },
     {
       "id": "fsrpg:cobalt_adventurer_badge",
-      "source": "钴色冒险者牌.bbmodel",
+      "label": "钴色冒险者牌",
+      "source": "artwork/imports/261001/钴色冒险者牌.bbmodel",
       "sourceSha256": "156e2d285a734393ce5e9311e2d2a568bf0c0b77160bfe9ee125375132bcb46c",
       "elements": 101,
+      "sourceElements": 101,
+      "hiddenOrUnexportedElements": 0,
+      "groups": 4,
+      "rootGroups": 1,
+      "faces": 606,
+      "textures": [
+        {
+          "id": "fsrpg:textures/item/cobalt_adventurer_badge_0.png",
+          "width": 48,
+          "height": 48,
+          "sha256": "56b56bc8292a5e6b8c3d7e6b637954b990570f30d8914c5e109a681b4b9fb729"
+        }
+      ],
       "textureOverride": null,
-      "label": "钴色冒险者牌"
+      "boundsPixels": [
+        [
+          -2.0,
+          -0.03649,
+          2.0
+        ],
+        [
+          19.0,
+          2.23649,
+          15.0
+        ]
+      ],
+      "profile": "flat",
+      "displayContexts": [
+        "gui",
+        "ground",
+        "fixed",
+        "head",
+        "firstperson_righthand",
+        "firstperson_lefthand",
+        "thirdperson_righthand",
+        "thirdperson_lefthand",
+        "on_shelf"
+      ]
     },
     {
       "id": "fsrpg:copper_adventurer_badge",
-      "source": "铜色冒险者牌.bbmodel",
+      "label": "铜色冒险者牌",
+      "source": "artwork/imports/261001/铜色冒险者牌.bbmodel",
       "sourceSha256": "7c8afa0d4056ad930e03c7410a072880d6226c1f66af33b4a199451ba36e0ca1",
       "elements": 101,
+      "sourceElements": 101,
+      "hiddenOrUnexportedElements": 0,
+      "groups": 4,
+      "rootGroups": 1,
+      "faces": 606,
+      "textures": [
+        {
+          "id": "fsrpg:textures/item/copper_adventurer_badge_0.png",
+          "width": 48,
+          "height": 48,
+          "sha256": "9b4c54f56f2fd32dbd40ba7a7053fb01ddb7547a915f2ee00cbd6b65415a1d5b"
+        }
+      ],
       "textureOverride": null,
-      "label": "铜色冒险者牌"
+      "boundsPixels": [
+        [
+          -2.0,
+          -0.03649,
+          2.0
+        ],
+        [
+          19.0,
+          2.23649,
+          15.0
+        ]
+      ],
+      "profile": "flat",
+      "displayContexts": [
+        "gui",
+        "ground",
+        "fixed",
+        "head",
+        "firstperson_righthand",
+        "firstperson_lefthand",
+        "thirdperson_righthand",
+        "thirdperson_lefthand",
+        "on_shelf"
+      ]
     },
     {
       "id": "fsrpg:silver_adventurer_badge",
-      "source": "银色冒险者牌.bbmodel",
-      "sourceSha256": "b1775eb1443cdaa438fd7adc34f6901946b033a8617cd917e279184482d2d294",
-      "elements": 95,
+      "label": "银色冒险者牌",
+      "source": "artwork/imports/white_adventurer/白色冒险者.bbmodel",
+      "sourceSha256": "3def8bca4337a495ba82017a60d41c517af36aaa09f4e193d983c7ac7bf32b7c",
+      "elements": 169,
+      "sourceElements": 169,
+      "hiddenOrUnexportedElements": 0,
+      "groups": 2,
+      "rootGroups": 2,
+      "faces": 1014,
+      "textures": [
+        {
+          "id": "fsrpg:textures/item/silver_adventurer_badge_0.png",
+          "width": 64,
+          "height": 64,
+          "sha256": "8aca3d45624fd7c8a1173f6f95ecfdad393fd7987cc7c2b17438f8f84d40707b"
+        }
+      ],
       "textureOverride": null,
-      "label": "银色冒险者牌"
+      "boundsPixels": [
+        [
+          0.975732,
+          -0.47713,
+          -4.24161
+        ],
+        [
+          15.024268,
+          2.77713,
+          19.94161
+        ]
+      ],
+      "profile": "flat",
+      "displayContexts": [
+        "gui",
+        "ground",
+        "fixed",
+        "head",
+        "firstperson_righthand",
+        "firstperson_lefthand",
+        "thirdperson_righthand",
+        "thirdperson_lefthand",
+        "on_shelf"
+      ],
+      "item": "fsrpg:silver_adventurer_badge",
+      "replacementTargetConfirmedByUser": true,
+      "scope": "Retain the 0.7.3 silver item replacement and its original source."
     }
   ],
   "layoutSource": "综合.bbmodel",
-  "notes": "Individual source files are retained. Gold-coin geometry also uses the supplied silver texture as silver_coin. The jingbi-textured source named 金币 is crystal_coin."
+  "notes": "Original sources retained; silver coin uses the original silver texture variant. Silver badge retains the confirmed 0.7.3 replacement. New white badge has a separate ID. Every display context is fitted from rotated bounds."
 }

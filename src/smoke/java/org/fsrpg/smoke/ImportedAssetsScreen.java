@@ -18,7 +18,7 @@ final class ImportedAssetsScreen extends Screen {
     final JsonArray observations=new JsonArray();
     private final List<ItemStack> stacks=new ArrayList<>();
     private int drawn;
-    ImportedAssetsScreen() {super(Component.literal("261001 原模型 · 实际游戏物品验收"));}
+    ImportedAssetsScreen() {super(Component.literal("FSRPG 资源物品 · 实际游戏模型验收"));}
     @Override protected void init() {
         if(!stacks.isEmpty())return;
         var game=Minecraft.getInstance();
@@ -38,13 +38,16 @@ final class ImportedAssetsScreen extends Screen {
     @Override public void render(GuiGraphics gui,int mouseX,int mouseY,float tick) {
         gui.fill(0,0,width,height,0xff152031);
         gui.drawCenteredString(font,title,width/2,10,0xffefcd91);
-        int cellWidth=width/3,cellHeight=(height-30)/3;
+        int columns=stacks.size()>9?5:3,rows=(stacks.size()+columns-1)/columns;
+        int cellWidth=width/columns,cellHeight=(height-30)/rows;
+        float scale=Math.min(5f,Math.min((cellWidth-14)/16f,(cellHeight-48)/16f));
         for(int i=0;i<stacks.size();i++) {
-            int x=(i%3)*cellWidth,y=30+(i/3)*cellHeight;
+            int x=(i%columns)*cellWidth,y=30+(i/columns)*cellHeight;
             gui.fill(x+3,y+3,x+cellWidth-3,y+cellHeight-3,0xff253448);
-            gui.pose().pushMatrix();gui.pose().translate(x+cellWidth/2f-24,y+8);gui.pose().scale(3,3);gui.renderItem(stacks.get(i),0,0);gui.pose().popMatrix();
+            gui.pose().pushMatrix();gui.pose().translate(x+cellWidth/2f-8*scale,y+8);gui.pose().scale(scale,scale);gui.renderItem(stacks.get(i),0,0);gui.pose().popMatrix();
             gui.drawCenteredString(font,stacks.get(i).getHoverName(),x+cellWidth/2,y+cellHeight-26,0xfff1eee4);
-            gui.drawCenteredString(font,ImportedItems.IDS.get(i),x+cellWidth/2,y+cellHeight-14,0xff93a8bd);
+            String label=ImportedItems.IDS.get(i);
+            gui.drawCenteredString(font,font.plainSubstrByWidth(label,cellWidth-10),x+cellWidth/2,y+cellHeight-14,0xff93a8bd);
         }
         drawn++;
     }

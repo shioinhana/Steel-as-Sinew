@@ -1,0 +1,48 @@
+{
+  "id": "fsrpg:white_adventurer_badge",
+  "label": "白色冒险者牌",
+  "source": "artwork/imports/white_adventurer_badge/白色冒险者 (1).bbmodel",
+  "sourceSha256": "9c7f9f0ee94b23d75a798d2bbf97eaa65bafcbb68466b49463cbbc688999e4e6",
+  "elements": 544,
+  "sourceElements": 544,
+  "hiddenOrUnexportedElements": 0,
+  "groups": 17,
+  "rootGroups": 5,
+  "faces": 3264,
+  "textures": [
+    {
+      "id": "fsrpg:textures/item/white_adventurer_badge_0.png",
+      "width": 80,
+      "height": 80,
+      "sha256": "d09a5b0e258f9d87d9a53213046735df9756fdeb358327218cc7b41606155f45"
+    }
+  ],
+  "textureOverride": null,
+  "boundsPixels": [
+    [
+      0.0,
+      -1.67713,
+      -3.657714
+    ],
+    [
+      15.4,
+      3.27713,
+      20.957714
+    ]
+  ],
+  "profile": "flat",
+  "displayContexts": [
+    "gui",
+    "ground",
+    "fixed",
+    "head",
+    "firstperson_righthand",
+    "firstperson_lefthand",
+    "thirdperson_righthand",
+    "thirdperson_lefthand",
+    "on_shelf"
+  ],
+  "item": "fsrpg:white_adventurer_badge",
+  "replacementTargetConfirmedByUser": false,
+  "scope": "Separate white adventurer badge; preserve all 544 source cuboids, five visible root groups and original embedded PNG. Do not replace silver."
+}

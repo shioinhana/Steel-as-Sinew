@@ -23,5 +23,7 @@
   "key.fsrpg.art_gallery": "Creature and HUD Gallery",
   "key.fsrpg.footwork": "Footwork school (Rabbit / Flying Swan)",
   "key.fsrpg.footwork_special": "Cloud step special: stomp / wall kick, or charged jump with Space",
-  "death.attack.fsrpg.flash_thrust": "%1$s was pierced by a flash thrust"
+  "death.attack.fsrpg.flash_thrust": "%1$s was pierced by a flash thrust",
+  "itemGroup.fsrpg.resources": "FSRPG Resources",
+  "item.fsrpg.white_adventurer_badge": "White Adventurer Badge"
 }

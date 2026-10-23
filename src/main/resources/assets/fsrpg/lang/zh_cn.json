@@ -23,5 +23,7 @@
   "key.fsrpg.art_gallery": "生物与HUD素材图鉴",
   "key.fsrpg.footwork": "步法流派（已选脱兔/飞鸿时发动）",
   "key.fsrpg.footwork_special": "登云特技：空中踩头/蹬墙，地面配合跳跃高跳",
-  "death.attack.fsrpg.flash_thrust": "%1$s 被闪刺贯穿"
+  "death.attack.fsrpg.flash_thrust": "%1$s 被闪刺贯穿",
+  "itemGroup.fsrpg.resources": "FSRPG 资源",
+  "item.fsrpg.white_adventurer_badge": "白色冒险者牌"
 }
