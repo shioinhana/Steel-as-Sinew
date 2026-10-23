@@ -25,6 +25,10 @@ final class ClientOptions {
     static final ModConfigSpec.DoubleValue SPEAR_TURN_CENTER,SPEAR_TURN_EDGE,SPEAR_TURN_EDGE_START,SPEAR_TURN_RESPONSE;
     static final ModConfigSpec.BooleanValue IDLE_INSPECTIONS;
     static final ModConfigSpec.DoubleValue INSPECT_MIN, INSPECT_MAX, INSPECT_BLEND, ACTION_BLEND;
+    static final ModConfigSpec.BooleanValue IMPORTED_ITEM_HANDS, IMPORTED_ITEM_EQUIP_ANIMATIONS;
+    static final ModConfigSpec.DoubleValue IMPORTED_ITEM_SCALE, IMPORTED_POUCH_SECONDS, IMPORTED_COIN_SECONDS,
+            IMPORTED_BADGE_SECONDS, IMPORTED_COIN_TOSS_HEIGHT, IMPORTED_POUCH_HEFT_HEIGHT,
+            IMPORTED_POUCH_SCALE, IMPORTED_POUCH_RAISE;
     static {
         var builder = new ModConfigSpec.Builder();
         RPG_HUD = builder.comment("Use the material HUD: health/experience left, spirit/stamina right of the vanilla hotbar. Disable to restore vanilla health and experience.")
@@ -107,6 +111,16 @@ final class ClientOptions {
         SPEAR_RECT_H=builder.defineInRange("spearCursorHeight",.5,.2,.85);
         SPEAR_DRAG=builder.comment("Minimum angular path length in degrees for a sweep.").defineInRange("spearDragDegrees",5.0,1,30);
         SPEAR_HOLD=builder.comment("Minimum held ticks before a dragged gesture becomes a sweep.").defineInRange("spearHoldTicks",3,1,20);
+        IMPORTED_ITEM_HANDS=builder.comment("Show the actual player skin arm holding the ten FSRPG imported items in first person; other items retain their normal renderer.").define("importedItemHands",true);
+        IMPORTED_ITEM_EQUIP_ANIMATIONS=builder.comment("Once per equip: lightly heft the pouch, toss and catch coins, or draw a badge. Stack count changes do not replay it.").define("importedItemEquipAnimations",true);
+        IMPORTED_ITEM_SCALE=builder.comment("Scale of imported first-person objects on the native palm. Smaller values obstruct less of the view; skin arm size stays vanilla.").defineInRange("importedItemScale",.65,.4,.85);
+        IMPORTED_POUCH_SCALE=builder.comment("Independent first-person pouch scale: larger than coins/badges so its mouth, body and weight remain clear.").defineInRange("importedPouchScale",1.02,.7,1.3);
+        IMPORTED_POUCH_RAISE=builder.comment("Raise the pouch and its attached native skin hand together, in blocks, leaving room below the hanging bag.").defineInRange("importedPouchRaise",.14,0,.3);
+        IMPORTED_POUCH_SECONDS=builder.comment("One-shot pouch load, lift, fall and cushioned catch duration, in seconds.").defineInRange("importedPouchEquipSeconds",1.0,.5,2);
+        IMPORTED_COIN_SECONDS=builder.comment("One-shot coin toss/catch duration, in seconds.").defineInRange("importedCoinEquipSeconds",1.05,.45,2);
+        IMPORTED_BADGE_SECONDS=builder.comment("Simple badge draw duration, in seconds.").defineInRange("importedBadgeEquipSeconds",.35,.15,1);
+        IMPORTED_COIN_TOSS_HEIGHT=builder.comment("Coin flight height above the palm, in blocks. Cosmetic only.").defineInRange("importedCoinTossHeight",.18,.04,.3);
+        IMPORTED_POUCH_HEFT_HEIGHT=builder.comment("Pouch heft apex above its resting grip, in blocks. Anticipation sinks 40% of this height; the catch sinks 25%. Cosmetic only.").defineInRange("importedPouchHeftHeight",.10,0,.18);
         SPEC = builder.build();
     }
     public static final net.neoforged.neoforge.common.ModConfigSpec.DoubleValue SHOULDER, SPEAR_RECT_W, SPEAR_RECT_H, SPEAR_DRAG;

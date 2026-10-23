@@ -33,6 +33,10 @@ public final class LegacyFirstPersonAnimations {
     public static double lastSeconds(){return lastSeconds;}
     public static void onRenderHand(RenderHandEvent event) {
         var game=Minecraft.getInstance();var intent=PlayerAnimations.localIntent();
+        // A server pose packet can lag a hotbar change. The actual imported
+        // main-hand item owns its native skin presentation, never that old rig.
+        if(game.player!=null && (ImportedItemPresentation.supports(game.player.getMainHandItem())
+                || event.getHand()==InteractionHand.MAIN_HAND && ImportedItemPresentation.supports(event.getItemStack())))return;
         if(game.player==null || !ClientState.drawn() || intent==null || !intent.model().startsWith("legacy_")
                 || !game.options.getCameraType().isFirstPerson() || game.player.isSpectator())return;
         String modelName=intent.model().replace(".fsvoxel","_fp.fsvoxel");

@@ -99,6 +99,8 @@ public final class ClientHooks {
         NeoForge.EVENT_BUS.addListener(GuardCuePresentation::render);
         NeoForge.EVENT_BUS.addListener(PlayerAnimations::renderClock);
         NeoForge.EVENT_BUS.addListener(LegacyFirstPersonAnimations::onRenderHand);
+        NeoForge.EVENT_BUS.addListener(net.neoforged.bus.api.EventPriority.LOWEST, ImportedItemPresentation::onRenderHand);
+        NeoForge.EVENT_BUS.addListener(ImportedItemPresentation::tick);
         NeoForge.EVENT_BUS.addListener(ArcheryPresentation::tick);
         NeoForge.EVENT_BUS.addListener(ArcheryPresentation::fov);
         NeoForge.EVENT_BUS.addListener((net.neoforged.neoforge.event.entity.player.PlayerEvent.BreakSpeed event)->{
@@ -372,6 +374,7 @@ public final class ClientHooks {
         shiftSprintRequested=wanted;
     }
     private static void logout(ClientPlayerNetworkEvent.LoggingOut event) {
+        ImportedItemPresentation.reset();
         BurstDashMotion.reset();
         GuardCuePresentation.clear();
         GuardImpactPresentation.reset();

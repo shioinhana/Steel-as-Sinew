@@ -34,6 +34,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("capture", type=Path)
     parser.add_argument("--threads", type=int, choices=(2, 3, 4), default=2)
+    parser.add_argument("--clip", help="Select one clip from a multi-clip capture without changing its source report")
     options = parser.parse_args()
     capture_file = options.capture.resolve(strict=True)
     root = capture_file.parent
@@ -41,8 +42,10 @@ def main() -> None:
     capture = json.loads(capture_bytes)
     require(capture.get("captureEvent") == "RenderFrameEvent.Post" and capture.get("pendingWrites") == 0,
             "Only completed actual native render captures are accepted")
-    require(len(capture.get("clips", [])) == 1, "This encoder accepts exactly one native capture clip")
-    clip = capture["clips"][0]
+    clips = capture.get("clips", [])
+    selected = [clip for clip in clips if clip.get("id") == options.clip] if options.clip else clips
+    require(len(selected) == 1, "Select exactly one native capture clip with --clip")
+    clip = selected[0]
     identifier = clip.get("id", "")
     require(identifier and all(character in "abcdefghijklmnopqrstuvwxyz0123456789-" for character in identifier),
             "Invalid capture ID")
@@ -87,9 +90,10 @@ def main() -> None:
         entries.extend((f"file '{expected}'", "option framerate 1000", f"duration {gap:.9f}"))
     require(len(hashes) >= 30, "Fewer than thirty distinct real PNG byte hashes")
     entries.extend((f"file '{frames[-1]['file']}'", "option framerate 1000"))
-    timeline = root / "native-timestamps.ffconcat"
+    prefix = identifier + "-" if options.clip else ""
+    timeline = root / (prefix + "native-timestamps.ffconcat")
     timeline.write_text("\n".join(entries) + "\n", encoding="utf-8")
-    png_validation = root / "native-png-validation.json"
+    png_validation = root / (prefix + "native-png-validation.json")
     write_json(png_validation, {"passed": True, "captureSha256": digest(capture_bytes),
                                "method": "Independent Pillow PNG format/dimensions/chunk-CRC verification plus per-file SHA-256",
                                "verifiedPngFiles": len(png_rows), "uniquePngByteHashes": len(hashes),
@@ -97,14 +101,14 @@ def main() -> None:
 
     encoder, probe = shutil.which("ffmpeg"), shutil.which("ffprobe")
     require(encoder is not None and probe is not None, "ffmpeg and ffprobe must be available")
-    movie = root / "visual-review.mp4"
+    movie = root / (prefix + "visual-review.mp4")
     threads = str(options.threads)
     command = [encoder, "-hide_banner", "-loglevel", "warning", "-y", "-threads", threads,
                "-filter_threads", threads, "-f", "concat", "-safe", "0", "-i", str(timeline),
                "-vf", "fps=30:round=near", "-c:v", "libx264", "-threads", threads,
                "-preset", "fast", "-crf", "20", "-pix_fmt", "yuv420p", "-movflags", "+faststart", str(movie)]
     encoded = subprocess.run(command, capture_output=True, text=True, check=False)
-    (root / "encoding.log").write_text(encoded.stderr, encoding="utf-8")
+    (root / (prefix + "encoding.log")).write_text(encoded.stderr, encoding="utf-8")
     require(encoded.returncode == 0, "Video encoding failed; see encoding.log")
     probe_command = [probe, "-v", "error", "-count_frames", "-select_streams", "v:0", "-show_entries",
                      "stream=codec_name,width,height,avg_frame_rate,r_frame_rate,nb_frames,nb_read_frames,duration:format=duration",
@@ -132,7 +136,7 @@ def main() -> None:
               "timeline": timeline.name, "timelineSha256": digest(timeline.read_bytes()),
               "ffmpegCommand": command, "ffprobeCommand": probe_command, "ffprobe": video,
               "limitation": "Viewing resample only. Native source statistics remain in the unchanged capture; this movie is not a performance measurement."}
-    write_json(root / "encoded-review.json", report)
+    write_json(root / (prefix + "encoded-review.json"), report)
     print(f"Encoded {len(frames)} independently verified native PNGs at {source_fps:.8f} source Hz -> "
           f"{stream['nb_read_frames']} actual-image selections at 30 FPS: {movie}")
 
