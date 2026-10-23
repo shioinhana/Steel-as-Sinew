@@ -17,6 +17,7 @@ import net.neoforged.neoforge.client.event.RenderHandEvent;
 import org.fsrpg.ImportedItems;
 import org.joml.Matrix4f;
 import org.joml.Quaternionf;
+import org.joml.Vector3f;
 
 /** Native skin arms and official ItemStack states for the ten imported objects. */
 public final class ImportedItemPresentation {
@@ -33,6 +34,9 @@ public final class ImportedItemPresentation {
     private static double lastItemScale, lastArmRaise;
     private static boolean nativeArmSleeveVisible;
     private static String nativeArmSkin = "", nativeArmModel = "", lastItemId = "", lastArm = "";
+    private static final Vector3f lastPouchPalmSupport = new Vector3f(), lastPouchBase = new Vector3f(),
+            lastPouchCenter = new Vector3f(), lastPouchUp = new Vector3f();
+    private static String lastPouchArm = "";
 
     /** Exact registry objects, not a broad namespace or name-prefix override. */
     public static boolean supports(ItemStack stack) {
@@ -124,9 +128,20 @@ public final class ImportedItemPresentation {
             // The same displacement drives arm and attached object; only a
             // coin's deliberate flight separates it from the contact point.
             double reveal = pouch ? 0 : 1 - motion.drawProgress();
-            poses.translate(0, armRaise + motion.armLift() - .10 * reveal, .04 * reveal);
+            // Supporting the bottom puts the entire pouch above the hand.
+            // Keep the existing configurable raise as an extra adjustment to
+            // this lower support baseline rather than moving the bag sideways.
+            poses.translate(0, armRaise - (pouch ? .14 : 0) + motion.armLift() - .10 * reveal, .04 * reveal);
             Matrix4f armMatrix = nativeArm(side, event.getEquipProgress(), event.getSwingProgress());
-            armMatrix.rotateZ(radians((float) (side * motion.armTiltDegrees())));
+            float armTilt = radians((float) (side * motion.armTiltDegrees()));
+            if (pouch) {
+                armMatrix = supportingArm(armMatrix, side, slim);
+                Vector3f support = fingertipCenter(side, slim);
+                // Roll the wrist about the support itself. Rotating about the
+                // arm model origin would translate the bag and reverse the
+                // deliberate load/lift/catch height curve after leveling it.
+                armMatrix.translate(support).rotateZ(armTilt).translate(-support.x, -support.y, -support.z);
+            } else armMatrix.rotateZ(armTilt);
             if (!player.isInvisible()) {
                 poses.pushPose();
                 try {
@@ -140,34 +155,39 @@ public final class ImportedItemPresentation {
                 nativeArmSkin = skin.toString(); nativeArmModel = player.getSkin().model().name();
                 nativeArmSleeveVisible = player.isModelPartShown(left ? PlayerModelPart.LEFT_SLEEVE : PlayerModelPart.RIGHT_SLEEVE);
             }
-            // ModelPart's native arm pivot and +/-0.1rad resting rotation,
-            // followed by the actual inner fingertip surface (wide/slim differ).
-            Matrix4f palm = palm(armMatrix, side, slim);
-            Quaternionf upright = palm(nativeArm(side, 0, 0), side, slim).getNormalizedRotation(new Quaternionf()).conjugate();
+            // The pouch rests on the native fist's horizontal end face. Coins
+            // and badges retain their established inner fingertip contact.
+            Matrix4f palm = palm(armMatrix, side, slim, pouch);
+            Matrix4f idleArm = nativeArm(side, 0, 0);
+            if (pouch) idleArm = supportingArm(idleArm, side, slim);
+            Quaternionf upright = palm(idleArm, side, slim, pouch).getNormalizedRotation(new Quaternionf()).conjugate();
             poses.pushPose();
             try {
                 poses.mulPose(palm);
+                if (pouch) poses.last().pose().transformPosition(0, 0, 0, lastPouchPalmSupport);
                 poses.mulPose(upright);
                 double gripY = switch (renderedKind) {
-                    case POUCH -> bounds.maxY - bounds.getYsize() * .08; // grasp the mouth/neck
                     case BADGE -> bounds.minY + bounds.getYsize() * .2; // pinch the lower edge
-                    default -> bounds.minY; // coin lands back on the palm
+                    default -> bounds.minY; // pouch base and landing coin sit on the palm
                 };
                 double centerX = (bounds.minX + bounds.maxX) / 2;
                 double centerY = (bounds.minY + bounds.maxY) / 2;
                 double centerZ = (bounds.minZ + bounds.maxZ) / 2;
-                // Pinch the outer/front lip. The larger body hangs inward and
-                // away from the camera, fully visible beside the fist without
-                // letting perspective push its bottom through the hotbar.
-                double gripX = pouch ? centerX + side * bounds.getXsize() * .40 : centerX;
-                double gripZ = pouch ? bounds.minZ + bounds.getZsize() * .90 : centerZ;
-                if (pouch) poses.mulPose(new Quaternionf().rotationZ(radians(-side * 10)));
                 // Toss about the object's center of mass, not its contact edge;
                 // otherwise a half-flipped coin sweeps back through the hand.
-                poses.translate((centerX - gripX) * scale, motion.itemLift() + (centerY - gripY) * scale, (centerZ - gripZ) * scale);
+                poses.translate(0, motion.itemLift() + (centerY - gripY) * scale, 0);
                 poses.mulPose(new Quaternionf().rotationX((float) Math.toRadians(motion.itemSpinDegrees())));
                 poses.scale(scale, scale, scale);
                 poses.translate(-centerX, -centerY, -centerZ);
+                if (pouch) {
+                    // Sample the exact matrix submitted below, independently
+                    // from the native skin support point sampled above.
+                    var submitted = poses.last().pose();
+                    submitted.transformPosition((float) centerX, (float) bounds.minY, (float) centerZ, lastPouchBase);
+                    submitted.transformPosition((float) centerX, (float) centerY, (float) centerZ, lastPouchCenter);
+                    submitted.transformDirection(0, 1, 0, lastPouchUp).normalize();
+                    lastPouchArm = arm.name();
+                }
                 item.submit(poses, event.getSubmitNodeCollector(), event.getPackedLight(), OverlayTexture.NO_OVERLAY, 0);
             } finally { poses.popPose(); }
             itemSubmissions++;
@@ -193,9 +213,26 @@ public final class ImportedItemPresentation {
                 .translate(side * 5.6f, 0, 0);
     }
 
-    private static Matrix4f palm(Matrix4f arm, int side, boolean slim) {
-        return new Matrix4f(arm).translate(-side * 5f / 16, 2f / 16, 0).rotateZ(side * .1f)
-                .translate(-side * (slim ? .5f : 1f) / 16, 9f / 16, -2f / 16);
+    private static Matrix4f skinArmBasis(int side) {
+        return new Matrix4f().translate(-side * 5f / 16, 2f / 16, 0).rotateZ(side * .1f);
+    }
+    private static Vector3f fingertipCenter(int side, boolean slim) {
+        return skinArmBasis(side).transformPosition(-side * (slim ? .5f : 1f) / 16, 10f / 16, 0, new Vector3f());
+    }
+    private static Matrix4f supportingArm(Matrix4f arm, int side, boolean slim) {
+        Matrix4f skin = skinArmBasis(side);
+        Vector3f tip = fingertipCenter(side, slim);
+        Vector3f nativeNormal = skin.transformDirection(0, 1, 0, new Vector3f()).normalize();
+        Vector3f localUp = nativeArm(side, 0, 0).getNormalizedRotation(new Quaternionf()).conjugate()
+                .transform(new Vector3f(0, 1, 0));
+        // Reorient the actual skin arm about its fingertip end-face center;
+        // its four real vertices now form the horizontal support under the bag.
+        Quaternionf levelPalm = new Quaternionf().rotationTo(nativeNormal, localUp);
+        return new Matrix4f(arm).translate(tip).rotate(levelPalm).translate(-tip.x, -tip.y, -tip.z);
+    }
+    private static Matrix4f palm(Matrix4f arm, int side, boolean slim, boolean pouch) {
+        return new Matrix4f(arm).mul(skinArmBasis(side))
+                .translate(-side * (slim ? .5f : 1f) / 16, (pouch ? 10f : 9f) / 16, pouch ? 0 : -2f / 16);
     }
     private static float radians(float degrees) { return (float) Math.toRadians(degrees); }
     private static double safe(double value, double fallback, double min, double max) {
@@ -219,7 +256,18 @@ public final class ImportedItemPresentation {
         out.addProperty("nativeArmSkin", nativeArmSkin); out.addProperty("nativeArmModel", nativeArmModel);
         out.addProperty("nativeArmSleeveVisible", nativeArmSleeveVisible);
         out.addProperty("lastItemId", lastItemId); out.addProperty("lastArm", lastArm);
+        out.add("lastPouchPalmSupport", vector(lastPouchPalmSupport)); out.add("lastPouchBase", vector(lastPouchBase));
+        out.add("lastPouchCenter", vector(lastPouchCenter)); out.add("lastPouchUp", vector(lastPouchUp));
+        out.addProperty("lastPouchContactDistance", lastPouchBase.distance(lastPouchPalmSupport));
+        out.addProperty("lastPouchSideOffset", lastPouchBase.x - lastPouchPalmSupport.x);
+        out.addProperty("lastPouchArm", lastPouchArm);
+        out.addProperty("lastPouchSupportMode", lastPouchArm.isEmpty() ? "" : "base_on_palm");
         out.add("mainHand", diagnostic(MAIN)); out.add("offHand", diagnostic(OFF));
+        return out;
+    }
+    private static JsonObject vector(Vector3f value) {
+        var out = new JsonObject();
+        out.addProperty("x", value.x); out.addProperty("y", value.y); out.addProperty("z", value.z);
         return out;
     }
     private static JsonObject diagnostic(ImportedItemMotion.State state) {
@@ -241,6 +289,8 @@ public final class ImportedItemPresentation {
         outgoingItemSubmissions = 0; lastOutgoing = false;
         lastItemScale = lastArmRaise = 0;
         nativeArmSkin = nativeArmModel = lastItemId = lastArm = "";
+        lastPouchArm = "";
+        lastPouchPalmSupport.zero(); lastPouchBase.zero(); lastPouchCenter.zero(); lastPouchUp.zero();
         nativeArmSleeveVisible = false;
     }
     private ImportedItemPresentation() {}

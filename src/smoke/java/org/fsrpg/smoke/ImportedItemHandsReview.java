@@ -58,6 +58,10 @@ final class ImportedItemHandsReview {
     private int warmup, ticks, nativeFrames, oldScale, oldFps, oldDistance, oldFov;
     private int vanillaEvents, vanillaCanceled, outgoingEvents, outgoingFallback, staleIntentFrames;
     private long outgoingNativeCount, legacyBeforeFrame, legacyBeforeCase;
+    private final java.util.Set<String> pouchSupportArms = new java.util.HashSet<>();
+    private int pouchSupportSamples;
+    private double maximumPouchContactDistance, maximumPouchSideOffset, minimumPouchCenterAbovePalm = Double.POSITIVE_INFINITY,
+            minimumPouchUpY = Double.POSITIVE_INFINITY;
     private long started;
     private String capture;
     private JsonObject beforeStatic, settledStatic, contextBaseline, vanillaBaseline, movingSettled, invisibleBaseline;
@@ -201,7 +205,43 @@ final class ImportedItemHandsReview {
         if (name.equals("money_pouch")) {
             check(number(values, "lastItemScale") >= .95, "Pouch uses its enlarged native presentation scale");
             check(number(values, "lastArmRaise") >= .10, "Pouch grip is raised into a readable lower-screen position");
+            verifyPouchSupport(values);
+            check(true, "Actual submitted pouch bottom rests on the native palm with its body above the support point");
         }
+    }
+
+    private static double[] point(JsonObject values, String name) {
+        var value = values.getAsJsonObject(name);
+        if (value == null) throw new AssertionError("Missing actual pouch support point: " + name);
+        double[] result = {number(value, "x"), number(value, "y"), number(value, "z")};
+        for (double coordinate : result) if (!Double.isFinite(coordinate)) throw new AssertionError("Non-finite actual pouch point: " + name);
+        return result;
+    }
+
+    /** Independently compare actual submitted model points against the actual native palm point. */
+    private void verifyPouchSupport(JsonObject values) {
+        if (!text(values, "lastItemId").equals("fsrpg:money_pouch")) throw new AssertionError("Pouch support diagnostics do not describe the last rendered item");
+        var palm = point(values, "lastPouchPalmSupport"); var base = point(values, "lastPouchBase");
+        var center = point(values, "lastPouchCenter"); var up = point(values, "lastPouchUp");
+        double dx = base[0] - palm[0], dy = base[1] - palm[1], dz = base[2] - palm[2];
+        double distance = Math.sqrt(dx * dx + dy * dy + dz * dz), lateral = Math.abs(dx);
+        double upLength = Math.sqrt(up[0] * up[0] + up[1] * up[1] + up[2] * up[2]);
+        double bodyHeight = (center[0] - palm[0]) * up[0] + (center[1] - palm[1]) * up[1] + (center[2] - palm[2]) * up[2];
+        if (distance > .00002 || lateral > .00002 || Math.abs(upLength - 1) > .001)
+            throw new AssertionError("Actual pouch bottom is detached from the palm or has invalid orientation: distance=" + distance + ", side=" + lateral + ", upLength=" + upLength);
+        if (!(bodyHeight > .025 && center[1] > palm[1] && up[1] > .8))
+            throw new AssertionError("Pouch body must stand above its palm support, not hang from its side or top: height=" + bodyHeight + ", upY=" + up[1]);
+        if (Math.abs(center[0] - palm[0]) > (center[1] - palm[1]) * .5 + .005)
+            throw new AssertionError("Pouch body is displaced sideways from the supporting palm");
+        if (Math.abs(number(values, "lastPouchContactDistance") - distance) > .00002
+                || Math.abs(Math.abs(number(values, "lastPouchSideOffset")) - lateral) > .00002)
+            throw new AssertionError("Pouch contact diagnostic does not match independently recomputed submitted points");
+        if (!text(values, "lastPouchSupportMode").equals("base_on_palm")) throw new AssertionError("Pouch still uses the side-hanging support mode");
+        String arm = text(values, "lastPouchArm");
+        if (!arm.equals("LEFT") && !arm.equals("RIGHT")) throw new AssertionError("Unknown pouch support arm " + arm);
+        pouchSupportArms.add(arm); pouchSupportSamples++;
+        maximumPouchContactDistance = Math.max(maximumPouchContactDistance, distance); maximumPouchSideOffset = Math.max(maximumPouchSideOffset, lateral);
+        minimumPouchCenterAbovePalm = Math.min(minimumPouchCenterAbovePalm, bodyHeight); minimumPouchUpY = Math.min(minimumPouchUpY, up[1]);
     }
 
     private void sameSerial(JsonObject first, JsonObject second, String note) {
@@ -305,6 +345,10 @@ final class ImportedItemHandsReview {
                     var values = diagnostic();
                     check(id(game.player.getMainHandItem()).equals("fsrpg:" + name) && game.player.getOffhandItem().isEmpty(), "Actual single-main-hand view " + name);
                     check(text(hand(values, "mainHand"), "itemId").equals("fsrpg:" + name) && hand(values, "mainHand").get("settled").getAsBoolean(), "Single-main-hand object settles on its native hand " + name);
+                    if (name.equals("money_pouch")) {
+                        verifyPouchSupport(values);
+                        check(text(values, "lastPouchArm").equals("RIGHT"), "Single-main-hand pouch rests on the actual right palm");
+                    }
                     scene("single-main-hand-" + name, values); request("single-main-hand-" + name);
                 }
             }
@@ -413,9 +457,12 @@ final class ImportedItemHandsReview {
             totalSeconds += number(clip, "captureDurationSeconds");
             double previous = -1, maximumLift = 0, minimumLift = 0, maximumArmLift = 0, minimumArmLift = 0, maximumSpin = 0;
             double maximumArmTilt = 0, minimumArmTilt = 0, pouchDipAt = -1, pouchHeftAt = -1, pouchReturnAt = -1;
+            double supportMinY = Double.POSITIVE_INFINITY, supportMaxY = Double.NEGATIVE_INFINITY,
+                    actualDipY = Double.POSITIVE_INFINITY, actualApexY = Double.NEGATIVE_INFINITY, actualCatchY = Double.POSITIVE_INFINITY;
+            double actualDipAt = -1, actualApexAt = -1, actualCatchAt = -1;
             boolean sawSettled = false;
             long serial = -1; String expected = clipId.substring("equip-".length()).replace('-', '_');
-            int activeSamples = 0;
+            int activeSamples = 0, pouchContactFrames = 0, pouchSupportMotionFrames = 0;
             for (var frameValue : clip.getAsJsonArray("frames")) {
                 var frame = frameValue.getAsJsonObject(); double current = number(frame, "capturedAtSeconds");
                 if (!(current > previous)) throw new AssertionError("Non-increasing source timestamp " + clipId);
@@ -431,6 +478,21 @@ final class ImportedItemHandsReview {
                     maximumArmLift = Math.max(maximumArmLift, number(main, "armLift")); minimumArmLift = Math.min(minimumArmLift, number(main, "armLift"));
                     maximumArmTilt = Math.max(maximumArmTilt, number(main, "armTiltDegrees")); minimumArmTilt = Math.min(minimumArmTilt, number(main, "armTiltDegrees"));
                     if (expected.equals("money_pouch")) {
+                        if (text(nativeHands, "lastItemId").equals("fsrpg:money_pouch")) {
+                            verifyPouchSupport(nativeHands); pouchContactFrames++;
+                            String supportArm = text(nativeHands, "lastPouchArm");
+                            var supportState = text(main, "arm").equals(supportArm) ? main : hand(nativeHands, "offHand");
+                            double elapsed = number(supportState, "equipSeconds");
+                            if (elapsed >= .15 && elapsed <= 1.0) {
+                                // Use the submitted camera-space point, after every wrist/pivot transform.
+                                // The first .15 s is excluded because vanilla is still raising the incoming hand.
+                                double y = point(nativeHands, "lastPouchPalmSupport")[1];
+                                pouchSupportMotionFrames++; supportMinY = Math.min(supportMinY, y); supportMaxY = Math.max(supportMaxY, y);
+                                if (elapsed <= .32 && y < actualDipY) { actualDipY = y; actualDipAt = current; }
+                                if (elapsed >= .38 && elapsed <= .65 && y > actualApexY) { actualApexY = y; actualApexAt = current; }
+                                if (elapsed >= .70 && elapsed <= .95 && y < actualCatchY) { actualCatchY = y; actualCatchAt = current; }
+                            }
+                        }
                         double armLift = number(main, "armLift");
                         if (pouchDipAt < 0 && pouchHeftAt < 0 && armLift < -.025) pouchDipAt = current;
                         if (pouchHeftAt < 0 && armLift > .075) pouchHeftAt = current;
@@ -448,10 +510,24 @@ final class ImportedItemHandsReview {
                         "Actual pouch frames show anticipation, upward heft and downward return in order");
                 check(maximumArmTilt > 5 && minimumArmTilt < -4, "Pouch and attached native arm tilt with the weighted heft");
                 check(pouchPeakShot, "Pouch active screenshot is captured from an actual raised-hand frame");
+                check(pouchContactFrames >= 30, "Actual pouch bottom remains on the native palm throughout at least thirty real load/heft/return frames");
+                check(pouchSupportMotionFrames >= 20 && supportMaxY - supportMinY > .10,
+                        "Actual submitted palm and bag bottom travel more than ten centimetres after the incoming-hand raise");
+                check(actualDipAt >= 0 && actualDipAt < actualApexAt && actualApexAt < actualCatchAt
+                                && actualApexY - actualDipY > .10 && actualApexY - actualCatchY > .08,
+                        "Actual camera-space bag-bottom motion visibly loads down, hefts up and cushions the return without wrist-pivot cancellation");
             }
-            var note = new JsonObject(); note.addProperty("id", clipId); note.addProperty("maximumItemLift", maximumLift); note.addProperty("minimumItemLift", minimumLift); note.addProperty("maximumArmLift", maximumArmLift); note.addProperty("minimumArmLift", minimumArmLift); note.addProperty("maximumArmTiltDegrees", maximumArmTilt); note.addProperty("minimumArmTiltDegrees", minimumArmTilt); note.addProperty("pouchDipAtSeconds", pouchDipAt); note.addProperty("pouchHeftAtSeconds", pouchHeftAt); note.addProperty("pouchReturnAtSeconds", pouchReturnAt); note.addProperty("maximumSpinDegrees", maximumSpin); note.addProperty("observedEquipSerial", serial); scenes.add(note);
+            var note = new JsonObject(); note.addProperty("id", clipId); note.addProperty("maximumItemLift", maximumLift); note.addProperty("minimumItemLift", minimumLift); note.addProperty("maximumArmLift", maximumArmLift); note.addProperty("minimumArmLift", minimumArmLift); note.addProperty("maximumArmTiltDegrees", maximumArmTilt); note.addProperty("minimumArmTiltDegrees", minimumArmTilt); note.addProperty("pouchDipAtSeconds", pouchDipAt); note.addProperty("pouchHeftAtSeconds", pouchHeftAt); note.addProperty("pouchReturnAtSeconds", pouchReturnAt); note.addProperty("maximumSpinDegrees", maximumSpin); note.addProperty("observedEquipSerial", serial);
+            if (expected.equals("money_pouch")) {
+                note.addProperty("actualSupportMotionFrames", pouchSupportMotionFrames); note.addProperty("actualSupportMinimumY", supportMinY);
+                note.addProperty("actualSupportMaximumY", supportMaxY); note.addProperty("actualSupportVerticalRangeMeters", supportMaxY - supportMinY);
+                note.addProperty("actualDipY", actualDipY); note.addProperty("actualApexY", actualApexY); note.addProperty("actualCatchY", actualCatchY);
+                note.addProperty("actualDipAtSeconds", actualDipAt); note.addProperty("actualApexAtSeconds", actualApexAt); note.addProperty("actualCatchAtSeconds", actualCatchAt);
+            }
+            scenes.add(note);
         }
         check(totalSeconds <= 10, "Dynamic recording is bounded to ten source seconds total");
+        check(pouchSupportArms.containsAll(java.util.Set.of("LEFT", "RIGHT")), "Actual submitted bag-bottom support is verified on both native palms");
         check(outgoingEvents > 0 && outgoingFallback == 0, "Every real outgoing cached resource keeps its native arm/item presentation until vanilla replacement");
         check(screenshots.size() == 28, "GUI, ten both-hand items, handedness, third-person, fallback, six motion keyframes, three single-hand views, sleeve, invisible and three legacy-switch views captured");
         for (var screenshot : screenshots) check(Files.size(root.resolve(text(screenshot.getAsJsonObject(), "file"))) > 1000,
@@ -490,6 +566,10 @@ final class ImportedItemHandsReview {
             report.addProperty("world", System.getProperty("fsrpg.importedItemHandsWorld")); report.addProperty("checks", checks.size()); report.add("checksPassed", checks);
             report.addProperty("nativeRenderFrames", nativeFrames); report.addProperty("vanillaRenderHandEvents", vanillaEvents); report.addProperty("vanillaCanceledEvents", vanillaCanceled);
             report.addProperty("outgoingCachedItemEvents", outgoingEvents); report.addProperty("outgoingFallbackEvents", outgoingFallback); report.addProperty("staleLegacyIntentFrames", staleIntentFrames);
+            var support = new JsonObject(); support.addProperty("verifiedActualSubmissionSamples", pouchSupportSamples);
+            support.addProperty("maximumContactDistanceMeters", maximumPouchContactDistance); support.addProperty("maximumSideOffsetMeters", maximumPouchSideOffset);
+            if (pouchSupportSamples > 0) { support.addProperty("minimumBodyCenterAbovePalmMeters", minimumPouchCenterAbovePalm); support.addProperty("minimumCameraUpComponent", minimumPouchUpY); }
+            support.add("nativeArms", RpgConfig.JSON.toJsonTree(pouchSupportArms)); report.add("pouchBottomSupport", support);
             report.add("nativeHands", diagnostic()); report.add("scenes", scenes); report.add("screenshots", screenshots); report.add("renderCapture", movie.summary());
             RpgSmoke.windowEnvironment(report);
             var jar = Path.of(RpgServer.class.getProtectionDomain().getCodeSource().getLocation().toURI());

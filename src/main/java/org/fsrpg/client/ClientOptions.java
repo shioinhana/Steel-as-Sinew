@@ -115,7 +115,7 @@ final class ClientOptions {
         IMPORTED_ITEM_EQUIP_ANIMATIONS=builder.comment("Once per equip: lightly heft the pouch, toss and catch coins, or draw a badge. Stack count changes do not replay it.").define("importedItemEquipAnimations",true);
         IMPORTED_ITEM_SCALE=builder.comment("Scale of imported first-person objects on the native palm. Smaller values obstruct less of the view; skin arm size stays vanilla.").defineInRange("importedItemScale",.65,.4,.85);
         IMPORTED_POUCH_SCALE=builder.comment("Independent first-person pouch scale: larger than coins/badges so its mouth, body and weight remain clear.").defineInRange("importedPouchScale",1.02,.7,1.3);
-        IMPORTED_POUCH_RAISE=builder.comment("Raise the pouch and its attached native skin hand together, in blocks, leaving room below the hanging bag.").defineInRange("importedPouchRaise",.14,0,.3);
+        IMPORTED_POUCH_RAISE=builder.comment("Extra raise of the pouch and supporting native skin hand together, in blocks, relative to the palm-support baseline. Existing custom values are preserved.").defineInRange("importedPouchRaise",.14,0,.3);
         IMPORTED_POUCH_SECONDS=builder.comment("One-shot pouch load, lift, fall and cushioned catch duration, in seconds.").defineInRange("importedPouchEquipSeconds",1.0,.5,2);
         IMPORTED_COIN_SECONDS=builder.comment("One-shot coin toss/catch duration, in seconds.").defineInRange("importedCoinEquipSeconds",1.05,.45,2);
         IMPORTED_BADGE_SECONDS=builder.comment("Simple badge draw duration, in seconds.").defineInRange("importedBadgeEquipSeconds",.35,.15,1);
