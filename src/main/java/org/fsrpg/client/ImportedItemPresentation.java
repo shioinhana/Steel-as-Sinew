@@ -39,6 +39,12 @@ public final class ImportedItemPresentation {
             lastPouchArmDirection = new Vector3f(), lastPouchSupportNormal = new Vector3f();
     private static double lastPouchFlightLift;
     private static String lastPouchArm = "";
+    private static final Vector3f lastCoinPalmSupport = new Vector3f(), lastCoinLandingPoint = new Vector3f(),
+            lastCoinCenter = new Vector3f(), lastCoinUp = new Vector3f(), lastCoinFrameOffset = new Vector3f();
+    private static double lastCoinFlightLift, lastCoinFlightOffset, lastCoinArmTilt, lastCoinArmLift,
+            lastCoinHalfHeight, lastCoinElapsedSeconds;
+    private static String lastCoinArm = "";
+    private static boolean lastCoinOutgoing, lastCoinIndependentFlight;
 
     /** Exact registry objects, not a broad namespace or name-prefix override. */
     public static boolean supports(ItemStack stack) {
@@ -99,6 +105,8 @@ public final class ImportedItemPresentation {
         var held = main ? MAIN_HELD : OFF_HELD;
         String itemId = BuiltInRegistries.ITEM.getKey(stack.getItem()).toString();
         var renderedKind = kind(itemId);
+        boolean pouch = renderedKind == ImportedItemMotion.Kind.POUCH;
+        boolean coin = renderedKind == ImportedItemMotion.Kind.COIN;
         var visualKey = new VisualKey(itemId, stack.getComponentsPatch());
         var context = left ? ItemDisplayContext.FIRST_PERSON_LEFT_HAND : ItemDisplayContext.FIRST_PERSON_RIGHT_HAND;
         var item = new ItemStackRenderState();
@@ -113,10 +121,13 @@ public final class ImportedItemPresentation {
         // the old stack. Freeze its last relative pose and let vanilla's equip
         // lowering retract both the arm and object smoothly together.
         var motion = outgoing ? held.outgoing(visualKey, renderedKind)
-                : state.sample(seconds, event.getEquipProgress() <= .35f,
+                : state.sample(seconds, coin || event.getEquipProgress() <= .35f,
                         ClientOptions.IMPORTED_ITEM_EQUIP_ANIMATIONS.get(), settings());
         if (!outgoing) held.remember(visualKey, motion);
-        boolean pouch = renderedKind == ImportedItemMotion.Kind.POUCH;
+        // At the completed turn (phase .80), the hand is back at the landing
+        // point with zero velocity. From there the caught coin follows its
+        // cushioning dip, including settled/disabled-animation poses.
+        boolean independentCoinFlight = coin && motion.itemSpinDegrees() < 360;
         float scale = (float) (pouch ? safe(ClientOptions.IMPORTED_POUCH_SCALE.get(), 1.02, .7, 1.3)
                 : safe(ClientOptions.IMPORTED_ITEM_SCALE.get(), .65, .4, .85));
         double armRaise = pouch ? safe(ClientOptions.IMPORTED_POUCH_RAISE.get(), .14, 0, .3) : 0;
@@ -133,23 +144,33 @@ public final class ImportedItemPresentation {
             // Supporting the bottom puts the entire pouch above the hand.
             // Keep the existing configurable raise as an extra adjustment to
             // this lower support baseline rather than moving the bag sideways.
-            poses.translate(0, armRaise - (pouch ? .24 : 0) + motion.armLift() - .10 * reveal, .04 * reveal);
-            Matrix4f armMatrix = nativeArm(side, event.getEquipProgress(), event.getSwingProgress());
+            // A coin flies in a stable frame while its hand flicks and pulls
+            // away below it. Pouch and badge still share their existing rig.
+            if (!coin) poses.translate(0, armRaise - (pouch ? .24 : 0) + motion.armLift() - .10 * reveal, .04 * reveal);
+            Matrix4f baseArm = nativeArm(side, coin && !outgoing ? 0 : event.getEquipProgress(), event.getSwingProgress());
+            Matrix4f armMatrix = new Matrix4f(baseArm);
             float armTilt = radians((float) (side * motion.armTiltDegrees()));
-            if (pouch) {
-                Vector3f support = pouchSupportPoint(side, slim);
-                // Keep the native slanted arm. Its slight heft roll pivots at
-                // the actual upper fingertip corner supporting the bag, so it
-                // cannot alter the separately authored load/lift/catch height.
+            if (pouch || coin) {
+                Vector3f support = pouch ? pouchSupportPoint(side, slim) : itemSupportPoint(side, slim);
+                // Keep the native arm, rotating about the actual contact point
+                // so the wrist cannot alter the authored lift/catch height.
                 armMatrix.translate(support).rotateZ(armTilt).translate(-support.x, -support.y, -support.z);
             } else armMatrix.rotateZ(armTilt);
             if (pouch) {
                 new Matrix4f(poses.last().pose()).mul(armMatrix).mul(skinArmBasis(side))
                         .transformDirection(0, 1, 0, lastPouchArmDirection).normalize();
             }
+            if (coin) {
+                new Matrix4f(poses.last().pose()).translate(0, (float) motion.armLift(), 0)
+                        .mul(palm(armMatrix, side, slim, false))
+                        .transformPosition(0, 0, 0, lastCoinPalmSupport);
+                new Matrix4f(poses.last().pose()).mul(palm(baseArm, side, slim, false))
+                        .transformPosition(0, 0, 0, lastCoinLandingPoint);
+            }
             if (!player.isInvisible()) {
                 poses.pushPose();
                 try {
+                    if (coin) poses.translate(0, motion.armLift(), 0);
                     poses.mulPose(armMatrix);
                     if (left) renderer.renderLeftHand(poses, event.getSubmitNodeCollector(), event.getPackedLight(), skin,
                             player.isModelPartShown(PlayerModelPart.LEFT_SLEEVE), player);
@@ -163,17 +184,23 @@ public final class ImportedItemPresentation {
             // The upright pouch rests on the real highest fingertip corner of
             // the naturally slanted hand. No skin vertices rise through its
             // bottom plane. Coins and badges keep their prior contact points.
-            Matrix4f palm = palm(armMatrix, side, slim, pouch);
+            Matrix4f palm = palm(independentCoinFlight ? baseArm : armMatrix, side, slim, pouch);
             Matrix4f idleArm = nativeArm(side, 0, 0);
             Quaternionf upright = palm(idleArm, side, slim, pouch).getNormalizedRotation(new Quaternionf()).conjugate();
             poses.pushPose();
             try {
+                if (coin && !independentCoinFlight) poses.translate(0, motion.armLift(), 0);
                 poses.mulPose(palm);
                 if (pouch) {
                     poses.last().pose().transformPosition(0, 0, 0, lastPouchPalmSupport);
                     poses.last().pose().transformDirection(0, 1, 0, lastPouchSupportNormal).normalize();
                 }
+                if (coin) poses.last().pose().transformPosition(0, 0, 0, lastCoinFrameOffset).sub(lastCoinLandingPoint);
                 poses.mulPose(upright);
+                // This axis belongs to the flight frame, before the coin's
+                // independent spin. Its actual center can reconstruct flight
+                // without mistaking an upside-down bottom face for a gap.
+                if (coin) poses.last().pose().transformDirection(0, 1, 0, lastCoinUp).normalize();
                 double gripY = switch (renderedKind) {
                     case BADGE -> bounds.minY + bounds.getYsize() * .2; // pinch the lower edge
                     default -> bounds.minY; // pouch base and landing coin sit on the palm
@@ -183,7 +210,8 @@ public final class ImportedItemPresentation {
                 double centerZ = (bounds.minZ + bounds.maxZ) / 2;
                 // Toss about the object's center of mass, not its contact edge;
                 // otherwise a half-flipped coin sweeps back through the hand.
-                poses.translate(0, motion.itemLift() + (centerY - gripY) * scale, 0);
+                double flightOffset = coin ? -.28 * reveal : 0;
+                poses.translate(0, motion.itemLift() + flightOffset + (centerY - gripY) * scale, 0);
                 poses.mulPose(new Quaternionf().rotationX((float) Math.toRadians(motion.itemSpinDegrees())));
                 poses.scale(scale, scale, scale);
                 poses.translate(-centerX, -centerY, -centerZ);
@@ -196,6 +224,15 @@ public final class ImportedItemPresentation {
                     submitted.transformDirection(0, 1, 0, lastPouchUp).normalize();
                     lastPouchArm = arm.name();
                     lastPouchFlightLift = motion.itemLift();
+                }
+                if (coin) {
+                    poses.last().pose().transformPosition((float) centerX, (float) centerY, (float) centerZ, lastCoinCenter);
+                    lastCoinFlightLift = motion.itemLift(); lastCoinFlightOffset = flightOffset;
+                    lastCoinArmTilt = motion.armTiltDegrees(); lastCoinArmLift = motion.armLift();
+                    lastCoinHalfHeight = bounds.getYsize() * scale / 2;
+                    lastCoinElapsedSeconds = motion.elapsedSeconds(); lastCoinOutgoing = outgoing;
+                    lastCoinIndependentFlight = independentCoinFlight;
+                    lastCoinArm = arm.name();
                 }
                 item.submit(poses, event.getSubmitNodeCollector(), event.getPackedLight(), OverlayTexture.NO_OVERLAY, 0);
             } finally { poses.popPose(); }
@@ -230,6 +267,9 @@ public final class ImportedItemPresentation {
         // approximation: the highest corner of the native slanted fingertip.
         return skinArmBasis(side).transformPosition(-side * (slim ? 2f : 3f) / 16, 10f / 16, -2f / 16, new Vector3f());
     }
+    private static Vector3f itemSupportPoint(int side, boolean slim) {
+        return skinArmBasis(side).transformPosition(-side * (slim ? .5f : 1f) / 16, 9f / 16, -2f / 16, new Vector3f());
+    }
     private static Matrix4f palm(Matrix4f arm, int side, boolean slim, boolean pouch) {
         if (pouch) {
             Vector3f support = pouchSupportPoint(side, slim);
@@ -245,7 +285,7 @@ public final class ImportedItemPresentation {
     private static ImportedItemMotion.Settings settings() {
         return new ImportedItemMotion.Settings(
                 safe(ClientOptions.IMPORTED_POUCH_SECONDS.get(), 1.0, .5, 2),
-                safe(ClientOptions.IMPORTED_COIN_SECONDS.get(), 1.05, .45, 2),
+                safe(ClientOptions.IMPORTED_COIN_SECONDS.get(), .55, .45, 2),
                 safe(ClientOptions.IMPORTED_BADGE_SECONDS.get(), .35, .15, 1),
                 safe(ClientOptions.IMPORTED_COIN_TOSS_HEIGHT.get(), .18, .04, .3),
                 safe(ClientOptions.IMPORTED_POUCH_HEFT_HEIGHT.get(), .10, 0, .18),
@@ -273,6 +313,14 @@ public final class ImportedItemPresentation {
         out.addProperty("lastPouchSideOffset", lastPouchBase.x - lastPouchPalmSupport.x);
         out.addProperty("lastPouchArm", lastPouchArm);
         out.addProperty("lastPouchSupportMode", lastPouchArm.isEmpty() ? "" : "base_on_native_edge");
+        out.add("lastCoinPalmSupport", vector(lastCoinPalmSupport)); out.add("lastCoinLandingPoint", vector(lastCoinLandingPoint));
+        out.add("lastCoinCenter", vector(lastCoinCenter)); out.add("lastCoinUp", vector(lastCoinUp));
+        out.add("lastCoinFrameOffset", vector(lastCoinFrameOffset));
+        out.addProperty("lastCoinFlightLift", lastCoinFlightLift); out.addProperty("lastCoinFlightOffset", lastCoinFlightOffset);
+        out.addProperty("lastCoinArmTilt", lastCoinArmTilt); out.addProperty("lastCoinArmLift", lastCoinArmLift);
+        out.addProperty("lastCoinHalfHeight", lastCoinHalfHeight); out.addProperty("lastCoinArm", lastCoinArm);
+        out.addProperty("lastCoinElapsedSeconds", lastCoinElapsedSeconds); out.addProperty("lastCoinOutgoing", lastCoinOutgoing);
+        out.addProperty("lastCoinIndependentFlight", lastCoinIndependentFlight);
         out.add("mainHand", diagnostic(MAIN)); out.add("offHand", diagnostic(OFF));
         return out;
     }
@@ -303,6 +351,9 @@ public final class ImportedItemPresentation {
         lastPouchArm = "";
         lastPouchPalmSupport.zero(); lastPouchBase.zero(); lastPouchCenter.zero(); lastPouchUp.zero();
         lastPouchArmDirection.zero(); lastPouchSupportNormal.zero(); lastPouchFlightLift = 0;
+        lastCoinPalmSupport.zero(); lastCoinLandingPoint.zero(); lastCoinCenter.zero(); lastCoinUp.zero(); lastCoinFrameOffset.zero();
+        lastCoinFlightLift = lastCoinFlightOffset = lastCoinArmTilt = lastCoinArmLift = lastCoinHalfHeight = lastCoinElapsedSeconds = 0;
+        lastCoinArm = ""; lastCoinOutgoing = lastCoinIndependentFlight = false;
         nativeArmSleeveVisible = false;
     }
     private ImportedItemPresentation() {}

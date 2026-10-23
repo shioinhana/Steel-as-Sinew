@@ -60,7 +60,7 @@ final class ImportedItemHandsReview {
     private volatile Throwable failure;
     private boolean initialized, done, recording, oldPause, oldVsync, oldHidden, oldActive, oldRightSleeve, oldLeftSleeve, oldCombatShoulder;
     private boolean checkLegacyFrame, staleSwitchPending;
-    private int pouchKeyframeMask;
+    private int pouchKeyframeMask, coinKeyframeMask;
     private net.neoforged.neoforge.common.ModConfigSpec.BooleanValue combatShoulder;
     private int warmup, ticks, nativeFrames, oldScale, oldFps, oldDistance, oldFov;
     private int vanillaEvents, vanillaCanceled, outgoingEvents, outgoingFallback, staleIntentFrames;
@@ -216,6 +216,11 @@ final class ImportedItemHandsReview {
             verifyNaturalPouchArm(values);
             check(true, "Actual submitted pouch bottom rests above the naturally slanted native hand after toss and two hefts");
         }
+        if (name.endsWith("_coin")) {
+            var coin = coinSample(values);
+            check(coin.settled() && coin.contactDistance() < .00002,
+                    "Settled official coin bottom returns to its actual native hand " + name);
+        }
     }
 
     private static double[] point(JsonObject values, String name) {
@@ -325,16 +330,21 @@ final class ImportedItemHandsReview {
         int adjusted = elapsed - (pouch ? 0 : MOTION_POUCH_EXTRA);
         int index = pouch ? 0 : adjusted / 60, local = pouch ? elapsed : adjusted % 60;
         String name = MOVING_ITEMS.get(index);
-        if (local == 0) { equip(null, 1); movingSettled = null; if (pouch) pouchKeyframeMask = 0; }
+        if (local == 0) {
+            equip(null, 1); movingSettled = null;
+            if (pouch) pouchKeyframeMask = 0;
+            if (name.equals("gold_coin")) coinKeyframeMask = 0;
+        }
         if (local == 4) {
             movie.start("equip-" + name.replace('_', '-'), "actual first-person both-hand equip: " + name, this::captureObservation);
             recording = true;
         }
         if (local == 8) equip(name, 1);
-        if (local == 21 && !name.equals("money_pouch")) request("motion-" + name + "-active");
+        if (local == 21 && name.equals("white_adventurer_badge")) request("motion-" + name + "-active");
         if (local == (pouch ? 70 : 44)) {
             movingSettled = diagnostic(); verifySettled(name, movingSettled, HumanoidArm.RIGHT);
-            scene("equip-settled-" + name, movingSettled); request("motion-" + name + "-settled");
+            scene("equip-settled-" + name, movingSettled);
+            if (!name.equals("gold_coin")) request("motion-" + name + "-settled");
         }
         if (local == (pouch ? 73 : 47)) equip(name, item(name).getMaxStackSize() > 1 ? 3 : 1);
         if (local == (pouch ? 79 : 55)) sameSerial(movingSettled, diagnostic(), "Recorded settled equip stays still after stack replacement " + name);
@@ -543,7 +553,10 @@ final class ImportedItemHandsReview {
                 }
             }
             check(activeSamples > 30 && sawSettled, "Actual equip is visible and returns to settled rest " + clipId);
-            if (expected.endsWith("coin")) check(maximumLift > .05 && maximumSpin > 90, "Coin visibly rises and spins before landing " + clipId);
+            if (expected.endsWith("coin")) {
+                check(maximumLift > .05 && maximumSpin > 90, "Coin visibly rises and spins before landing " + clipId);
+                verifyCoinSequence(clip);
+            }
             else if (expected.equals("money_pouch")) {
                 check(maximumArmLift > .075 && minimumArmLift < -.025, "Pouch and native hand visibly load downward then heft upward");
                 check(pouchDipAt >= 0 && pouchDipAt < pouchHeftAt && pouchHeftAt < pouchReturnAt,
@@ -570,7 +583,7 @@ final class ImportedItemHandsReview {
         check(totalSeconds <= 10, "Dynamic recording is bounded to ten source seconds total");
         check(pouchSupportArms.containsAll(java.util.Set.of("LEFT", "RIGHT")), "Actual submitted bag-bottom support is verified on both native palms");
         check(outgoingEvents > 0 && outgoingFallback == 0, "Every real outgoing cached resource keeps its native arm/item presentation until vanilla replacement");
-        check(screenshots.size() == 31, "GUI, ten both-hand items, handedness, third-person, fallback, nine motion keyframes, three single-hand views, sleeve, invisible and three legacy-switch views captured");
+        check(screenshots.size() == 33, "GUI, ten both-hand items, handedness, third-person, fallback, eleven motion keyframes, three single-hand views, sleeve, invisible and three legacy-switch views captured");
         for (var screenshot : screenshots) check(Files.size(root.resolve(text(screenshot.getAsJsonObject(), "file"))) > 1000,
                 "Native screenshot written " + text(screenshot.getAsJsonObject(), "file"));
     }
@@ -623,6 +636,112 @@ final class ImportedItemHandsReview {
         sequence.add("hefts", hefts); scenes.add(sequence);
     }
 
+    /** Coin spin is about its center, so its landing anchor uses the unspun flight axis. */
+    private record CoinSample(double elapsed, double gap, double palmY, double contactDistance,
+                              double flightResidual, double armTilt, double armLift, double spin,
+                              boolean settled, boolean pending, boolean independentFlight) {}
+
+    private static CoinSample coinSample(JsonObject values) {
+        if (!text(values, "lastItemId").endsWith("_coin") || values.get("lastOutgoing").getAsBoolean())
+            throw new AssertionError("Coin evidence must describe the currently submitted incoming coin");
+        var main = hand(values, "mainHand");
+        var state = text(main, "arm").equals(text(values, "lastCoinArm")) ? main : hand(values, "offHand");
+        var center = point(values, "lastCoinCenter"); var landing = point(values, "lastCoinLandingPoint");
+        var palm = point(values, "lastCoinPalmSupport"); var up = point(values, "lastCoinUp");
+        var frameOffset = point(values, "lastCoinFrameOffset");
+        boolean independent = values.get("lastCoinIndependentFlight").getAsBoolean();
+        double half = number(values, "lastCoinHalfHeight"), lift = number(values, "lastCoinFlightLift"),
+                offset = number(values, "lastCoinFlightOffset"), elapsed = number(values, "lastCoinElapsedSeconds");
+        double dx = center[0] - up[0] * half - landing[0] - frameOffset[0], dy = center[1] - up[1] * half - landing[1] - frameOffset[1],
+                dz = center[2] - up[2] * half - landing[2] - frameOffset[2];
+        double gap = dx * up[0] + dy * up[1] + dz * up[2];
+        double rx = dx - up[0] * (lift + offset), ry = dy - up[1] * (lift + offset), rz = dz - up[2] * (lift + offset);
+        double residual = Math.sqrt(rx * rx + ry * ry + rz * rz);
+        double px = center[0] - up[0] * half - palm[0], py = center[1] - up[1] * half - palm[1],
+                pz = center[2] - up[2] * half - palm[2];
+        double length = up[0] * up[0] + up[1] * up[1] + up[2] * up[2];
+        for (int axis = 0; axis < 3; axis++) {
+            double expected = independent ? 0 : palm[axis] - landing[axis];
+            if (Math.abs(frameOffset[axis] - expected) > .00002)
+                throw new AssertionError("Actual coin frame must be independent during flight and attached to the moving native palm after catch");
+        }
+        if (!Double.isFinite(half) || half <= 0 || Math.abs(length - 1) > .001 || residual > .00002
+                || Math.abs(elapsed - number(state, "equipSeconds")) > .000001
+                || Math.abs(number(values, "lastCoinArmTilt") - number(state, "armTiltDegrees")) > .000001
+                || Math.abs(number(values, "lastCoinArmLift") - number(state, "armLift")) > .000001)
+            throw new AssertionError("Actual coin center, native hand and unspun flight diagnostics disagree: residual=" + residual);
+        return new CoinSample(elapsed, gap, palm[1], Math.sqrt(px * px + py * py + pz * pz), residual,
+                number(values, "lastCoinArmTilt"), number(values, "lastCoinArmLift"), number(state, "itemSpinDegrees"),
+                state.get("settled").getAsBoolean(), state.get("pending").getAsBoolean(), independent);
+    }
+
+    private void verifyCoinSequence(JsonObject clip) {
+        double incomingAt = -1, flightAt = -1, flightElapsed = -1, caughtAt = -1, settledAt = -1, settledElapsed = -1;
+        double maximumGap = 0, maximumResidual = 0, maximumLaunchTilt = Double.NEGATIVE_INFINITY,
+                minimumLaunchTilt = Double.POSITIVE_INFINITY, lowestFlightPalmY = Double.POSITIVE_INFINITY,
+                highestCatchPalmY = Double.NEGATIVE_INFINITY, lowestFlightAt = -1, highestCatchAt = -1,
+                maximumFlightContactDistance = 0, maximumRestContactDistance = 0;
+        int actualFrames = 0, earlyFlightFrames = 0, settledFrames = 0, catchCushionFrames = 0;
+        for (var frameValue : clip.getAsJsonArray("frames")) {
+            var frame = frameValue.getAsJsonObject(); double time = number(frame, "capturedAtSeconds");
+            var values = frame.getAsJsonObject("observation").getAsJsonObject("nativeHands");
+            if (!text(values, "lastItemId").equals("fsrpg:gold_coin") || values.get("lastOutgoing").getAsBoolean()) continue;
+            var sample = coinSample(values); actualFrames++;
+            if (sample.pending()) throw new AssertionError("Incoming coin waits on a raised resting hand before starting its throw");
+            if (incomingAt < 0) incomingAt = time;
+            maximumGap = Math.max(maximumGap, sample.gap()); maximumResidual = Math.max(maximumResidual, sample.flightResidual());
+            if (sample.gap() > .02 && flightAt < 0) { flightAt = time; flightElapsed = sample.elapsed(); }
+            if (sample.elapsed() < .10 && sample.gap() > .02) earlyFlightFrames++;
+            if (sample.elapsed() < .13) {
+                maximumLaunchTilt = Math.max(maximumLaunchTilt, sample.armTilt());
+                minimumLaunchTilt = Math.min(minimumLaunchTilt, sample.armTilt());
+            }
+            if (sample.elapsed() >= .17 && sample.elapsed() <= .24) {
+                if (!sample.independentFlight()) throw new AssertionError("Coin must fly independently while its hand recoils beneath it");
+                if (sample.palmY() < lowestFlightPalmY) { lowestFlightPalmY = sample.palmY(); lowestFlightAt = time; }
+                maximumFlightContactDistance = Math.max(maximumFlightContactDistance, sample.contactDistance());
+            }
+            if (!sample.independentFlight() && sample.contactDistance() > .00002)
+                throw new AssertionError("Caught coin separates from the actual native palm during its cushion or rest");
+            if (!sample.independentFlight() && !sample.settled() && sample.armLift() < -.005) catchCushionFrames++;
+            if (sample.elapsed() >= .44 && sample.elapsed() <= .56 && !sample.independentFlight() && sample.contactDistance() < .00002) {
+                if (caughtAt < 0) caughtAt = time;
+                if (sample.palmY() > highestCatchPalmY) { highestCatchPalmY = sample.palmY(); highestCatchAt = time; }
+            }
+            if (sample.settled()) {
+                if (settledAt < 0) { settledAt = time; settledElapsed = sample.elapsed(); }
+                settledFrames++; maximumRestContactDistance = Math.max(maximumRestContactDistance, sample.contactDistance());
+            }
+        }
+        check(actualFrames > 30 && earlyFlightFrames > 0 && flightElapsed >= 0 && flightElapsed < .10
+                        && flightAt - incomingAt < .10,
+                "Actual incoming coin is already airborne within one tenth of a second, with no held-still pre-throw wait");
+        check(maximumLaunchTilt > 10 && minimumLaunchTilt < -10 && maximumLaunchTilt - minimumLaunchTilt > 25,
+                "Actual native wrist gives a clear backward-to-forward launch impulse");
+        check(maximumGap > .16 && maximumFlightContactDistance > .15 && maximumResidual < .00002,
+                "Coin center follows an independent actual flight above the catch target while the hand drops beneath it");
+        check(lowestFlightAt > flightAt && highestCatchAt > lowestFlightAt && highestCatchPalmY - lowestFlightPalmY > .06,
+                "Actual native hand rises from its flight low point to meet the descending coin");
+        check(caughtAt > flightAt && settledAt > caughtAt && settledElapsed < .70 && settledAt - incomingAt < .70,
+                "Fast toss, catch and complete settling finish within seven tenths of a source second");
+        check(settledFrames >= 20 && maximumRestContactDistance < .00002,
+                "After the quick catch the actual official coin bottom remains on its native hand");
+        check(catchCushionFrames >= 2, "Caught coin stays attached during the native hand's visible downward cushion");
+        check(coinKeyframeMask == 15, "Coin launch, independent flight, catch and settled screenshots are actual rendered frames");
+        var result = new JsonObject(); result.addProperty("id", "coin-fast-launch-then-native-hand-catch");
+        result.addProperty("firstActualIncomingAtSeconds", incomingAt); result.addProperty("firstAirborneAtSeconds", flightAt);
+        result.addProperty("firstAirborneEquipSeconds", flightElapsed); result.addProperty("catchAtSeconds", caughtAt);
+        result.addProperty("settledAtSeconds", settledAt); result.addProperty("settledEquipSeconds", settledElapsed);
+        result.addProperty("actualCompleteDurationSeconds", settledAt - incomingAt); result.addProperty("maximumFlightGapMeters", maximumGap);
+        result.addProperty("maximumFlightResidualMeters", maximumResidual); result.addProperty("maximumRestContactDistanceMeters", maximumRestContactDistance);
+        result.addProperty("minimumLaunchWristDegrees", minimumLaunchTilt); result.addProperty("maximumLaunchWristDegrees", maximumLaunchTilt);
+        result.addProperty("lowestFlightPalmY", lowestFlightPalmY); result.addProperty("highestCatchPalmY", highestCatchPalmY);
+        result.addProperty("actualHandReturnHeightMeters", highestCatchPalmY - lowestFlightPalmY);
+        result.addProperty("lowestFlightPalmAtSeconds", lowestFlightAt); result.addProperty("highestCatchPalmAtSeconds", highestCatchAt);
+        result.addProperty("actualCoinFrames", actualFrames); result.addProperty("earlyAirborneFrames", earlyFlightFrames);
+        result.addProperty("settledFrames", settledFrames); result.addProperty("catchCushionFrames", catchCushionFrames); scenes.add(result);
+    }
+
     private void request(String name) {
         if (capture != null) throw new IllegalStateException("Screenshot request overlapped"); capture = name;
     }
@@ -634,13 +753,26 @@ final class ImportedItemHandsReview {
                 throw new AssertionError("Legacy arm pair rendered over an actual imported main-hand item during hotbar switching");
             if (recording) {
                 assertMonitor(); movie.frame(event);
-                var main = hand(diagnostic(), "mainHand");
+                var values = diagnostic(); var main = hand(values, "mainHand");
                 if (capture == null && main != null && text(main, "itemId").equals("fsrpg:money_pouch")) {
                     double elapsed = number(main, "equipSeconds"), lift = number(main, "itemLift"), armLift = number(main, "armLift");
                     if ((pouchKeyframeMask & 1) == 0 && lift > .21) { request("motion-money_pouch-toss-apex"); pouchKeyframeMask |= 1; }
                     else if ((pouchKeyframeMask & 2) == 0 && elapsed > .58 && elapsed < .70 && lift < .00001) { request("motion-money_pouch-landing"); pouchKeyframeMask |= 2; }
                     else if ((pouchKeyframeMask & 4) == 0 && elapsed > .70 && elapsed < 1.70 && armLift > .095) { request("motion-money_pouch-heft-1"); pouchKeyframeMask |= 4; }
                     else if ((pouchKeyframeMask & 8) == 0 && elapsed > 1.70 && armLift > .095) { request("motion-money_pouch-heft-2"); pouchKeyframeMask |= 8; }
+                }
+                if (capture == null && text(values, "lastItemId").equals("fsrpg:gold_coin") && !values.get("lastOutgoing").getAsBoolean()) {
+                    var sample = coinSample(values); String keyframe = null;
+                    if ((coinKeyframeMask & 1) == 0 && sample.elapsed() >= .06 && sample.elapsed() <= .11 && sample.armTilt() > 5 && sample.gap() > .02) {
+                        keyframe = "launch"; coinKeyframeMask |= 1;
+                    } else if ((coinKeyframeMask & 2) == 0 && sample.elapsed() >= .17 && sample.elapsed() <= .24 && sample.gap() > .14) {
+                        keyframe = "flying"; coinKeyframeMask |= 2;
+                    } else if ((coinKeyframeMask & 4) == 0 && sample.elapsed() >= .44 && sample.elapsed() <= .51 && !sample.independentFlight() && sample.contactDistance() < .00002 && sample.spin() >= 359.9) {
+                        keyframe = "catch"; coinKeyframeMask |= 4;
+                    } else if ((coinKeyframeMask & 8) == 0 && sample.elapsed() >= .55 && sample.elapsed() < .70 && sample.settled() && sample.contactDistance() < .00002) {
+                        keyframe = "settled"; coinKeyframeMask |= 8;
+                    }
+                    if (keyframe != null) { request("motion-gold_coin-" + keyframe); scene("coin-keyframe-" + keyframe, values); }
                 }
             }
             if (capture == null) return;

@@ -119,7 +119,7 @@ final class ClientOptions {
         IMPORTED_POUCH_SECONDS=builder.comment("Duration of each of the two pouch hefts after its initial toss and landing, in seconds. Existing custom timing is retained for each heft.").defineInRange("importedPouchEquipSeconds",1.0,.5,2);
         IMPORTED_POUCH_TOSS_SECONDS=builder.comment("Initial pouch toss and cushioned landing duration before the two hefts, in seconds.").defineInRange("importedPouchTossSeconds",.70,.35,1.5);
         IMPORTED_POUCH_TOSS_HEIGHT=builder.comment("Initial pouch flight apex above the supporting hand, in blocks. Cosmetic only.").defineInRange("importedPouchTossHeight",.22,.06,.4);
-        IMPORTED_COIN_SECONDS=builder.comment("One-shot coin toss/catch duration, in seconds.").defineInRange("importedCoinEquipSeconds",1.05,.45,2);
+        IMPORTED_COIN_SECONDS=builder.comment("Quick coin entry: immediately flick upward, recoil the hand, then catch. Total duration in seconds.").defineInRange("importedCoinEquipSeconds",.55,.45,2);
         IMPORTED_BADGE_SECONDS=builder.comment("Simple badge draw duration, in seconds.").defineInRange("importedBadgeEquipSeconds",.35,.15,1);
         IMPORTED_COIN_TOSS_HEIGHT=builder.comment("Coin flight height above the palm, in blocks. Cosmetic only.").defineInRange("importedCoinTossHeight",.18,.04,.3);
         IMPORTED_POUCH_HEFT_HEIGHT=builder.comment("Pouch heft apex above its resting grip, in blocks. Anticipation sinks 40% of this height; the catch sinks 25%. Cosmetic only.").defineInRange("importedPouchHeftHeight",.10,0,.18);

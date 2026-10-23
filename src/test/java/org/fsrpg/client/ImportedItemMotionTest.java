@@ -14,6 +14,7 @@ public final class ImportedItemMotionTest {
         pendingAnimationAndClockCorrection();
         outgoingCacheKeepsPreviousPose();
         pouchHasWeightAndCushionedCatch();
+        coinLaunchesImmediatelyAndCatchesQuickly();
         invalidSettingsRejected();
         System.out.println("ImportedItemMotionTest passed: " + checks + " checks");
     }
@@ -22,7 +23,7 @@ public final class ImportedItemMotionTest {
         var settings = Settings.DEFAULT;
         for (var kind : new Kind[]{Kind.POUCH, Kind.COIN, Kind.BADGE}) {
             var start = pose(kind, 0, settings);
-            equal(0, start.armLift(), "start has no heft discontinuity");
+            equal(kind == Kind.COIN ? -.32 : 0, start.armLift(), "coin starts with the hand withdrawn; other objects start at their hold");
             equal(0, start.itemLift(), "start is on the hand");
             equal(0, start.itemSpinDegrees(), "initial orientation");
             equal(0, start.drawProgress(), "starts withdrawn");
@@ -51,14 +52,16 @@ public final class ImportedItemMotionTest {
     private static void continuousMotionAtFlightAndLanding() {
         var settings = Settings.DEFAULT;
         for (var kind : new Kind[]{Kind.POUCH, Kind.COIN, Kind.BADGE}) {
-            for (double fraction : new double[]{0, .15, .22, .30, .50, .75, .78, .82, 1}) {
+            for (double fraction : new double[]{0, .10, .12, .15, .18, .22, .30, .38, .50, .70, .75, .78, .80, .82, .90, 1}) {
                 double t = fraction * settings.duration(kind), epsilon = 1e-6;
                 var a = pose(kind, Math.max(0, t - epsilon), settings);
                 var b = pose(kind, t, settings);
                 var c = pose(kind, t + epsilon, settings);
                 check(Math.abs(a.itemLift() - c.itemLift()) < 1e-5, "flight C0 at phase boundary");
                 check(Math.abs(a.armLift() - c.armLift()) < 1e-5, "arm C0 at phase boundary");
-                check(Math.abs(a.armTiltDegrees() - c.armTiltDegrees()) < .001, "arm tilt C0 at phase boundary");
+                // A fast 34-degree wrist flick can cover 0.0013 degrees in
+                // this two-microsecond interval while remaining continuous.
+                check(Math.abs(a.armTiltDegrees() - c.armTiltDegrees()) < .002, "arm tilt C0 at phase boundary " + kind + "/" + fraction);
                 check(Math.abs(a.itemSpinDegrees() - c.itemSpinDegrees()) < .005, "spin C0, including 360deg settle");
                 if (fraction > 0) {
                     double before = (b.itemLift() - a.itemLift()) / epsilon;
@@ -69,7 +72,7 @@ public final class ImportedItemMotionTest {
                 }
             }
         }
-        double t = .5 * settings.coinSeconds();
+        double t = .4 * settings.coinSeconds();
         check(pose(Kind.COIN, t - .01, settings).itemLift() < pose(Kind.COIN, t, settings).itemLift(), "coin ascends before apex");
         check(pose(Kind.COIN, t + .01, settings).itemLift() < pose(Kind.COIN, t, settings).itemLift(), "coin descends after apex");
     }
@@ -110,8 +113,8 @@ public final class ImportedItemMotionTest {
         var main = new State(); var off = new State();
         main.select(key("coin", 0), Kind.COIN); off.select(key("badge", -1), Kind.BADGE);
         main.sample(1, true, true, Settings.DEFAULT); off.sample(1, true, true, Settings.DEFAULT);
-        main.sample(1.5, true, true, Settings.DEFAULT); off.sample(1.5, true, true, Settings.DEFAULT);
-        check(main.last().itemLift() > .1 && off.last().settled(), "hands keep independent timing and kind");
+        main.sample(1.4, true, true, Settings.DEFAULT); off.sample(1.4, true, true, Settings.DEFAULT);
+        check(main.last().itemLift() > 0 && !main.last().settled() && off.last().settled(), "hands keep independent timing and kind");
         main.select(key("pouch", 2), Kind.POUCH);
         equal(1, off.serial(), "changing main hand cannot retrigger offhand");
         main.reset(); off.reset();
@@ -152,7 +155,7 @@ public final class ImportedItemMotionTest {
         var next = new State(); var held = new HeldPose();
         next.select(key("coin", 0), Kind.COIN);
         next.sample(0, true, true, Settings.DEFAULT);
-        var flying = next.sample(.5, true, true, Settings.DEFAULT);
+        var flying = next.sample(.22, true, true, Settings.DEFAULT);
         held.remember("old coin components", flying);
         next.select(key("badge", 1), Kind.BADGE);
         for (int frame = 0; frame < 12; frame++) {
@@ -225,6 +228,30 @@ public final class ImportedItemMotionTest {
         }
     }
     private static EquipKey key(String item, int slot) { return new EquipKey(item, slot, "same components", false); }
+    private static void coinLaunchesImmediatelyAndCatchesQuickly() {
+        var s = Settings.DEFAULT;
+        equal(.55, s.coinSeconds(), "default full coin entry completes in 550 ms");
+        var early = pose(Kind.COIN, .05, s);
+        check(early.itemLift() > .02 && early.itemSpinDegrees() > 0,
+                "coin is already released in the first 50 ms rather than waiting to be held");
+        var flick = pose(Kind.COIN, .18 * s.coinSeconds(), s);
+        check(flick.armTiltDegrees() >= 15 && flick.armLift() > .02, "hand gives a readable upward wrist flick");
+        var flight = pose(Kind.COIN, .38 * s.coinSeconds(), s);
+        check(flight.itemLift() > .17 && flight.armLift() < -.15,
+                "coin leads the display while the hand recoils below it");
+        var ready = pose(Kind.COIN, .70 * s.coinSeconds(), s);
+        equal(0, ready.armLift(), "hand returns to the landing point before the coin");
+        equal(0, ready.armTiltDegrees(), "wrist aligns before catch");
+        var landing = pose(Kind.COIN, .80 * s.coinSeconds(), s);
+        equal(0, landing.itemLift(), "coin lands at 440 ms");
+        equal(360, landing.itemSpinDegrees(), "coin finishes exactly one spin before hand attachment");
+        equal(0, landing.armLift(), "attachment starts from the same hand anchor");
+        equal(0, landing.armTiltDegrees(), "attachment starts with no wrist discontinuity");
+        var cushion = pose(Kind.COIN, .90 * s.coinSeconds(), s);
+        check(cushion.armLift() < -.014 && cushion.armTiltDegrees() < -4,
+                "hand and landed coin cushion the catch together");
+        check(pose(Kind.COIN, .55, s).settled(), "quick display ends without a second toss");
+    }
     private static void equal(double expected, double actual, String message) { near(expected, actual, 1e-9, message); }
     private static void near(double expected, double actual, double epsilon, String message) { check(Double.isFinite(actual) && Math.abs(expected - actual) <= epsilon, message + ": " + actual); }
     private static void check(boolean condition, String message) { checks++; if (!condition) throw new AssertionError(message); }

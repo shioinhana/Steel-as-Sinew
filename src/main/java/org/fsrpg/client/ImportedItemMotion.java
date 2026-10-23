@@ -8,7 +8,7 @@ public final class ImportedItemMotion {
 
     public record Settings(double pouchSeconds, double coinSeconds, double badgeSeconds,
                            double tossHeight, double heftHeight, double pouchTossSeconds, double pouchTossHeight) {
-        public static final Settings DEFAULT = new Settings(1.0, 1.05, .35, .18, .10, .70, .22);
+        public static final Settings DEFAULT = new Settings(1.0, .55, .35, .18, .10, .70, .22);
         public Settings {
             bounded(pouchSeconds, .5, 2, "pouch seconds");
             bounded(coinSeconds, .45, 2, "coin seconds");
@@ -132,10 +132,25 @@ public final class ImportedItemMotion {
             arm *= settings.heftHeight;
             tilt *= settings.heftHeight / .10;
         } else if (kind == Kind.COIN) {
-            double flight = clamp((phase - .22) / .56);
+            // Launch immediately from below the frame, flick the wrist, then
+            // let the hand recoil and return under the independent flying coin.
+            draw = smooth(phase / .12);
+            double flight = clamp(phase / .80);
             lift = settings.tossHeight * bump(flight);
             spin = 360 * smooth(flight);
-            arm = .018 * bump(phase / .30) - .012 * bump((phase - .75) / .25);
+            if (phase < .10) arm = blend(-.32, -.10, phase / .10);
+            else if (phase < .18) arm = blend(-.10, .025, (phase - .10) / .08);
+            else if (phase < .38) arm = blend(.025, -.16, (phase - .18) / .20);
+            else if (phase < .70) arm = blend(-.16, 0, (phase - .38) / .32);
+            else if (phase < .80) arm = 0;
+            else if (phase < .90) arm = blend(0, -.015, (phase - .80) / .10);
+            else arm = blend(-.015, 0, (phase - .90) / .10);
+            if (phase < .18) tilt = blend(-18, 16, phase / .18);
+            else if (phase < .38) tilt = blend(16, -6, (phase - .18) / .20);
+            else if (phase < .70) tilt = blend(-6, 0, (phase - .38) / .32);
+            else if (phase < .80) tilt = 0;
+            else if (phase < .90) tilt = blend(0, -5, (phase - .80) / .10);
+            else tilt = blend(-5, 0, (phase - .90) / .10);
         }
         return new Pose(arm, tilt, lift, spin, draw, elapsed, false);
     }
