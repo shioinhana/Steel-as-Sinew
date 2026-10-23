@@ -131,7 +131,7 @@ final class RenderObservations {
             observation.addProperty("balanceXcm",frame.balance().x());
             observation.addProperty("balanceZcm",frame.balance().z());
             observation.addProperty("sampledTick", frame.sampledTick());
-            for (String id : List.of("body", "head", "right_arm", "right_forearm", "right_hand", "left_arm", "left_forearm", "left_hand", "right_leg", "left_leg")) {
+            for (String id : List.of("body", "head", "right_arm", "right_forearm", "right_hand", "right_item", "left_arm", "left_forearm", "left_hand", "left_item", "right_leg", "left_leg")) {
                 if (frame.world().containsKey(id)) rig.add(id, RpgConfig.JSON.toJsonTree(frame.world().get(id).get(new float[16])));
             }
             for (String side : List.of("right", "left")) {
@@ -209,6 +209,21 @@ final class RenderObservations {
                     observation.addProperty(side + "HiltPalmErrorCm",hilt.distance(palm));
                     observation.addProperty(side + "HiltBladeAlignmentDot",new Vector3f(tip).sub(hilt).normalize().dot(axis));
                     observation.addProperty(side + "ItemTipReference", spear ? "stock 32px spear upper-left tip through official display/carrier" : "stock 16px handheld sword diagonal tip through official display/carrier");
+                    if(side.equals("right")&&org.fsrpg.client.SwordMotion.applies(frame.model())&&frame.world().containsKey("right_item")) {
+                        // submitLegacy resolves ItemDisplayContext.NONE and submits the authored
+                        // locator, so the older standard 50-degree carrier above is not this rig's
+                        // actual weapon. Record the exact production mount's direction separately.
+                        Matrix4f locator=frame.world().get("right_item");
+                        Matrix4f actual=HeldItemTransform.legacyLocator(locator).mul(HeldItemTransform.legacyRapierItem());
+                        Vector3f actualAxis=actual.transformDirection(new Vector3f(1,1,0));
+                        actualAxis.set(actualAxis.x,-actualAxis.y,-actualAxis.z).normalize();
+                        observation.add("rightActualOfficialBladeAxis",vector(actualAxis));
+                        observation.add("rightActualOfficialLocatorCm",vector(locator.getTranslation(new Vector3f())));
+                        observation.addProperty("rightOfficialLocatorHandErrorCm",locator.getTranslation(new Vector3f()).distance(hand.getTranslation(new Vector3f())));
+                        Vector3f forearmDown=forearm.transformDirection(new Vector3f(0,-1,0)).normalize();
+                        observation.addProperty("rightActualBladeWristFlexionDegrees",Math.toDegrees(Math.acos(Math.clamp(actualAxis.dot(forearmDown),-1,1))));
+                        observation.addProperty("rightActualOfficialItemPath","right_item / legacyLocator / legacyRapierItem / ItemDisplayContext.NONE");
+                    }
                 }
             }
             if (frame.world().containsKey("right_hand")) {
@@ -262,7 +277,7 @@ final class RenderObservations {
             finalLower.add("right",finalLeg(model.rightLeg,frame.rightKnee(),lower.right().support(),pelvisYaw));
             finalLower.add("left",finalLeg(model.leftLeg,frame.leftKnee(),lower.left().support(),pelvisYaw));
             observation.add("finalLowerBody",finalLower);
-            if(frame.model().rig().id().equals("fsrpg.spear")) {
+            if(frame.model().rig().id().equals("fsrpg.spear")||org.fsrpg.client.SwordMotion.applies(frame.model())) {
                 var torso=new org.fsrpg.client.TorsoDeformation(frame.world().get("body"),lower);
                 var sections=new com.google.gson.JsonArray();
                 for(float y:new float[]{0,6,8,10,12}) {
@@ -366,6 +381,8 @@ final class RenderObservations {
             if(result.has("transitionStarted"))result.addProperty("transitionElapsedTicks",Math.max(0,frame.sampledTick()-result.get("transitionStarted").getAsDouble()));
             var clip=frame.model().rig().clips().get(payload.action());
             if(clip!=null) {
+                result.add("clipTags",RpgConfig.JSON.toJsonTree(clip.tags()));
+                result.addProperty("rapierPhrase",org.fsrpg.client.RapierMotion.phrase(clip));
                 result.addProperty("clipDurationSeconds",clip.duration());
                 double begin=clip.events().stream().filter(e->e.name().equals("active_begin")).mapToDouble(e->e.time()).findFirst().orElse(clip.duration()*.35);
                 double end=clip.events().stream().filter(e->e.name().equals("active_end")).mapToDouble(e->e.time()).findFirst().orElse(clip.duration()*.55);
@@ -400,6 +417,10 @@ final class RenderObservations {
                 else if(value instanceof Vector3f v)result.add(name,vector(v));
             }
             Object motion=field(binding.getClass(),binding,"motion");
+            for(String name:List.of("motion","swordLean","swordTurn")) {
+                Object persistent=field(binding.getClass(),binding,name);
+                if(persistent!=null)result.addProperty(name+"Identity",System.identityHashCode(persistent));
+            }
             if(motion!=null) {
                 JsonObject sampledMotion=new JsonObject();
                 for(String name:List.of("positionTick","velocityX","velocityZ","previousTick","previousGaitTick","gaitRadians","gaitLane","x","forward","run")) {

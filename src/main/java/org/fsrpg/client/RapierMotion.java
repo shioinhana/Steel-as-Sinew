@@ -8,13 +8,25 @@ public final class RapierMotion {
     public static final float REACTION_DEGREES=3,MAXIMUM_COMBINED_DEGREES=5;
     public record Lean(float lateral,float forward) {}
     private RapierMotion(){}
-    public static boolean cut(Clip clip){return clip.tags().contains("rapier_rework:084")||fencing(clip);}
-    public static boolean fencing(Clip clip){return clip!=null&&clip.tags().contains("rapier_fencing:085");}
+    public static boolean cut(Clip clip){return clip!=null&&(clip.tags().contains("rapier_rework:084")||fencing(clip));}
+    public static boolean flow(Clip clip){return clip!=null&&clip.tags().contains("rapier_fencing:0100");}
+    public static boolean fencing(Clip clip){return clip!=null&&(clip.tags().contains("rapier_fencing:085")||flow(clip));}
     public static String phrase(Clip clip){return clip.tags().stream().filter(t->t.startsWith("rapier_phrase:")).map(t->t.substring(14)).findFirst().orElse("");}
+    /** A branch starts on the last presented joints and takes their shortest rotation arc.
+     * The target keeps its combat clock; no new-clip sample is mistaken for outgoing velocity. */
+    public static java.util.Map<String,org.fsvoxel.animation.FsvoxAnimation.Pose> bridge(
+            java.util.Map<String,org.fsvoxel.animation.FsvoxAnimation.Pose> from,
+            java.util.Map<String,org.fsvoxel.animation.FsvoxAnimation.Pose> authored,float weight){
+        if(from==null||weight>=1)return authored;
+        if(weight<=0)return from;
+        return PresentationMotion.blend(from,authored,weight);
+    }
     /** Direct queued handoffs meet at ACTIVE end; late clicks bridge from their actual resting pose. */
     public static boolean directHandoff(Clip previous,Clip next,double elapsed,double windup,double active){
         if(!fencing(previous)||!fencing(next))return false;
-        var phrases=java.util.List.of("direct-thrust","disengage-thrust","opposition-thrust","short-return-cut","lunge-thrust");
+        if(flow(previous)!=flow(next))return false;
+        var phrases=flow(previous)?java.util.List.of("direct-thrust","rising-cut","diagonal-cut","return-cut","lunge-thrust")
+                :java.util.List.of("direct-thrust","disengage-thrust","opposition-thrust","short-return-cut","lunge-thrust");
         int index=phrases.indexOf(phrase(previous));
         return index>=0&&phrases.get((index+1)%phrases.size()).equals(phrase(next))
                 &&elapsed>=windup+active-.6&&elapsed<=windup+active+.6;
@@ -38,7 +50,7 @@ public final class RapierMotion {
         double t=Math.clamp(seconds/clip.duration(),0,1),u=Math.clamp((t-.12)/.88,0,1);
         return (float)(direction*REACTION_DEGREES*Math.pow(Math.sin(Math.PI*u),2));
     }
-    /** Thrusts counterbalance mostly backward; only the short cut uses the stronger lateral recoil. */
+    /** Small reaction accompanies the authored shoulder/hip drive without replacing it. */
     public static Lean recoil(Clip clip,double seconds){
         if(!fencing(clip))return new Lean(reaction(clip,seconds),0);
         float envelope=Math.abs(reaction(clip,seconds))/REACTION_DEGREES;
@@ -47,9 +59,23 @@ public final class RapierMotion {
             case "disengage-thrust"->new Lean(.7f*envelope,-.7f*envelope);
             case "opposition-thrust"->new Lean(-.7f*envelope,-.7f*envelope);
             case "short-return-cut"->new Lean(1.8f*envelope,-.15f*envelope);
+            case "rising-cut"->new Lean(-1.15f*envelope,-.35f*envelope);
+            case "diagonal-cut"->new Lean(1.3f*envelope,.3f*envelope);
+            case "return-cut"->new Lean(-1.35f*envelope,-.15f*envelope);
+            case "charged-thrust","riposte","reprise"->new Lean(-.3f*envelope,-.9f*envelope);
             case "lunge-thrust"->new Lean(-.3f*envelope,-.9f*envelope);
             default->new Lean(0,0);
         };
+    }
+    /** The same distance-driven phase as the feet: no idle rocking or clock reset at a new attack.
+     *  This is fed through the persistent waist response together with actual travel and recoil. */
+    public static Lean gait(float phase,float moving,float speed,float strength){
+        float weight=Math.clamp(moving,0,1)*Math.clamp(speed/.16f,0,1)*Math.clamp(strength,0,1);
+        double cycle=phase*.6662;
+        return new Lean((float)(Math.sin(cycle)*.65*weight),(float)(Math.sin(cycle*2)*.18*weight));
+    }
+    public static Lean add(Lean first,Lean second){
+        return new Lean(first.lateral()+second.lateral(),first.forward()+second.forward());
     }
     public static Lean combine(float lateral,float forward,float movementDegrees,float movementWeight,float reaction){
         return combine(lateral,forward,movementDegrees,movementWeight,new Lean(reaction,0));
@@ -61,7 +87,7 @@ public final class RapierMotion {
     }
     /** Authored sole targets feed the existing two-bone support solve; hips are never moved apart. */
     public static Matrix4f fencingFoot(Matrix4f source,boolean left,Clip clip,double seconds,float moving){
-        if(source==null||!(fencing(clip)||clip.tags().contains("rapier_guard:085")))return source;
+        if(source==null||clip==null||!(fencing(clip)||clip.tags().contains("rapier_guard:085")||clip.tags().contains("rapier_guard:0100")))return source;
         double t=Math.clamp(seconds/clip.duration(),0,1),reach=0;
         if(fencing(clip)){
             double enter=Math.clamp((t-.26)/.3,0,1),leave=1-Math.clamp((t-.56)/.3,0,1);

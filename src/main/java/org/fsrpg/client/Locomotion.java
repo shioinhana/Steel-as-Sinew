@@ -85,22 +85,26 @@ public final class Locomotion {
         Vector3f lHip=rotate(new Vector3f(1.9f,0,0),turn.pelvisYaw()).add(center);
         Vector3f r=turnSole(base.right.sole,center,false,turn.rightYaw(),moving,turn.rightLift());
         Vector3f l=turnSole(base.left.sole,center,true,turn.leftYaw(),moving,turn.leftLift());
+        // A turn and the entering travel gait can momentarily choose opposite
+        // swing feet. Remove only their shared lift so one real sole stays planted;
+        // the difference between the two arcs remains continuous through handoff.
+        float commonLift=Math.max(0,24-Math.max(r.y,l.y));r.y+=commonLift;l.y+=commonLift;
         float bodyY=12+base.pelvisDropCm/6.25f-center.y;
         float drop=Math.max(requiredDrop(r,rHip.x,rHip.z),requiredDrop(l,lHip.x,lHip.z))+Math.max(.12f,bodyY+.02f);
         rHip.y=lHip.y=12+drop-bodyY;
-        return new LowerBody(solve(rHip,r,base.right.pose.yRot+turn.rightYaw(),Math.min(base.right.support,turn.rightSupport())),
-                solve(lHip,l,base.left.pose.yRot+turn.leftYaw(),Math.min(base.left.support,turn.leftSupport())),
+        return new LowerBody(solve(rHip,r,base.right.pose.yRot+turn.rightYaw(),r.y>=24?1:0),
+                solve(lHip,l,base.left.pose.yRot+turn.leftYaw(),l.y>=24?1:0),
                 drop*6.25f,base.directionX,base.directionForward,base.phase,turn.pelvisYaw());
     }
     private static Vector3f turnSole(Vector3f sole,Vector3f center,boolean left,float yaw,float moving,float lift) {
-        Vector3f at=new Vector3f(sole);
-        if(moving>.001f) {
-            var side=new Vector3f(left?2.3f:-2.3f,0,0);
-            at.add(rotate(new Vector3f(side),yaw).sub(side));
-        } else {
-            float y=at.y; at.sub(center);at.y=0; rotate(at,yaw).add(center);at.y=y-lift;
-        }
-        return at;
+        // Stand and travel have different pivots. Crossing the former .001 switch
+        // teleported a staggered fencing sole as soon as locomotion began.
+        var side=new Vector3f(left?2.3f:-2.3f,0,0);
+        var walking=new Vector3f(sole).add(rotate(new Vector3f(side),yaw).sub(side));
+        var planted=new Vector3f(sole).sub(center);planted.y=0;
+        rotate(planted,yaw).add(center);planted.y=sole.y-lift;
+        float blend=Math.clamp(moving,0,1);blend=blend*blend*(3-2*blend);
+        return planted.lerp(walking,blend);
     }
     private static Vector3f rotate(Vector3f at,float yaw) { return new Quaternionf().rotationY(yaw).transform(at); }
     private static float support(float phase,float moving) {

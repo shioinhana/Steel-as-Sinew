@@ -201,14 +201,21 @@ public final class StaminaCostTest {
         Files.writeString(directory.resolve(StaminaLevelMigration.MARKER),"{}");
         Files.writeString(directory.resolve(RapierFencingMigration.MARKER),"{}");
     }
-    // Project only the separately tested 0.8.5 additions onto this historical cost fixture.
+    // Project only the separately tested 0.8.5 chain and 0.10.0 conditional model moves
+    // onto the template comparison. Custom-upgrade/retry fixtures are never projected.
     // compareCosts still checks every original field and every divide-by-five debit.
     private static void currentFencingTemplate(JsonElement before,String name)throws Exception {
         if(name.equals("skills.json")) {
             JsonArray current=resource("/defaults/skills.json").getAsJsonArray();
             Set<String> changed=Set.of("sword_left","rapier_downcut","rapier_crosscut","rapier_light_thrust");
             for(var value:before.getAsJsonArray()) {
-                var old=value.getAsJsonObject();if(!changed.contains(old.get("id").getAsString()))continue;
+                var old=value.getAsJsonObject();String id=old.get("id").getAsString();
+                if(Set.of("rapier_riposte","rapier_reprise").contains(id)) {
+                    equal("rapier.fsvoxel",old.get("model").getAsString(),"historical conditional model baseline: "+id);
+                    equal(id,old.get("action").getAsString(),"conditional action ID stays stable: "+id);
+                    old.addProperty("model","legacy_rapier.fsvoxel");
+                }
+                if(!changed.contains(id))continue;
                 var next=current.asList().stream().map(JsonElement::getAsJsonObject).filter(v->v.get("id").equals(old.get("id"))).findFirst().orElseThrow();
                 for(String field:List.of("label","windupTicks","activeTicks","recoveryTicks"))old.add(field,next.get(field).deepCopy());
             }

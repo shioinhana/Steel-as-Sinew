@@ -319,14 +319,7 @@ public final class PlayerAnimations {
         Binding binding = bindings.get(entity.getUUID()); if (binding == null) return null;
         double renderTick = now();
         if (renderTick - binding.received > 100) { bindings.remove(entity.getUUID()); airPoses.remove(entity.getUUID()); airInertias.remove(entity.getUUID()); airOffsets.remove(entity.getUUID()); return null; }
-        if (binding.pendingAction != null && binding.pendingAction.ready(renderTick)) {
-            var pending = binding.pendingAction;
-            var nextState = pending.value();
-            double elapsed = pending.elapsed(renderTick, nextState.windupTicks(), nextState.activeTicks(), nextState.recoveryTicks());
-            binding = nextBinding(nextState, binding.asset, binding, renderTick, elapsed, pending.phaseReceivedTick());
-            binding.received = pending.receivedTick();
-            bindings.put(entity.getUUID(), binding);
-        }
+        binding = advancePending(entity.getUUID(), binding, renderTick);
         // Skin, four armor models and held items share one visual sample within the rendered frame.
         if (binding.sampled != null && binding.sampledRenderFrame == renderFrameId) {
             frameCacheHits++; return binding.sampled;
@@ -385,8 +378,8 @@ public final class PlayerAnimations {
                 ClientOptions.MOVING_FULL_BODY_LOWER_WEIGHT.get().floatValue(), ClientOptions.STANCE_FOOT_YAW_LIMIT.get().floatValue());
         if (sword) {
             var upper = SwordMotion.sampleUpper(binding.asset.full(), clip, seconds, breathSeconds, entity.getXRot(), state.yRot);
-            // Retiming changes only the source clock. Do not add the 0.6 counter-pose,
-            // strike lean or locomotion sway to the authored torso/hand/item chain.
+            // The authored shoulder, elbow and wrist chain is sampled once. The small
+            // shared-waist travel response is applied after action transitions below.
             if(elapsed>=0&&RapierMotion.cut(clip)) {
                 double cutSeconds=RapierMotion.clipTime(clip,elapsed,server.windupTicks(),server.activeTicks(),server.recoveryTicks());
                 upper=SwordMotion.sampleUpper(binding.asset.full(),clip,cutSeconds,breathSeconds,entity.getXRot(),state.yRot);
@@ -438,6 +431,11 @@ public final class PlayerAnimations {
             // Phase corrections cannot pull an entry bridge to its endpoint in a single frame.
             float weight = PoseLayers.transitionWeight(renderTick, binding.transitionStarted, binding.transitionTicks);
             if (weight < 1) {
+                if (sword) {
+                    // A new binding has no lastPose yet. Keep the actual outgoing joints at
+                    // weight zero instead of flashing the target and then correcting back.
+                    pose = RapierMotion.bridge(binding.transitionFrom, pose, weight);
+                } else {
                 // The correction exists to remove the step between the two clips, measured on the
                 // new action's own first frame. That frame is already the handoff pose, so it is
                 // presented as-is; applying the correction there would count the step twice.
@@ -448,6 +446,7 @@ public final class PlayerAnimations {
                         binding.swordPending = null;
                     }
                     if (binding.swordDecay != null) pose = binding.swordDecay.blend(pose, weight);
+                }
                 }
                 transitionFrames++;
                 lowerWeight = binding.transitionLowerWeight + (lowerWeight - binding.transitionLowerWeight) * weight;
@@ -468,8 +467,14 @@ public final class PlayerAnimations {
         float hipShift = ClientOptions.HIP_SHIFT.get().floatValue();
         RapierMotion.Lean swordLean=null;
         if(sword){
+            var reaction=elapsed>=0?RapierMotion.recoil(clip,binding.sampledClipSeconds):new RapierMotion.Lean(0,0);
+            // Use the supported feet's distance-driven phase; the persistent lean state
+            // eases both starting/stopping and changes of attack or guard amplitude.
+            var gait=RapierMotion.gait(visualWalkPhase,entity.onGround()?sample.movingWeight():0,
+                    (float)Math.hypot(binding.motion.velocityX(),binding.motion.velocityZ()),
+                    ClientOptions.STRIDE_WEIGHT.get().floatValue()*(elapsed>=0?.45f:server.phase().equals("GUARDING")?.6f:1));
             var target=RapierMotion.combine(binding.motion.lateralLean(),binding.motion.forwardLean(),leanDegrees,leanStrength,
-                    elapsed>=0?RapierMotion.recoil(clip,binding.sampledClipSeconds):new RapierMotion.Lean(0,0));
+                    RapierMotion.add(reaction,gait));
             swordLean=binding.swordLean.advance(renderTick,target,ClientOptions.MOTION_RESPONSE.get());
             pose=PresentationMotion.lean(pose,swordLean.lateral(),swordLean.forward(),ClientOptions.HEAD_LEAN_FOLLOW.get().floatValue());
         } else pose = binding.motion.applyLean(pose, leanDegrees, leanStrength, ClientOptions.HEAD_LEAN_FOLLOW.get().floatValue());
@@ -699,20 +704,37 @@ public final class PlayerAnimations {
                 lower.right().knee(), lower.left().knee(), balance, lower));
     }
     public static void clearPreview(AvatarRenderState state) { previews.remove(state); }
+    private static Binding advancePending(UUID entity, Binding binding, double tick) {
+        if(binding.pendingAction==null||!binding.pendingAction.ready(tick))return binding;
+        var pending=binding.pendingAction;var state=pending.value();
+        var next=nextBinding(state,binding.asset,binding,tick,
+                pending.elapsed(tick,state.windupTicks(),state.activeTicks(),state.recoveryTicks()),pending.phaseReceivedTick());
+        next.received=pending.receivedTick();bindings.put(entity,next);return next;
+    }
     /** The FP viewmodel shares the same authoritative action clock, sampled every rendered frame. */
     static RpgAnimationPayload localIntent() {
         world(); var player=Minecraft.getInstance().player;
-        Binding binding=player==null?null:bindings.get(player.getUUID());return binding==null?null:binding.state;
+        Binding binding=player==null?null:bindings.get(player.getUUID());
+        return binding==null?null:advancePending(player.getUUID(),binding,now()).state;
     }
     static RpgAnimationPayload intent(UUID player) { Binding binding=bindings.get(player);return binding==null?null:binding.state; }
     static double localSeconds() {
         return localSeconds(false);
+    }
+    static double localElapsedTicks() {
+        var player=Minecraft.getInstance().player;var b=player==null?null:bindings.get(player.getUUID());
+        return b==null?-1:b.sampledElapsedTicks;
     }
     static double localSeconds(boolean firstPerson) {
         var player=Minecraft.getInstance().player;Binding b=player==null?null:bindings.get(player.getUUID());
         if(b==null)return 0;
         double renderTick=now(),elapsed=PoseLayers.attackElapsed(b.state.phase(),b.state.phaseRemaining(),b.state.windupTicks(),b.state.activeTicks(),b.state.recoveryTicks());
         if(elapsed>=0)elapsed=b.attackClock.sample(renderTick);
+        // A first-person camera does not submit the local avatar. It must present
+        // and release the same protected contact endpoint itself, or a queued
+        // action waits forever for an invisible third-person model to sample it.
+        if(b.pendingAction!=null)elapsed=b.pendingAction.holdElapsed(elapsed,renderTick);
+        b.sampledElapsedTicks=elapsed;
         var clip=b.asset.full().rig().clips().get(b.state.action());
         return elapsed>=0&&RapierMotion.cut(clip)?RapierMotion.clipTime(clip,elapsed,b.state.windupTicks(),b.state.activeTicks(),b.state.recoveryTicks())
                 :LegacyMotion.actionSeconds(clip,b.state,elapsed,Math.max(0,renderTick-b.started)/20,firstPerson);

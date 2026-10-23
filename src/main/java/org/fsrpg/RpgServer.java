@@ -804,10 +804,16 @@ public final class RpgServer {
     private void beginRapierCharge(ServerPlayer player) {
         var actor=actor(player);var effects=progression.effects(player.getUUID());var rules=config.current().skillTrees().rules().rapier();
         if(actor.style()==null||!actor.style().presentationStyleId().equals("rapier")||!hasWeapon(player))throw new IllegalStateException("此技能需要西洋剑");
+        String opening=actor.techniqueSnapshot().skillId();
+        if(!opening.isEmpty()&&progression.skillUnlocked(player.getUUID(),opening)) {
+            var result=actor.aimedInput(SkillInput.RIGHT,skillsFor(player),attackAim(player));
+            if(!result.accepted())throw new IllegalStateException(comboRejection(result));
+            return;
+        }
         if(!effects.rapierThrust())throw new IllegalStateException("突刺需要80次西洋剑击杀及对应修行条件，请查看 P 技能树");
         SkillDefinition skill=config.current().skills().get("sword_thrust");
         skill=new SkillDefinition(skill.id(),skill.label(),skill.weapon(),skill.input(),rules.windupTicks(),rules.activeTicks(),rules.recoveryTicks(),rules.cooldownTicks(),skill.staminaCost(),skill.spiritCost(),rules.thrustDamage(),rules.range(),skill.arcDegrees(),skill.knockback(),skill.blockable(),skill.parryable(),skill.clashable(),skill.model(),skill.action());
-        accepted(actor.beginChargedAttack(skill,attackAim(player),effects.rapierParry(),effects.rapierParry(),rules.fullChargeTicks(),rules.guardBreakCooldownTicks()));
+        accepted(actor.requestRapierThrust(skill,attackAim(player),effects.rapierParry(),effects.rapierParry(),rules.fullChargeTicks(),rules.guardBreakCooldownTicks()));
     }
     private void moveCharge(ServerPlayer player) {
         if(!actor(player).consumeChargeLunge())return;

@@ -40,18 +40,37 @@ public final class RapierFencingTest {
                     if(last!=null&&point.distance(last)>peak){peak=point.distance(last);peakAt=tick;}last=point;
                     near(world.get("right_arm").getTranslation(new Vector3f()).distance(world.get("right_forearm").getTranslation(new Vector3f())),37.5,.001,"Upper arm retains anatomical length");
                     near(world.get("right_forearm").getTranslation(new Vector3f()).distance(world.get(fp?"right_item":"right_hand").getTranslation(new Vector3f())),37.5,.001,"Forearm stays connected to real wrist");
-                    if(!fp)near(world.get("right_hand").getTranslation(new Vector3f()).distance(world.get("right_item").getTranslation(new Vector3f())),0,.001,"Official locator remains in hand");
+                    var actualBlade=world.get("right_item").transformDirection(axis(fp)).normalize();
+                    var forearmDirection=world.get("right_forearm").transformDirection(new Vector3f(0,-1,0)).normalize();
+                    check(forearmDirection.dot(actualBlade)>=Math.cos(Math.toRadians(34.01)),"Official sword and forearm keep a bounded real wrist flexion: "+stage+" fp="+fp+" tick="+tick);
+                    check(actualBlade.z>.68,"Blade keeps a forward threat through the four stroke directions");
+                    var elbow=p.get("right_forearm").rotation();
+                    // Source frames have exactly zero lateral hinge rotation;
+                    // quaternion interpolation of changing flexion + pronation
+                    // produces a tiny off-plane component between those frames.
+                    var hinge=new org.joml.Quaternionf(p.get("right_forearm").fsQuaternion()).rotateY((float)Math.toRadians(-elbow.y())).transform(new Vector3f(1,0,0));
+                    check(elbow.x()>=-135.01&&elbow.x()<=-9.99&&Math.abs(elbow.y())<=30.01&&hinge.x>=Math.cos(Math.toRadians(.10)),"Elbow remains a positive hinge with less than 0.1 degree native interpolation deviation: "+elbow+" stage="+stage+" fp="+fp+" tick="+tick);
+                    if(!fp){
+                        near(world.get("right_hand").getTranslation(new Vector3f()).distance(world.get("right_item").getTranslation(new Vector3f())),0,.001,"Official locator remains in hand");
+                        near(Math.abs(p.get("right_item").fsQuaternion().dot(guard.get("right_item").fsQuaternion())),1,.00001,"Rigid official grip never hides wrist folding in an animated item locator");
+                        var torso=world.get("body").transformDirection(new Vector3f(0,0,1));
+                        double yaw=Math.toDegrees(Math.atan2(torso.x,torso.z));
+                        check(yaw>54&&yaw<75,"Short return turns through the torso without exposing the back");
+                    }
                 }
                 check(peakAt>=w&&peakAt<=w+a,"Fastest actual blade sample is ACTIVE: stage="+stage+" fp="+fp+" tick="+peakAt);
                 var contact=pose(model,c,c.duration()*.56);var world=model.worldMatrices(contact);var blade=world.get("right_item").transformDirection(axis(fp)).normalize();
-                check(blade.z>.94,"Contact sword points at opponent rather than overhead: stage="+stage+" fp="+fp+" blade="+blade);
-                if(stage!=4){
-                    var prepared=tip(model,pose(model,c,c.duration()*.26),fp);var extended=tip(model,contact,fp);
-                    check(extended.z-prepared.z>(fp?8:13),"Thrust advances on opponent line: stage="+stage+" fp="+fp+" travel="+(extended.z-prepared.z));
-                    check(world.get("right_forearm").transformDirection(new Vector3f(0,-1,0)).normalize().dot(blade)>.65,"Forearm and sword extend together without extreme wrist fold");
+                check(blade.z>.85,"Contact sword keeps a forward component while cuts retain their distinct diagonals: stage="+stage+" fp="+fp+" blade="+blade);
+                var prepared=tip(model,pose(model,c,c.duration()*.26),fp);var extended=tip(model,contact,fp);var travel=new Vector3f(extended).sub(prepared);
+                switch(stage){
+                    case 1,5 -> check(travel.z>(fp?12:23),"Thrust clearly advances on the opponent line: "+travel);
+                    case 2 -> check(travel.x>(fp?20:45)&&travel.y>(fp?30:65),"Rising cut has a real low-to-high diagonal official blade trajectory: "+travel);
+                    case 3 -> check(travel.x<(fp?-25:-40)&&travel.y<(fp?-40:-65),"Descending cut reverses both diagonal coordinates: "+travel);
+                    case 4 -> check(travel.x>(fp?45:80)&&Math.abs(travel.y)<30,"Short return cut sweeps horizontally without a whole-body spin: "+travel);
                 }
                 var activeEnd=pose(model,c,c.duration()*.86);var next=pose(model,clip(model,stage%5+1),0);var recovered=pose(model,c,c.duration());
-                for(String bone:List.of("right_arm","right_forearm","right_item","left_arm")){
+                var handoffBones=fp?List.of("right_arm","right_forearm","right_item","left_arm"):List.of("body","head","hip","right_arm","right_forearm","right_hand","right_item","left_arm","left_forearm","left_hand");
+                for(String bone:handoffBones){
                     near(Math.abs(activeEnd.get(bone).fsQuaternion().dot(next.get(bone).fsQuaternion())),1,.00001,"Queued ACTIVE handoff does not reset to guard");
                     near(Math.abs(recovered.get(bone).fsQuaternion().dot(guard.get(bone).fsQuaternion())),1,.00001,"Unqueued recovery returns to fencing guard");
                 }
@@ -69,6 +88,13 @@ public final class RapierFencingTest {
                 }
                 for(int n=0;n<=48;n++)check(Math.hypot(RapierMotion.recoil(c,c.duration()*n/48.).lateral(),RapierMotion.recoil(c,c.duration()*n/48.).forward())<=3.00001,"Every reaction vector stays gentle");
             }
+            for(String branch:List.of("legacy_rapier_rapier_thrust_hit_upper","rapier_riposte","rapier_reprise")){
+                var c=model.rig().clips().get(branch);check(c!=null&&RapierMotion.fencing(c),"Right-hand and conditional branches use the same reviewed attack family");
+                var start=tip(model,pose(model,c,c.duration()*.26),fp);var end=tip(model,pose(model,c,c.duration()*.56),fp);
+                check(end.z-start.z>(fp?12:23),"Conditional branch keeps a genuine forward thrust: "+branch);
+                check(!RapierMotion.directHandoff(c,clip(model,1),6,3,3),"Conditional branches blend from the actual pose instead of pretending to be a queued five-stage handoff");
+            }
+            for(String charge:List.of("rapier_charge","rapier_full_charge"))check(!RapierMotion.fencing(model.rig().clips().get(charge)),"Holding charge does not accidentally use attack phase mapping");
         }
         near(RapierMotion.combine(0,1,3,1,new RapierMotion.Lean(0,-3)).forward(),0,1e-6,"Forward travel and thrust recoil compose instead of overwriting");
         var sword=ModelLoader.load(assets.resolve("legacy_rapier.fsvoxel"));var source=new Matrix4f();var c=clip(sword,5);

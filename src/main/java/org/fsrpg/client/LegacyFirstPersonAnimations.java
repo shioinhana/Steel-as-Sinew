@@ -26,6 +26,7 @@ public final class LegacyFirstPersonAnimations {
     private static double lastSeconds;
     private static String failedModel="";
     private static final AirPose.State<java.util.Map<String,FsvoxAnimation.Pose>> airPose=new AirPose.State<>();
+    private static final RapierViewMotion rapierMotion=new RapierViewMotion();
     private LegacyFirstPersonAnimations() {}
     public static long samples(){return samples;}
     public static long itemSubmissions(){return itemSubmissions;}
@@ -73,6 +74,8 @@ public final class LegacyFirstPersonAnimations {
                 offsetArm(pose,"right_arm",.998f,.553f,.05f);
             }
             java.util.Map<String,FsvoxAnimation.Pose> fitted=kind.equals("dual_blade")?PlayerShoulderFit.dualFirstPerson(pose):java.util.Map.copyOf(pose);
+            if(kind.equals("rapier"))fitted=rapierMotion.sample(model,clip,intent.sequence(),intent.phase(),
+                    intent.windupTicks(),intent.activeTicks(),PlayerAnimations.localElapsedTicks(),PlayerAnimations.presentationTick(),fitted);
             boolean inAir=!game.player.onGround()&&!game.player.isPassenger()&&!game.player.isFallFlying()&&!game.player.isInWater();
             fitted=airPose.sample(System.identityHashCode(game.level)+"|"+System.identityHashCode(model),inAir,intent.phase(),fitted);
             var world=model.worldMatrices(fitted);

@@ -47,7 +47,9 @@ public final class CombatActor {
     private int leftSwingStreak, rightSwingStreak;
     private IntUnaryOperator legacyDualIntervalAdjustment = IntUnaryOperator.identity();
     private long lastDualEnd;
-    private boolean chargeArmed, chargeHeld, chargeParryEnabled, chargeParried, chargeLungePending;
+    private boolean chargeArmed, chargeHeld, chargeParryEnabled, chargeParried, chargeLungePending, chargeBranch;
+    private record QueuedThrust(int fullTicks, int breakCooldown) {}
+    private QueuedThrust queuedThrust;
     private int chargeElapsed, chargeFullTicks, chargeBreakCooldown;
     public int leftSide() { return style != null && style.controls().legacyDual() ? leftRest : -1; }
     public int rightSide() { return style != null && style.controls().legacyDual() ? rightRest : -1; }
@@ -413,13 +415,32 @@ public final class CombatActor {
         SkillDefinition.checkTicks(fullTicks,"full charge ticks",false);
         SkillDefinition.checkTicks(breakCooldown,"charge break cooldown",true);
         ActionResult result=aimedSkill(requested,aim);
-        if(result==ActionResult.ACCEPTED && skill==requested) {
-            chargeArmed=true; chargeHeld=hold; chargeParryEnabled=canParry;
-            chargeElapsed=0; chargeFullTicks=fullTicks; chargeBreakCooldown=breakCooldown;
-            skillReadyAt.remove(requested.id());
-            if(phase==CombatPhase.ACTIVE) commitCharge();
-        }
+        if(result==ActionResult.ACCEPTED && skill==requested) armThrust(hold,canParry,fullTicks,breakCooldown,false);
         return result;
+    }
+
+    /** A right click during a cut branches after its full contact interval into one unheld thrust. */
+    public ActionResult requestRapierThrust(SkillDefinition requested, AttackAim aim, boolean hold,
+                                          boolean canParry, int fullTicks, int breakCooldown) {
+        SkillDefinition.checkTicks(fullTicks,"full charge ticks",false);
+        SkillDefinition.checkTicks(breakCooldown,"charge break cooldown",true);
+        if (skill == null || phase != CombatPhase.WINDUP && phase != CombatPhase.ACTIVE && phase != CombatPhase.RECOVERY)
+            return beginChargedAttack(requested,aim,hold,canParry,fullTicks,breakCooldown);
+        if (chargeArmed) return ActionResult.BUSY;
+        inputAim=aim;
+        try {
+            var result=phase==CombatPhase.WINDUP ? queueAttack(requested,0,style) : requestNext(requested,0,style);
+            if (result.status()==ComboInputStatus.BUFFERED || result.status()==ComboInputStatus.ALREADY_QUEUED)
+                queuedThrust=new QueuedThrust(fullTicks,breakCooldown);
+            else if (result.status()==ComboInputStatus.STARTED) armThrust(false,false,fullTicks,breakCooldown,true);
+            return result.rejection();
+        } finally { inputAim=null; }
+    }
+    private void armThrust(boolean hold,boolean canParry,int fullTicks,int breakCooldown,boolean branch) {
+        chargeArmed=true;chargeHeld=hold;chargeParryEnabled=canParry;chargeBranch=branch;
+        chargeElapsed=0;chargeFullTicks=fullTicks;chargeBreakCooldown=breakCooldown;
+        skillReadyAt.remove(skill.id());
+        if(phase==CombatPhase.ACTIVE)commitCharge();
     }
     public ActionResult releaseChargedAttack() {
         if(!chargeArmed || !chargeHeld || phase!=CombatPhase.WINDUP) return ActionResult.ACCEPTED;
@@ -428,6 +449,7 @@ public final class CombatActor {
     }
     /** Opening a GUI cancels uncommitted preparation, never releases or interrupts a contact window. */
     public boolean cancelChargedPreparation() {
+        if (queuedThrust != null) { clearQueuedAttack(); return true; }
         if (!chargeArmed || phase != CombatPhase.WINDUP) return false;
         clearAttack(); phase=CombatPhase.READY; phaseRemaining=0;
         return true;
@@ -474,7 +496,7 @@ public final class CombatActor {
         skill = timed; attackAim=inputAim;
         attackDamageMultiplier = counter ? rules.perfectGuardCounter().damageMultiplier() : 1;
         if (counter) counterUntil = 0;
-        chargeArmed=chargeHeld=chargeParryEnabled=chargeParried=chargeLungePending=false; chargeElapsed=0;
+        chargeArmed=chargeHeld=chargeParryEnabled=chargeParried=chargeLungePending=chargeBranch=false; chargeElapsed=0;
         if(style!=null && style.controls().legacyDual()) {
             var controls=style.controls(); int destination=controls.destination(requested.id());
             if(destination>=0) {
@@ -547,7 +569,7 @@ public final class CombatActor {
             String opening = techniqueSnapshot().skillId();
             SkillDefinition right = skills.get(opening.isEmpty() ? style.rightSkill() : opening);
             if (right == null) return comboResult(ComboInputStatus.REJECTED, ActionResult.SKILL_NOT_FOUND, 0, style.rightSkill());
-            if (phase == CombatPhase.WINDUP && !chargeArmed) return queueAttack(right,0,style);
+            if (phase == CombatPhase.WINDUP && (!chargeArmed || chargeBranch)) return queueAttack(right,0,style);
             return requestNext(right,0,style);
         }
         if (input != SkillInput.LEFT) return comboResult(ComboInputStatus.REJECTED, ActionResult.UNSUPPORTED_INPUT, 0, "");
@@ -560,7 +582,7 @@ public final class CombatActor {
                 : resuming ? (resumeComboStage + 1) % owner.leftCombo().size() : 0;
         SkillDefinition requested = skills.get(owner.leftCombo().get(next).skillId());
         // Repeated LEFT during windup expresses a follow-up, never skips the current strike.
-        if (phase == CombatPhase.WINDUP && !chargeArmed) return queueAttack(requested,next+1,owner);
+        if (phase == CombatPhase.WINDUP && (!chargeArmed || chargeBranch)) return queueAttack(requested,next+1,owner);
         return requestNext(requested,next+1,owner);
     }
 
@@ -585,7 +607,7 @@ public final class CombatActor {
         if (queuedSkill != null && queuedSkill.id().equals(requested.id()))
             return comboResult(ComboInputStatus.ALREADY_QUEUED,ActionResult.ACCEPTED,stage,requested.id());
         // Only the latest distinct attack intent is retained, so mashing cannot queue a whole combo.
-        queuedSkill=requested;queuedStage=stage;queuedStyle=owner;queuedAim=inputAim;queuedLeftIntent=leftIntent;
+        queuedSkill=requested;queuedStage=stage;queuedStyle=owner;queuedAim=inputAim;queuedLeftIntent=leftIntent;queuedThrust=null;
         return comboResult(ComboInputStatus.BUFFERED,ActionResult.ACCEPTED,stage,requested.id());
     }
 
@@ -597,11 +619,14 @@ public final class CombatActor {
 
     private ActionResult advanceCombo() {
         SkillDefinition next=queuedSkill; int stage=queuedStage; var owner=queuedStyle;
+        QueuedThrust thrust=queuedThrust;queuedThrust=null;
         boolean nextLeft = queuedLeftIntent;
         queuedSkill=null;queuedStyle=null;queuedStage=0;
         inputAim=queuedAim; queuedAim=null;
         boolean previous = leftIntent; leftIntent = nextLeft;
         var result=requestNext(next,stage,owner); inputAim=null; leftIntent=previous;
+        if(result.status()==ComboInputStatus.STARTED && thrust!=null)
+            armThrust(false,false,thrust.fullTicks(),thrust.breakCooldown(),true);
         return result.rejection();
     }
 
@@ -891,14 +916,15 @@ public final class CombatActor {
         }
     }
 
-    private void resetCombo() { comboStyle = null; comboStage = -1; queuedSkill = null; queuedStyle=null; queuedStage=0; queuedAim=null; queuedLeftIntent=false; resumeComboStyle=null; resumeComboStage=-1; resumeComboUntil=0; }
+    private void clearQueuedAttack() { queuedSkill=null;queuedStyle=null;queuedStage=0;queuedAim=null;queuedLeftIntent=false;queuedThrust=null; }
+    private void resetCombo() { comboStyle=null;comboStage=-1;clearQueuedAttack();resumeComboStyle=null;resumeComboStage=-1;resumeComboUntil=0; }
     private void clearAttack() {
         settleAttackStamina();
         spearAttackHeld = false;
         if(skill!=null && dual()) lastDualEnd=tick;
         skill = null; attackAim=null; skillElapsed = 0; swingVictims.clear(); resetCombo();
         attackDamageMultiplier = 1;
-        chargeArmed=chargeHeld=chargeParryEnabled=chargeParried=chargeLungePending=false; chargeElapsed=0;
+        chargeArmed=chargeHeld=chargeParryEnabled=chargeParried=chargeLungePending=chargeBranch=false; chargeElapsed=0;
     }
     private void finishDraw() { drawn = true; phase = CombatPhase.READY; phaseRemaining = 0; }
     private void resetDualHandsAndStreaks() { leftRest=rightRest=-1; leftSwingStreak=rightSwingStreak=0; }

@@ -29,6 +29,8 @@ final class LegacyMotion {
     }
     static double actionSeconds(Clip clip, RpgAnimationPayload payload, double elapsed, double runningSeconds,boolean firstPerson) {
         double chamber=firstPerson?.14:.04,extended=firstPerson?.25:.20;
+        if(RapierMotion.flow(clip)&&elapsed>=0)
+            return RapierMotion.clipTime(clip,elapsed,payload.windupTicks(),payload.activeTicks(),payload.recoveryTicks());
         var game=Minecraft.getInstance();
         if(payload.action().startsWith("bow_") && payload.action().endsWith("_charge")
                 && game.player!=null && payload.entityId().equals(game.player.getUUID()))return clip.duration()*bowChargeProgress();
@@ -45,7 +47,8 @@ final class LegacyMotion {
         if (payload.action().equals("rapier_full_charge")) return chamber;
         if (payload.action().equals("rapier_charge")) {
             var charge = ClientState.object(ClientState.snapshot(), "charge");
-            return chamber * Math.clamp(ClientState.number(charge,"elapsedTicks",runningSeconds*20)/7,0,1);
+            double end=clip.tags().contains("rapier_charge:0100")?clip.duration():chamber;
+            return end * Math.clamp(ClientState.number(charge,"elapsedTicks",runningSeconds*20)/7,0,1);
         }
         return runningSeconds;
     }

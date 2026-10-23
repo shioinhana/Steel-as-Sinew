@@ -76,6 +76,7 @@ public final class RpgConfig {
         RapierFencingMigration.migrate(directory);
         RapierTechniquesMigration.migrate(directory);
         FootworkSkillMigration.migrate(directory);
+        RapierRenewalMigration.migrate(directory);
     }
     private JsonElement read(String name) throws IOException {
         Path path = directory.resolve(name);

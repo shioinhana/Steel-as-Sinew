@@ -58,10 +58,10 @@ public final class SpearTurn {
             pelvis+=Math.clamp(error*(1-(float)Math.exp(-dt/settings.responseTicks())),-dt*.105f,dt*.105f);
             float turns=pelvis-wrap(pelvis);
             pelvis-=turns; right-=turns; left-=turns; start-=turns; goal-=turns;
-            if(moving>.001f) {
+            if(moving>=.9999f) {
                 // Walking already provides alternate swings; only rotate the
                 // stance width, preserving the actual world travel direction.
-                right=left=pelvis; swing=-1;
+                right=left=pelvis;swing=-1;
                 return last=new Feet(pelvis,right,left,0,0,1,1);
             }
             if(swing<0 && (hardTurn || Math.max(Math.abs(wrap(pelvis-right)),Math.abs(wrap(pelvis-left)))>Math.toRadians(4))) {
@@ -76,7 +76,12 @@ public final class SpearTurn {
                 lift=settings.liftPixels()*(float)Math.pow(Math.sin(Math.PI*u),2);
                 if(u>=1)swing=-1;
             }
-            return last=new Feet(pelvis,right,left,swing==0?lift:0,swing==1?lift:0,swing==0?0:1,swing==1?0:1);
+            // A partial start must not cancel the stepping clock. Otherwise a
+            // tiny movement pulse followed by stop drops the lifted sole at once.
+            // Both directions of the blend retain that same physical step.
+            float walk=Math.clamp(moving,0,1);walk=walk*walk*(3-2*walk);
+            return last=new Feet(pelvis,right+wrap(pelvis-right)*walk,left+wrap(pelvis-left)*walk,
+                    swing==0?lift*(1-walk):0,swing==1?lift*(1-walk):0,swing==0?0:1,swing==1?0:1);
         }
         /** Read-only presentation diagnostic; increments once per rendered turn correction. */
         public long hardTurns() { return hardTurns; }

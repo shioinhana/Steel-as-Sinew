@@ -405,6 +405,16 @@ def audit_lower_body(audit, observation, where):
     audit.require(any(value == 1 for value in supports), "groundedPoseHasRealSupportFoot", **where)
 
 
+def swing_stride_position(phase):
+    """Independent Hermite reference: -1 to +1, with -2 tangents at both contacts.
+
+    A lifted foot briefly moves backward at lift-off and before landing so its
+    velocity meets the planted foot. Lifted does not imply forward at every sample.
+    """
+    u = (phase % (2 * math.pi)) / math.pi
+    return (2*u**3 - 3*u**2 + 1)*-1 + (u**3 - 2*u**2 + u)*-2 + (-2*u**3 + 3*u**2) + (u**3 - u**2)*-2
+
+
 def audit_lower_body_pair(audit, p, q, a, b, where):
     """Directional gait is measured from the captured feet, with stance moving backward.
 
@@ -453,7 +463,14 @@ def audit_lower_body_pair(audit, p, q, a, b, where):
         delta = [after["soleCenter"][i] - before["soleCenter"][i] for i in (0, 2)]
         step = dot(delta, native_direction)
         support = after["support"] == 1
-        progress = -step if support else step
+        expected_direction = -1
+        if not support:
+            offset = 0 if side == "right" else math.pi
+            expected_delta = swing_stride_position(new["phaseRadians"] + offset) - swing_stride_position(old["phaseRadians"] + offset)
+            if abs(expected_delta) < 1e-5:
+                continue
+            expected_direction = math.copysign(1, expected_delta)
+        progress = step * expected_direction
         metric["supportPairs" if support else "swingPairs"] += 1
         metric["supportTravelPixels" if support else "swingTravelPixels"] += max(0, progress)
         audit.peak("footTravelAgainstGaitPhasePixels", max(0, -progress), **where, side=side, support=support)

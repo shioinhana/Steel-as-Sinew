@@ -575,6 +575,9 @@ tasks.register('stage077Config',JavaExec) {
  'shoulderCameraMotionTest':'org.fsrpg.client.ShoulderCameraMotionTest',
  'spearCursorSteeringTest':'org.fsrpg.client.SpearCursorSteeringTest',
  'rapierFencingTest':'org.fsrpg.client.RapierFencingTest',
+ 'rapierFlowMotionTest':'org.fsrpg.client.RapierFlowMotionTest',
+ 'rapierBranchFlowTest':'org.fsrpg.combat.RapierBranchFlowTest',
+ 'rapierRenewalMigrationTest':'org.fsrpg.config.RapierRenewalMigrationTest',
  'rapierFencingMigrationTest':'org.fsrpg.config.RapierFencingMigrationTest',
  'guardHurtMotionTest':'org.fsrpg.client.GuardHurtMotionTest',
  'defenseFlowMigrationTest':'org.fsrpg.config.DefenseFlowMigrationTest',
@@ -629,6 +632,10 @@ tasks.register('rpgTest', JavaExec) {
 }
 tasks.register('stage090Config', JavaExec) {
     dependsOn testClasses;classpath=sourceSets.test.runtimeClasspath;mainClass='org.fsrpg.config.Stage090Config'
+    doFirst {args file(project.property('releaseStageDirectory')).absolutePath,file(project.property('releaseStageReport')).absolutePath}
+}
+tasks.register('stage0100Config', JavaExec) {
+    dependsOn testClasses;classpath=sourceSets.test.runtimeClasspath;mainClass='org.fsrpg.config.Stage0100Config'
     doFirst {args file(project.property('releaseStageDirectory')).absolutePath,file(project.property('releaseStageReport')).absolutePath}
 }
 ['footworkTest':'org.fsrpg.movement.FootworkTest',

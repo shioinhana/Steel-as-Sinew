@@ -85,7 +85,7 @@
         },
         "techniques": {
           "$ref": "#/$defs/techniques",
-          "description": "默认西洋剑启用拨挡还击 rapier_riposte（20tick）与闪步回刺 rapier_reprise（12tick），与完美格挡后的左键×1.5反击并存；技能ID为空串且窗口为0时关闭。0.9.0一次性迁移只为空配置填入默认，自定义非空配置原样保留。"
+          "description": "默认西洋剑启用拨挡还击 rapier_riposte（20tick）与闪步回刺 rapier_reprise（12tick），与完美格挡后的左键×1.5反击并存。0.10.0右键优先执行已学习且仍在服务端窗口内的条件招；否则进入已学习的普通突刺，左键连段中右键缓存一次不蓄力突刺。技能ID为空串且窗口为0时关闭；原有自定义非空配置保留。"
         },
         "cancels": {
           "$ref": "#/$defs/cancels"

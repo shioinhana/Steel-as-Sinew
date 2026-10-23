@@ -27,11 +27,15 @@ public final class RapierMotionTest {
             for(int n=0;n<=total*12;n++){double tick=n/12.;double seconds=RapierMotion.clipTime(clip,tick,w,a,r);check(seconds>=previous,"Clip time never rewinds");previous=seconds;var pose=sample(model,cut,tick);var world=model.worldMatrices(pose);Vector3f tip=world.get("right_item").transformPosition(bladeAxis(model==fp).mul(75));
                 if(last!=null){double speed=tip.distance(last)*240;if(speed>peakSpeed){peakSpeed=speed;peakTick=tick;}if(tick<=1)preparationTravel+=tip.distance(last);}last=tip;
                 check(pose.get("right_forearm").rotation().vector().isFinite(),"Elbow stays finite");
+                var actualBlade=world.get("right_item").transformDirection(bladeAxis(model==fp)).normalize();
+                var forearm=world.get("right_forearm").transformDirection(new Vector3f(0,-1,0)).normalize();
+                check(forearm.dot(actualBlade)>=Math.cos(Math.toRadians(34.01)),"Every actual combat-clock sample preserves the rigid-grip wrist bound");
             }
             check(preparationTravel>.5,"First fifty milliseconds visibly prepare the blade instead of holding a frame");check(angle(sample(model,cut,0).get("right_arm"),sample(model,cut,.33).get("right_arm"))>.1,"First native sixty-Hz frame already moves the shoulder");check(peakSpeed>20&&peakTick>=w&&peakTick<=w+a,"Fastest blade sample lies inside actual server ACTIVE: cut="+cut+" tick="+peakTick);
             for(double boundary:new double[]{w,w+a}){double epsilon=1e-4,at=RapierMotion.clipTime(clip,boundary,w,a,r);double before=(at-RapierMotion.clipTime(clip,boundary-epsilon,w,a,r))/epsilon,after=(RapierMotion.clipTime(clip,boundary+epsilon,w,a,r)-at)/epsilon;near(before,after,.0001,"Source clock velocity remains continuous across combat phase packets");}
             var end=LegacyPlayback.sample(model,clip,clip.duration()*.86);var next=sample(model,cut%5+1,0);
-            for(String bone:List.of("right_arm","right_forearm","right_item","left_arm")){near(angle(end.get(bone),next.get(bone)),0,.25,"Combo handoff preserves joint orientation "+bone);near(end.get(bone).position().vector().distance(next.get(bone).position().vector()),0,.001,"Combo handoff preserves locator position "+bone);}
+            var handoffBones=model==fp?List.of("right_arm","right_forearm","right_item","left_arm"):List.of("body","head","hip","right_arm","right_forearm","right_hand","right_item","left_arm","left_forearm","left_hand");
+            for(String bone:handoffBones){near(angle(end.get(bone),next.get(bone)),0,.25,"Combo handoff preserves joint orientation "+bone);near(end.get(bone).position().vector().distance(next.get(bone).position().vector()),0,.001,"Combo handoff preserves locator position "+bone);}
         }
         check(RapierMotion.fencing(sword.rig().clips().get("legacy_rapier_attack5_upper")),"Complete five-phrase fencing chain is authored");check(!RapierMotion.cut(spear.rig().clips().get("spear_idle")),"Spear is unaffected");
         for(int x=-1;x<=1;x++)for(int z=-1;z<=1;z++)for(float reaction:new float[]{-3,0,3}){

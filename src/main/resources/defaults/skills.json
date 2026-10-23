@@ -22,7 +22,7 @@
   },
   {
     "id": "rapier_downcut",
-    "label": "西洋剑 · 脱剑换线刺",
+    "label": "西洋剑 · 斜挑",
     "weapon": "sword",
     "input": "LEFT",
     "windupTicks": 3,
@@ -43,7 +43,7 @@
   },
   {
     "id": "rapier_crosscut",
-    "label": "西洋剑 · 拨压后刺",
+    "label": "西洋剑 · 斜劈",
     "weapon": "sword",
     "input": "LEFT",
     "windupTicks": 3,
@@ -64,7 +64,7 @@
   },
   {
     "id": "rapier_light_thrust",
-    "label": "西洋剑 · 短回锋横切",
+    "label": "西洋剑 · 短横砍",
     "weapon": "sword",
     "input": "LEFT",
     "windupTicks": 3,
@@ -185,7 +185,7 @@
     "blockable": true,
     "parryable": true,
     "clashable": false,
-    "model": "rapier.fsvoxel",
+    "model": "legacy_rapier.fsvoxel",
     "action": "rapier_riposte"
   },
   {
@@ -206,7 +206,7 @@
     "blockable": true,
     "parryable": true,
     "clashable": false,
-    "model": "rapier.fsvoxel",
+    "model": "legacy_rapier.fsvoxel",
     "action": "rapier_reprise"
   },
   {
