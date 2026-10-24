@@ -13,10 +13,13 @@
     "ItemLayerAccess",
     "CombatMouseMixin",
     "CombatCameraMixin",
+    "ShoulderPickMixin",
+    "ShoulderInteractionMixin",
     "GuardDamageCameraMixin",
     "GuardDamagePacketMixin",
     "ClientInputAccess",
     "GameRendererAccess",
+    "ShoulderWorldViewMixin",
     "GuiContextAccess"
   ],
   "injectors": {

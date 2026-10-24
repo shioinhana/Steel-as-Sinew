@@ -35,6 +35,8 @@ def main() -> None:
     parser.add_argument("capture", type=Path)
     parser.add_argument("--threads", type=int, choices=(2, 3, 4), default=2)
     parser.add_argument("--clip", help="Select one clip from a multi-clip capture without changing its source report")
+    parser.add_argument("--scene-capture", action="store_true",
+                        help="Validate world/UI interaction footage rather than requiring animated rig observations")
     options = parser.parse_args()
     capture_file = options.capture.resolve(strict=True)
     root = capture_file.parent
@@ -55,8 +57,10 @@ def main() -> None:
     duration = frames[-1]["capturedAtSeconds"] - frames[0]["capturedAtSeconds"]
     require(math.isfinite(duration) and duration > 0, "Invalid native capture duration")
     source_fps = (len(frames) - 1) / duration
-    require(source_fps >= 30 and clip.get("distinctSamplesWithinGameTick", 0) > 0
-            and clip.get("changedRigPairs", 0) > 0, "Native source must contain real >=30 Hz moving poses")
+    require(source_fps >= 30 and clip.get("distinctSamplesWithinGameTick", 0) > 0,
+            "Native source must contain real >=30 Hz subtick frames")
+    if not options.scene_capture:
+        require(clip.get("changedRigPairs", 0) > 0, "Animation capture must contain changing rig observations")
     require(abs(clip.get("sourceFps", -1) - source_fps) < 1e-8
             and abs(clip.get("captureDurationSeconds", -1) - duration) < 1e-8,
             "Reported source timing disagrees with individual frame timestamps")
@@ -126,6 +130,7 @@ def main() -> None:
               "originalCaptureUnchanged": True, "clipId": identifier, "source": clip["source"],
               "capturedFrames": len(frames), "sourceFps": source_fps, "captureDurationSeconds": duration,
               "distinctSamplesWithinGameTick": clip["distinctSamplesWithinGameTick"], "changedRigPairs": clip["changedRigPairs"],
+              "captureValidation": "scene-png-and-timestamps" if options.scene_capture else "animated-rig-png-and-timestamps",
               "output": movie.name, "outputSha256": digest(movie.read_bytes()), "outputFps": 30,
               "encodedFrames": int(stream["nb_read_frames"]), "encodingThreads": options.threads,
               "timestampMethod": "Actual per-PNG timestamp gaps; ffconcat image time base 1000 Hz; fps=30 selects real source images",

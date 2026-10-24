@@ -416,9 +416,34 @@ public final class CombatCamera {
         sync();if(!active())return;var g=Minecraft.getInstance();
         if(reticleVisible()){
             int x=gui.guiWidth()/2+(mode.equals("spear")?(int)Math.round(cursorX()*gui.guiWidth()/g.getWindow().getScreenWidth()):0),
-                    y=gui.guiHeight()/2+(mode.equals("spear")?(int)Math.round(cursorY()*gui.guiHeight()/g.getWindow().getScreenHeight()):0),color=held||lockedTarget()!=null?0xffffd26e:0xfff0f3f5;
-            gui.fill(x-6,y,x-2,y+1,color);gui.fill(x+3,y,x+7,y+1,color);
-            gui.fill(x,y-6,x+1,y-2,color);gui.fill(x,y+3,x+1,y+7,color);
+                    y=gui.guiHeight()/2+(mode.equals("spear")?(int)Math.round(cursorY()*gui.guiHeight()/g.getWindow().getScreenHeight()):0),
+                    color=ShoulderInteraction.blocked()?0xffff7070:held||lockedTarget()!=null?0xffffd26e:0xfff0f3f5;
+            boolean showReticle=true;
+            if(ShoulderInteraction.nativeDirectionalAttack()&&g.hitResult!=null){
+                // Vanilla piercing attacks trace the player's head direction on the server,
+                // rather than using hitResult. Show that native ray's actual point without
+                // rotating the actor or sending extra movement/attack packets.
+                Vec3 point=g.hitResult.getLocation();
+                Vec3 projected=g.gameRenderer.projectPointToScreen(point);
+                var camera=g.gameRenderer.getMainCamera();
+                showReticle=Double.isFinite(projected.x)&&Double.isFinite(projected.y)
+                        &&point.subtract(camera.position()).dot(new Vec3(camera.forwardVector()))>0;
+                var rendered=ShoulderInteractionView.current();
+                if(rendered!=null){
+                    var actual=rendered.project(new ShoulderViewRay.Point(point.x,point.y,point.z));
+                    projected=new Vec3(actual.x(),actual.y(),actual.depth());
+                    showReticle=actual.inFront()&&Double.isFinite(actual.x())&&Double.isFinite(actual.y());
+                }
+                if(showReticle){
+                    x=(int)Math.round((projected.x+1)*gui.guiWidth()*.5);
+                    y=(int)Math.round((1-projected.y)*gui.guiHeight()*.5);
+                    showReticle=x>=0&&x<gui.guiWidth()&&y>=0&&y<gui.guiHeight();
+                }
+            }
+            if(showReticle){
+                gui.fill(x-6,y,x-2,y+1,color);gui.fill(x+3,y,x+7,y+1,color);
+                gui.fill(x,y-6,x+1,y-2,color);gui.fill(x,y+3,x+1,y+7,color);
+            }
             if(cameraOnly){gui.drawString(g.font,"越肩观察 · R 返回",10,66,0xffd9e6ef);return;}
         }
         if(mode.equals("spear")) {

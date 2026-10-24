@@ -6,4 +6,5 @@ import org.spongepowered.asm.mixin.gen.Invoker;
 @Mixin(GameRenderer.class)
 public interface GameRendererAccess {
     @Invoker("getFov") float fsrpg$fov(Camera camera,float partial,boolean useSetting);
+    @Invoker("shouldRenderBlockOutline") boolean fsrpg$shouldRenderBlockOutline();
 }

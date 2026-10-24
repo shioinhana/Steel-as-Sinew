@@ -25,5 +25,7 @@
   "key.fsrpg.footwork_special": "Cloud step special: stomp / wall kick, or charged jump with Space",
   "death.attack.fsrpg.flash_thrust": "%1$s was pierced by a flash thrust",
   "itemGroup.fsrpg.resources": "FSRPG Resources",
-  "item.fsrpg.white_adventurer_badge": "White Adventurer Badge"
+  "item.fsrpg.white_adventurer_badge": "White Adventurer Badge",
+  "message.fsrpg.shoulder_interaction.obstructed": "Your view is blocked. You cannot reach the crosshair target.",
+  "message.fsrpg.shoulder_interaction.out_of_range": "The crosshair target is out of reach."
 }
