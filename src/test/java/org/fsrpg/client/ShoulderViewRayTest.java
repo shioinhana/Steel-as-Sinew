@@ -19,6 +19,7 @@ public final class ShoulderViewRayTest {
         near(plain.origin().x(),0,1e-10,"plain eye x");near(plain.origin().y(),0,1e-10,"plain eye y");
         near(plain.direction().z(),-1,1e-10,"plain native forward");
         check(!plain.project(new ShoulderViewRay.Point(0,0,5)).inFront(),"behind-camera reticle hidden");
+        check(plain.directionAt(Double.NaN,0)==null,"non-finite floating cursor rejected");
         System.out.println("ShoulderViewRayTest passed: "+checks+" checks");
     }
     private static void verify(float fov,float aspect,float yaw,float pitch,int effect) {
@@ -34,6 +35,15 @@ public final class ShoulderViewRayTest {
         check(frame!=null,"invertible visible frame");
         check(view.equals(savedView)&&projection.equals(savedProjection),"renderer matrices preserved");
         var d=frame.direction();near(d.x()*d.x()+d.y()*d.y()+d.z()*d.z(),1,1e-10,"unit world ray");
+        for (double x:new double[]{-.8,0,.7}) for (double y:new double[]{-.6,.5}) {
+            var cursor=frame.directionAt(x,y);
+            check(cursor!=null,"finite floating cursor ray");
+            var point=new ShoulderViewRay.Point(frame.origin().x()+cursor.x()*5,frame.origin().y()+cursor.y()*5,frame.origin().z()+cursor.z()*5);
+            var projected=frame.project(point);
+            check(projected.inFront(),"floating cursor remains in front");
+            near(projected.x(),x,2e-6,"floating cursor projected x agrees with exact native matrix");
+            near(projected.y(),y,2e-6,"floating cursor projected y agrees with exact native matrix");
+        }
         for(double distance:new double[]{.1,.5,3,5,64}) {
             var p=new ShoulderViewRay.Point(frame.origin().x()+d.x()*distance,frame.origin().y()+d.y()*distance,frame.origin().z()+d.z()*distance);
             // Separate float forward path matches the native renderer, not the inverse implementation.

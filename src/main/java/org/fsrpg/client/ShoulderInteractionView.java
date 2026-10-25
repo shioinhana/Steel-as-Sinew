@@ -16,7 +16,7 @@ public final class ShoulderInteractionView {
 
     public static void capture(Camera camera, Matrix4fc view, Matrix4fc projection, float partial) {
         var game=Minecraft.getInstance();
-        if (!CombatCamera.active() || ClientState.drawn() || game.player==null || camera.entity()!=game.player) {
+        if (!CombatCamera.active() || game.player==null || camera.entity()!=game.player) {
             frame=null; return;
         }
         level=game.level; player=game.player;
@@ -28,7 +28,7 @@ public final class ShoulderInteractionView {
     }
     public static ShoulderViewRay.Frame current() {
         var game=Minecraft.getInstance();
-        return game.level==level&&game.player==player&&CombatCamera.active()&&!ClientState.drawn()?frame:null;
+        return game.level==level&&game.player==player&&CombatCamera.active()?frame:null;
     }
     public static long frames() { return frames; }
 }

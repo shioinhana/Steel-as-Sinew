@@ -48,6 +48,17 @@ public final class ShoulderInteraction {
     public static boolean active() { return scope() && !nativeDirectionalAttack(); }
     public static boolean blocked() { return active() && selection != null && selection.denied(); }
 
+    /** Direct immutable hit values for presentation; never materialize diagnostics in the render path. */
+    public static HitResult obstruction() {
+        synchronize();
+        return active() && selection != null && selection.reason().equals("OBSTRUCTED")
+                ? selection.obstruction() : null;
+    }
+    public static HitResult intendedTarget() {
+        synchronize();
+        return active() && selection != null ? selection.raw() : null;
+    }
+
     private static void synchronize() {
         var game = Minecraft.getInstance();
         if (level == game.level && player == game.player) return;

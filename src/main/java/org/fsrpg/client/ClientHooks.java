@@ -109,11 +109,16 @@ public final class ClientHooks {
             if(Minecraft.getInstance().player==event.getEntity()&&Double.isFinite(factor)&&factor>0)event.setNewSpeed((float)(event.getNewSpeed()/factor));
         });
         NeoForge.EVENT_BUS.addListener(CombatCamera::angles);
+        NeoForge.EVENT_BUS.addListener(net.neoforged.bus.api.EventPriority.LOWEST, CameraAdjustment::beforeKeybinds);
+        NeoForge.EVENT_BUS.addListener(net.neoforged.bus.api.EventPriority.HIGHEST, CameraAdjustment::movement);
+        NeoForge.EVENT_BUS.addListener((net.neoforged.neoforge.event.GameShuttingDownEvent event) -> CameraAdjustment.shutdown());
         NeoForge.EVENT_BUS.addListener(CombatCamera::movement);
         NeoForge.EVENT_BUS.addListener(ClientHooks::burstSprintInput);
         NeoForge.EVENT_BUS.addListener(ClientHooks::footworkInput);
         NeoForge.EVENT_BUS.addListener(ClientHooks::interaction);
         NeoForge.EVENT_BUS.addListener(ClientHooks::hud);
+        NeoForge.EVENT_BUS.addListener(ShoulderOcclusionPresentation::extract);
+        NeoForge.EVENT_BUS.addListener(ShoulderOcclusionPresentation::render);
         NeoForge.EVENT_BUS.addListener(RpgHud::beforeLayer);
         NeoForge.EVENT_BUS.addListener(ClientHooks::logout);
         NeoForge.EVENT_BUS.addListener(ClientHooks::screenOpening);
@@ -121,6 +126,7 @@ public final class ClientHooks {
     private static void keys(RegisterKeyMappingsEvent event) {
         event.registerCategory(CATEGORY);
         for (KeyMapping key : new KeyMapping[]{DRAW, LEFT, RIGHT, GUARD, DODGE, EDITOR, JOURNAL, SKILL, STYLE, TREE, ART, FOOTWORK, FOOTWORK_SPECIAL}) event.register(key);
+        CameraAdjustment.registerKeys(event, CATEGORY);
     }
     private static void payloads(RegisterClientPayloadHandlersEvent event) {
         event.register(org.fsrpg.network.RpgGuardImpactPayload.TYPE,(payload,context)->GuardImpactPresentation.accept(payload));
@@ -204,6 +210,7 @@ public final class ClientHooks {
     public static void openSkillTree() { send("status", ""); Minecraft.getInstance().setScreen(new SkillTreeScreen()); }
     private static void tick(ClientTickEvent.Post event) {
         Minecraft game = Minecraft.getInstance();
+        CameraAdjustment.tick();
         if (game.player == null || game.getConnection() == null) return;
         if(burstInputLevel!=game.level||burstInputPlayer!=game.player){
             shiftBurstIntent.reset();BurstDashMotion.reset();shiftSprintRequested=false;
@@ -250,8 +257,8 @@ public final class ClientHooks {
         while (DODGE.consumeClick()) send("dodge", "");
         while (SKILL.consumeClick()) {if(ClientState.drawn()&&!CombatCamera.style().equals("spear"))CombatCamera.targetAttack("skill");else send("attack", "skill");}
         while (STYLE.consumeClick()) openStyleSelector();
-        while (EDITOR.consumeClick()) openEditor();
-        while (JOURNAL.consumeClick()) openJournal();
+        while (EDITOR.consumeClick()) if(!CameraAdjustment.consumes(EDITOR))openEditor();
+        while (JOURNAL.consumeClick()) if(!CameraAdjustment.consumes(JOURNAL))openJournal();
         while (TREE.consumeClick()) openSkillTree();
         while (ART.consumeClick()) game.setScreen(new ArtGalleryScreen());
     }
@@ -276,6 +283,8 @@ public final class ClientHooks {
                 || game.getCameraEntity() != game.player || game.options.hideGui) return;
         GuiGraphics gui = event.getGuiGraphics();
         if (game.screen == null && CombatCamera.active()) CombatCamera.hud(gui);
+        CameraAdjustment.hud(gui);
+        ShoulderOcclusionPresentation.hud(gui);
         var state = ClientState.snapshot();
         String phase = ClientState.text(state, "phase", "IDLE");
         String phaseName = switch (phase.toUpperCase(java.util.Locale.ROOT)) {
@@ -374,6 +383,8 @@ public final class ClientHooks {
         shiftSprintRequested=wanted;
     }
     private static void logout(ClientPlayerNetworkEvent.LoggingOut event) {
+        CameraAdjustment.reset();
+        ShoulderOcclusionPresentation.clear();
         ImportedItemPresentation.reset();
         BurstDashMotion.reset();
         GuardCuePresentation.clear();

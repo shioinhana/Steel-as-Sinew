@@ -21,6 +21,8 @@ final class ClientOptions {
     static final ModConfigSpec.DoubleValue WAIST_TWIST_LIMIT, TURN_ROOT_FOLLOW;
     static final ModConfigSpec.DoubleValue SPEAR_READY_RETRACT;
     static final ModConfigSpec.DoubleValue CAMERA_DISTANCE,CAMERA_HEIGHT,CAMERA_TRANSITION,CAMERA_RESPONSE,CAMERA_ROLL;
+    static final ModConfigSpec.DoubleValue MOUNTED_SHOULDER,MOUNTED_CAMERA_HEIGHT,MOUNTED_CAMERA_DISTANCE,MOUNTED_CAMERA_EXTRA,CAMERA_ADJUST_STEP;
+    static final ModConfigSpec.BooleanValue MOUNTED_CAMERA_INITIALIZED;
     static final ModConfigSpec.DoubleValue SPEAR_LOCKED_RANGE;
     static final ModConfigSpec.DoubleValue SPEAR_TURN_CENTER,SPEAR_TURN_EDGE,SPEAR_TURN_EDGE_START,SPEAR_TURN_RESPONSE;
     static final ModConfigSpec.BooleanValue IDLE_INSPECTIONS;
@@ -33,7 +35,7 @@ final class ClientOptions {
         var builder = new ModConfigSpec.Builder();
         RPG_HUD = builder.comment("Use the material HUD: health/experience left, spirit/stamina right of the vanilla hotbar. Disable to restore vanilla health and experience.")
                 .define("materialHud", true);
-        THIRD_PERSON = builder.comment("Switch to third-person while a combat weapon is drawn; restore previous view after sheathing.")
+        THIRD_PERSON = builder.comment("Legacy compatibility key; no longer changes camera behavior. Rear third person always uses the shoulder camera, R drawing enters it once, and F5 chooses perspective independently of held items or combat state.")
                 .define("thirdPersonWhenDrawn", true);
         MOVING_FULL_BODY_LOWER_WEIGHT = builder.comment("FS lower-body contribution during movement for full-body actions; the remaining weight uses native walking. Action event moving_lower_weight with payload value overrides this value; legacy tags also work.")
                 .defineInRange("movingFullBodyLowerWeight", .25, 0, 1);
@@ -99,7 +101,13 @@ final class ClientOptions {
         SHOULDER=builder.comment("Over-shoulder horizontal camera offset in blocks: positive is right. Shared by drawn weapons and camera-only exploration. Original key retained for existing user settings.").defineInRange("rapierShoulderOffset",.65,-1.5,1.5);
         CAMERA_DISTANCE=builder.comment("Over-shoulder camera distance behind the eyes, in blocks. Native block collision still limits actual travel.").defineInRange("shoulderCameraDistance",3.0,.5,6);
         CAMERA_HEIGHT=builder.comment("Additional over-shoulder camera height, in blocks.").defineInRange("shoulderCameraHeight",.12,-.5,1);
-        CAMERA_TRANSITION=builder.comment("Seconds for a smooth eye-to-shoulder entry or return before restoring the previous camera type.").defineInRange("shoulderCameraTransitionSeconds",.5,.15,1.5);
+        MOUNTED_CAMERA_INITIALIZED=builder.comment("Whether the independent horse/boat camera profile has been seeded from the existing ordinary profile. Set automatically on first use; existing ordinary settings are preserved.").define("mountedCameraProfileInitialized",false);
+        MOUNTED_SHOULDER=builder.comment("Saved horizontal horse/boat shoulder camera offset; Ctrl plus J/L adjusts this independently of the ordinary profile.").defineInRange("mountedShoulderOffset",.65,-1.5,1.5);
+        MOUNTED_CAMERA_HEIGHT=builder.comment("Saved additional horse/boat shoulder camera height; Ctrl plus I/K adjusts this independently of the ordinary profile.").defineInRange("mountedCameraHeight",.12,-.5,1.5);
+        MOUNTED_CAMERA_DISTANCE=builder.comment("Saved horse/boat shoulder camera distance behind the eyes. The initial value is seeded from the existing ordinary distance plus mountedCameraExtraDistance.").defineInRange("mountedCameraDistance",4.2,.5,8);
+        MOUNTED_CAMERA_EXTRA=builder.comment("Extra distance added only when first creating the saved horse/boat camera profile.").defineInRange("mountedCameraExtraDistance",1.2,0,3);
+        CAMERA_ADJUST_STEP=builder.comment("Camera side/height adjustment per client tick while Ctrl plus I/J/K/L is held, in blocks. Diagonal adjustment keeps the same speed.").defineInRange("cameraAdjustmentStep",.025,.005,.1);
+        CAMERA_TRANSITION=builder.comment("Seconds for smooth entry into the rear shoulder view. F5 exits directly into the selected native perspective.").defineInRange("shoulderCameraTransitionSeconds",.5,.15,1.5);
         CAMERA_RESPONSE=builder.comment("Render-time position response for camera side, heading and wall-distance changes, in seconds. Final wall safety is applied after smoothing.").defineInRange("shoulderCameraResponseSeconds",.12,.02,.5);
         CAMERA_ROLL=builder.comment("Small over-shoulder camera roll in degrees, faded with the existing eye-to-shoulder transition. Zero keeps the horizon level.").defineInRange("shoulderCameraRollDegrees",2.0,-6,6);
         SPEAR_LOCKED_RANGE=builder.comment("Physical free spear cursor range relative to the original 45/40 degree limits. Full viewport input maps into this envelope; legacy key retained, target locking removed.").defineInRange("spearLockedAimRangeScale",.7,.1,1);

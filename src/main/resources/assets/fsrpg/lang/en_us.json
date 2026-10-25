@@ -26,6 +26,14 @@
   "death.attack.fsrpg.flash_thrust": "%1$s was pierced by a flash thrust",
   "itemGroup.fsrpg.resources": "FSRPG Resources",
   "item.fsrpg.white_adventurer_badge": "White Adventurer Badge",
-  "message.fsrpg.shoulder_interaction.obstructed": "Your view is blocked. You cannot reach the crosshair target.",
-  "message.fsrpg.shoulder_interaction.out_of_range": "The crosshair target is out of reach."
+  "message.fsrpg.shoulder_interaction.obstructed": "Obstructed",
+  "message.fsrpg.shoulder_interaction.out_of_range": "The crosshair target is out of reach.",
+  "key.fsrpg.camera_modifier": "Camera adjustment modifier",
+  "key.fsrpg.camera_up": "Ctrl: move camera up",
+  "key.fsrpg.camera_down": "Ctrl: move camera down",
+  "key.fsrpg.camera_left": "Ctrl: move camera left",
+  "key.fsrpg.camera_right": "Ctrl: move camera right",
+  "message.fsrpg.camera_profile.ground": "Ground",
+  "message.fsrpg.camera_profile.mounted": "Mounted",
+  "message.fsrpg.camera_adjustment": "%s camera: side %s, height %s"
 }

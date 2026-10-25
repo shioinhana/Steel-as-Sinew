@@ -57,9 +57,8 @@ public final class ArcheryPresentation {
             double full=ClientState.number(bow,"scopeFullMagnification",1);
             magnification=release?Math.max(1,releaseMagnification):1+(Math.max(1,full)-1)*LegacyMotion.bowChargeProgress();
         } else if(scoped) {
-            // The general combat camera restores the pre-draw camera on sheath/logout.
-            // Restore our temporary scope only while that combat camera is still active.
-            if(ClientState.drawn()&&game.player!=null&&game.level!=null&&game.options.getCameraType().isFirstPerson())
+            // Scope temporarily owns first person; restore its saved view even if a slot change ended combat.
+            if(game.player!=null&&game.level!=null&&game.options.getCameraType().isFirstPerson())
                 game.options.setCameraType(cameraBeforeScope==null?CameraType.THIRD_PERSON_BACK:cameraBeforeScope);
             cameraBeforeScope=null;magnification=1;
         }
@@ -107,7 +106,7 @@ public final class ArcheryPresentation {
     private static void clearTrail(){trail.forEach(Particle::remove);trail.clear();}
     public static void reset() {
         var game=Minecraft.getInstance();
-        if(scoped&&ClientState.drawn()&&game.level!=null&&game.options.getCameraType().isFirstPerson()&&cameraBeforeScope!=null)
+        if(scoped&&game.player!=null&&game.level!=null&&game.options.getCameraType().isFirstPerson()&&cameraBeforeScope!=null)
             game.options.setCameraType(cameraBeforeScope);
         scoped=releasing=false;cameraBeforeScope=null;previousAction="";magnification=releaseMagnification=1;lastLanding=null;clearTrail();
     }

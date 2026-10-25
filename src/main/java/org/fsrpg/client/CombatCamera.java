@@ -25,8 +25,8 @@ public final class CombatCamera {
     private static final SpearCursorSteering steering=new SpearCursorSteering();
     private static boolean held;
     private static boolean dualFacingLocked;
-    private static boolean cameraOnly;
-    private static CameraType previousCamera;
+    private static boolean shoulderActive;
+    private static Object cameraPlayer,cameraLevel;
     private static final ShoulderCameraMotion cameraTravel=new ShoulderCameraMotion();
     private static final CameraClipSmoother clipSmoother=new CameraClipSmoother();
     private static long lastClipNanos;
@@ -43,46 +43,50 @@ public final class CombatCamera {
     private static FieldKey cachedFieldKey;
     private static SpearCursorField.Frame cachedField;
     public static float shoulder() {return ClientOptions.SHOULDER.get().floatValue();}
-    public static boolean cameraOnly(){return cameraOnly;}
+    public static boolean cameraOnly(){return active()&&!combatCameraRequested();}
     public static double transitionBlend(){return cameraTravel.blend();}
-    private static boolean itemAvailable(){var p=Minecraft.getInstance().player;return p!=null&&(!p.getMainHandItem().isEmpty()||!p.getOffhandItem().isEmpty());}
     private static boolean combatCameraRequested(){String phase=ClientState.text(ClientState.snapshot(),"phase","");return phase.equals("DRAWING")||ClientState.drawn()&&!phase.equals("SHEATHING");}
+    private static boolean spearControlsRequested(){
+        var game=Minecraft.getInstance();
+        return game.player!=null&&game.level!=null&&game.player.isAlive()&&!game.player.isSpectator()
+                &&game.getCameraEntity()==game.player&&combatCameraRequested()&&style().equals("spear");
+    }
     private static boolean wantsShoulder(){
         var game=Minecraft.getInstance();
-        return game.player!=null&&game.player.isAlive()&&!game.player.isSpectator()&&game.getCameraEntity()==game.player
-                &&(combatCameraRequested()&&ClientOptions.THIRD_PERSON.get()||cameraOnly&&itemAvailable());
+        return game.player!=null&&game.level!=null&&game.player.isAlive()&&!game.player.isSpectator()&&game.getCameraEntity()==game.player
+                &&game.options.getCameraType()==CameraType.THIRD_PERSON_BACK;
     }
     public static void drawKey(){
         var game=Minecraft.getInstance();if(game.player==null)return;
         if(ClientState.bool(ClientState.snapshot(),"weaponEquipped",false)||ClientState.drawn()){
-            cameraOnly=false;ClientHooks.send("draw","");
-        }else if(itemAvailable()){cameraOnly=!cameraOnly;updateView();}
+            // A draw request chooses the rear view once. Later combat snapshots never own perspective.
+            // Spears are always drawn, so R selects their shoulder view without introducing a sheath state.
+            if(!ClientState.drawn()||style().equals("spear"))game.options.setCameraType(CameraType.THIRD_PERSON_BACK);
+            ClientHooks.send("draw","");
+        }else game.options.setCameraType(CameraType.THIRD_PERSON_BACK);
+        updateView();
     }
-    /** Keep third person until the return has actually reached the eyes; packets cannot cause camera jumps. */
+    /** Rear third person uses our composition; native F5, scope and the user's view remain authoritative. */
     public static void updateView(){
         var game=Minecraft.getInstance();
-        if(cameraOnly&&!itemAvailable())cameraOnly=false;
-        if(game.player==null||game.level==null||!game.player.isAlive()||game.player.isSpectator()||game.getCameraEntity()!=game.player){
-            if(previousCamera!=null)game.options.setCameraType(previousCamera);
-            previousCamera=null;cameraTravel.reset();clipSmoother.reset();lastClipNanos=0;return;
-        }
-        if(wantsShoulder()){
-            if(previousCamera==null){previousCamera=game.options.getCameraType();cameraTravel.reset();clipSmoother.reset();lastClipNanos=0;}
-            game.options.setCameraType(CameraType.THIRD_PERSON_BACK);
-        }else if(previousCamera!=null&&cameraTravel.settledOff()){
-            game.options.setCameraType(previousCamera);previousCamera=null;
+        boolean next=wantsShoulder();
+        if(cameraPlayer!=game.player||cameraLevel!=game.level||next!=shoulderActive){
+            cameraTravel.reset();clipSmoother.reset();lastClipNanos=0;
+            cameraPlayer=game.player;cameraLevel=game.level;shoulderActive=next;
         }
     }
     /** Camera.setup already established the final orbit rotation; translate the real camera with wall safety. */
     public static Vec3 cameraPosition(net.minecraft.world.level.Level level,net.minecraft.world.entity.Entity entity,Camera camera,float partial){
         var game=Minecraft.getInstance();
-        if(entity!=game.player||game.getCameraEntity()!=game.player||previousCamera==null)return null;
+        updateView();
+        if(entity!=game.player||!active())return null;
         Vec3 eye=entity.getEyePosition(partial);
         long started=System.nanoTime();
-        var local=new org.joml.Vector3f(shoulder(),ClientOptions.CAMERA_HEIGHT.get().floatValue(),ClientOptions.CAMERA_DISTANCE.get().floatValue()).rotate(camera.rotation());
+        var composition=CameraAdjustment.position();
+        var local=new org.joml.Vector3f((float)composition.side(),(float)composition.height(),(float)composition.distance()).rotate(camera.rotation());
         // Smooth the orbit first, then clip the final offset once. Smoothing before the safety clip
         // keeps the same wall protection without a second eight-corner sweep on every frame.
-        var offset=cameraTravel.sample(wantsShoulder(),System.nanoTime()/1e9,new ShoulderCameraMotion.Offset(local.x,local.y,local.z),
+        var offset=cameraTravel.sample(true,System.nanoTime()/1e9,new ShoulderCameraMotion.Offset(local.x,local.y,local.z),
                 ClientOptions.CAMERA_TRANSITION.get(),ClientOptions.CAMERA_RESPONSE.get());
         Vec3 result=eye.add(clipCamera(level,entity,eye,new Vec3(offset.x(),offset.y(),offset.z())));
         long elapsed=System.nanoTime()-started;
@@ -131,12 +135,9 @@ public final class CombatCamera {
         }
         return selected;
     }
-    public static boolean active() {
-        var g=Minecraft.getInstance();return g.player!=null&&g.player.isAlive()&&!g.player.isSpectator()&&g.getCameraEntity()==g.player
-                &&(wantsShoulder()||previousCamera!=null&&cameraTravel.active());
-    }
+    public static boolean active() {return wantsShoulder();}
     private static void sync() {
-        var g=Minecraft.getInstance();String next=active()?(combatCameraRequested()?style():cameraOnly?"camera_only":mode):"";
+        var g=Minecraft.getInstance();String next=active()?(combatCameraRequested()?style():"camera_only"):"";
         if(!next.equals(mode)) { releaseSpear(true); mode=next;dualFacingLocked=false;path.clear();steering.reset();
             if(g.player!=null){yaw=g.player.getYRot();pitch=g.player.getXRot();
                 if(mode.equals("spear")){pitch=(float)Math.clamp(pitch,-SpearAimField.CAMERA_PITCH_DEGREES,SpearAimField.CAMERA_PITCH_DEGREES);face(yaw,pitch);}} }
@@ -154,8 +155,7 @@ public final class CombatCamera {
         if(!mode.equals("spear")&&lockedTarget()!=null)lockFacing();
     }
     public static void reset() {
-        var game=Minecraft.getInstance();if(previousCamera!=null)game.options.setCameraType(previousCamera);
-        previousCamera=null;cameraOnly=false;cameraTravel.reset();clipSmoother.reset();lastClipNanos=0;mode="";held=false;spearInput=0;spearBlockedUntilRelease=spearAimDirty=false;dualFacingLocked=false;path.clear();steering.reset();cachedFieldKey=null;cachedField=null;
+        shoulderActive=false;cameraPlayer=cameraLevel=null;cameraTravel.reset();clipSmoother.reset();lastClipNanos=0;mode="";held=false;spearInput=0;spearBlockedUntilRelease=spearAimDirty=false;dualFacingLocked=false;path.clear();steering.reset();cachedFieldKey=null;cachedField=null;
     }
     public static boolean mouse(double dx,double dy) {
         sync();var g=Minecraft.getInstance();
@@ -286,7 +286,7 @@ public final class CombatCamera {
     }
     public static void movement(MovementInputUpdateEvent event) {
         sync();
-        if(ClientState.drawn()){
+        if(ClientState.drawn()&&!Minecraft.getInstance().player.isPassenger()){
             var input=event.getInput();var keys=input.keyPresses;
             if(keys.shift())input.keyPresses=new net.minecraft.world.entity.player.Input(keys.forward(),keys.backward(),keys.left(),keys.right(),keys.jump(),false,keys.sprint());
             Minecraft.getInstance().player.setShiftKeyDown(false);
@@ -300,7 +300,7 @@ public final class CombatCamera {
     }
     public static void attack(String button) {
         sync();var p=Minecraft.getInstance().player;
-        if(mode.equals("spear")) {
+        if(spearControlsRequested()) {
             // A complete physical click can occur between two client ticks.
             if(!held&&!spearBlockedUntilRelease){gesture(true);gesture(false);}
         } else targetAttack(button);
@@ -311,7 +311,7 @@ public final class CombatCamera {
         prepareRapierAttack();
         LivingEntity target=null;Vec3 contact=null;
         float aimYaw=active()?yaw:game.player.getYRot(),aimPitch=active()?pitch:game.player.getXRot();
-        var camera=game.gameRenderer.getMainCamera();Vec3 start=camera.isInitialized()?camera.position():game.player.getEyePosition();
+        var camera=game.gameRenderer.getMainCamera();Vec3 start=active()&&camera.isInitialized()?camera.position():game.player.getEyePosition();
         Vec3 direction=Vec3.directionFromRotation(aimPitch,aimYaw),end=start.add(direction.scale(10+start.distanceTo(game.player.getEyePosition())+.5));
         var wall=game.level.clip(new ClipContext(start,end,ClipContext.Block.COLLIDER,ClipContext.Fluid.NONE,game.player));
         double nearest=start.distanceToSqr(wall.getLocation());
@@ -333,13 +333,14 @@ public final class CombatCamera {
     public static boolean gestureHeld() { return held; }
     public static void tick(boolean down) {
         sync();var g=Minecraft.getInstance();
-        if(!active() || !mode.equals("spear") || g.screen!=null || !g.isWindowActive()) {releaseSpear(true);steering.reset();return;}
-        advanceSpear();gesture(down);
+        if(!spearControlsRequested() || g.screen!=null || !g.isWindowActive()) {releaseSpear(true);steering.reset();return;}
+        if(active())advanceSpear();else steering.reset();
+        gesture(down);
     }
     /** Gesture processing is shared by physical input and the integrated-client review. */
     public static void gesture(boolean down) {
         sync();var g=Minecraft.getInstance();
-        if(!active() || !mode.equals("spear") || g.screen!=null) {releaseSpear(true);return;}
+        if(!spearControlsRequested() || g.screen!=null) {releaseSpear(true);return;}
         if(!down)spearBlockedUntilRelease=false;
         if(down&&!held&&!spearBlockedUntilRelease) {
             var point=aimPoint();if(!SpearAimField.contains(point,g.player.getYRot()))return;
@@ -382,8 +383,8 @@ public final class CombatCamera {
     }
     public static AttackAim.Point aimPoint() {
         var g=Minecraft.getInstance();var camera=g.gameRenderer.getMainCamera();
-        // The visible floating reticle and combat share this exact world ray, including shoulder parallax.
-        Vec3 start=camera.position(),ray=cursorRay();
+        // The shoulder reticle uses its rendered ray; native perspectives retain eye-direction spear input.
+        Vec3 start=active()?camera.position():g.player.getEyePosition(),ray=active()?cursorRay():g.player.getLookAngle();
         Vec3 end=start.add(ray.scale(64));
         var local=vector(ray);
         double minimum=SpearCursorField.minimumRayDistance(vector(start.subtract(g.player.getEyePosition())),local,g.player.getYRot());
@@ -444,7 +445,7 @@ public final class CombatCamera {
                 gui.fill(x-6,y,x-2,y+1,color);gui.fill(x+3,y,x+7,y+1,color);
                 gui.fill(x,y-6,x+1,y-2,color);gui.fill(x,y+3,x+1,y+7,color);
             }
-            if(cameraOnly){gui.drawString(g.font,"越肩观察 · R 返回",10,66,0xffd9e6ef);return;}
+            if(cameraOnly()){gui.drawString(g.font,"越肩观察 · F5 切换视角",10,66,0xffd9e6ef);return;}
         }
         if(mode.equals("spear")) {
             gui.drawString(g.font,held?"保持刺出 · 移动准星扫击 · 松开收回":"长枪收回 · 点按刺出 · 偏移准星转向",10,66,0xffe6edff);

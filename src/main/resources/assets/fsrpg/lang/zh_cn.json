@@ -26,6 +26,14 @@
   "death.attack.fsrpg.flash_thrust": "%1$s 被闪刺贯穿",
   "itemGroup.fsrpg.resources": "FSRPG 资源",
   "item.fsrpg.white_adventurer_badge": "白色冒险者牌",
-  "message.fsrpg.shoulder_interaction.obstructed": "视线被挡住，无法触及准星目标",
-  "message.fsrpg.shoulder_interaction.out_of_range": "准星目标超出触及距离"
+  "message.fsrpg.shoulder_interaction.obstructed": "被遮挡",
+  "message.fsrpg.shoulder_interaction.out_of_range": "准星目标超出触及距离",
+  "key.fsrpg.camera_modifier": "镜头调整修饰键",
+  "key.fsrpg.camera_up": "Ctrl：镜头上移",
+  "key.fsrpg.camera_down": "Ctrl：镜头下移",
+  "key.fsrpg.camera_left": "Ctrl：镜头左移",
+  "key.fsrpg.camera_right": "Ctrl：镜头右移",
+  "message.fsrpg.camera_profile.ground": "普通",
+  "message.fsrpg.camera_profile.mounted": "载具",
+  "message.fsrpg.camera_adjustment": "%s镜头：左右 %s，上下 %s"
 }

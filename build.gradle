@@ -45,7 +45,7 @@ neoForge {
             jvmArgument "-javaagent:${layout.buildDirectory.file('dev-tools/fsrpg-test-monitor.jar').get().asFile.absolutePath}"
             if(project.hasProperty('spearProfile')) jvmArgument "-XX:StartFlightRecording=filename=${file('verification/spear-underarm-turn-20261014/solver-profile.jfr').absolutePath},settings=profile,dumponexit=true"
             if (project.hasProperty('rpgJarSmoke')) sourceSet.set(sourceSets.packagedSmoke)
-            ['spearOrbit','rapierFencing','importedItems','importedItemHands','shoulderInteraction'].each { profile ->
+            ['spearOrbit','rapierFencing','importedItems','importedItemHands','shoulderInteraction','cameraSchedule'].each { profile ->
                 if(project.hasProperty(profile+'Smoke')) {
                     if(!project.hasProperty('smokeWorld'))throw new GradleException(profile+'Smoke requires a copied marked world')
                     jvmArgument "-Dfsrpg.${profile}Smoke=true"
@@ -53,6 +53,7 @@ neoForge {
                     jvmArgument "-Dfsrpg.smokeEvidence=${file(project.property('smokeEvidence')).absolutePath}"
                 }
             }
+            if (project.hasProperty('cameraScheduleReload')) jvmArgument '-Dfsrpg.cameraScheduleReload=true'
             if (project.hasProperty('weaponSmoke')) {
                 jvmArgument '-Dfsrpg.weaponSmoke=true'
                 jvmArgument "-Dfsrpg.smokeEvidence=${project.hasProperty('smokeEvidence') ? file(project.property('smokeEvidence')).absolutePath : '../../verification/weapons-r2'}"
@@ -236,7 +237,7 @@ neoForge {
     }
     mods { fsrpg {
         if (project.hasProperty('rpgJarSmoke')) sourceSet sourceSets.packagedSmoke
-        else { sourceSet sourceSets.main; if (project.hasProperty('shoulderInteractionSmoke') || project.hasProperty('importedItemHandsSmoke') || project.hasProperty('importedItemsSmoke') || project.hasProperty('spearOrbitSmoke') || project.hasProperty('rapierFencingSmoke') || project.hasProperty('spearShoulderSmoke') || project.hasProperty('defenseFlowSmoke') || project.hasProperty('rapierMotionSmoke') || project.hasProperty('weaponClashSmoke') || project.hasProperty('runAirSmoke') || project.hasProperty('inspectionCarrySmoke') || project.hasProperty('groundImpulseSmoke') || project.hasProperty('burstSwipeSmoke') || project.hasProperty('shoulderCombatSmoke') || project.hasProperty('spearGestureSmoke') || project.hasProperty('combatRevisionSmoke') || project.hasProperty('dualSourceSmoke') || project.hasProperty('guardComboSmoke') || project.hasProperty('creatureCombatSmoke') || project.hasProperty('combatBalanceSmoke') || project.hasProperty('whiteAdventurerSmoke') || project.hasProperty('spearPerformanceSmoke') || project.hasProperty('rapierLockSmoke') || project.hasProperty('artSmoke') || project.hasProperty('rpgSmoke') || project.hasProperty('poseSmoke') || project.hasProperty('hudSmoke') || project.hasProperty('collectionSmoke') || project.hasProperty('legacySkillSmoke') || project.hasProperty('spearSolverSmoke') || project.hasProperty('actionLimitsSmoke')) sourceSet sourceSets.smoke }
+        else { sourceSet sourceSets.main; if (project.hasProperty('cameraScheduleSmoke') || project.hasProperty('shoulderInteractionSmoke') || project.hasProperty('importedItemHandsSmoke') || project.hasProperty('importedItemsSmoke') || project.hasProperty('spearOrbitSmoke') || project.hasProperty('rapierFencingSmoke') || project.hasProperty('spearShoulderSmoke') || project.hasProperty('defenseFlowSmoke') || project.hasProperty('rapierMotionSmoke') || project.hasProperty('weaponClashSmoke') || project.hasProperty('runAirSmoke') || project.hasProperty('inspectionCarrySmoke') || project.hasProperty('groundImpulseSmoke') || project.hasProperty('burstSwipeSmoke') || project.hasProperty('shoulderCombatSmoke') || project.hasProperty('spearGestureSmoke') || project.hasProperty('combatRevisionSmoke') || project.hasProperty('dualSourceSmoke') || project.hasProperty('guardComboSmoke') || project.hasProperty('creatureCombatSmoke') || project.hasProperty('combatBalanceSmoke') || project.hasProperty('whiteAdventurerSmoke') || project.hasProperty('spearPerformanceSmoke') || project.hasProperty('rapierLockSmoke') || project.hasProperty('artSmoke') || project.hasProperty('rpgSmoke') || project.hasProperty('poseSmoke') || project.hasProperty('hudSmoke') || project.hasProperty('collectionSmoke') || project.hasProperty('legacySkillSmoke') || project.hasProperty('spearSolverSmoke') || project.hasProperty('actionLimitsSmoke')) sourceSet sourceSets.smoke }
     } }
 }
 tasks.named('runClient') { dependsOn monitorAgentJar }
@@ -645,6 +646,8 @@ tasks.register('stage0100Config', JavaExec) {
  'skillTreeLayoutTest':'org.fsrpg.client.SkillTreeLayoutTest',
  'cameraClipSmootherTest':'org.fsrpg.client.CameraClipSmootherTest',
  'shoulderViewRayTest':'org.fsrpg.client.ShoulderViewRayTest',
+ 'cameraAdjustmentIntentTest':'org.fsrpg.client.CameraAdjustmentIntentTest',
+ 'asyncConfigSaveTest':'org.fsrpg.client.AsyncConfigSaveTest',
  'importedItemMotionTest':'org.fsrpg.client.ImportedItemMotionTest'].each { taskName, className ->
     tasks.register(taskName, JavaExec) { dependsOn testClasses; classpath = sourceSets.test.runtimeClasspath; mainClass = className; jvmArgs '-Dfile.encoding=UTF-8' }
     tasks.named('check') { dependsOn taskName }
