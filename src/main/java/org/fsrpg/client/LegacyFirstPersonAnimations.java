@@ -87,7 +87,7 @@ public final class LegacyFirstPersonAnimations {
             else if(kind.equals("dual_blade"))poses.translate(0,-1.20f,-.60f);
             else poses.translate(0,-.71f,-.54f);
             var conversion=new Matrix4f().scaling(-.01f,.01f,-.01f);
-            for(var draw:model.draws(fitted)) {
+            if(!AvatarAppearances.firstPersonAction(world,poses,collector,event.getPackedLight()))for(var draw:model.draws(fitted)) {
                 Geometry.Mesh mesh=flipV(draw.mesh().transformed(new Matrix4f(conversion).mul(draw.transform())));
                 collector.submitCustomGeometry(poses,RenderTypes.entityCutoutNoCull(game.player.getSkin().body().texturePath()),
                         (at,buffer)->MinecraftMeshRenderer.prepare(mesh,at,-1,event.getPackedLight(),OverlayTexture.NO_OVERLAY).submit(buffer));

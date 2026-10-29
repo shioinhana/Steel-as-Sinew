@@ -14,5 +14,6 @@ public abstract class PlayerModelMixin {
     @Inject(method = "setupAnim(Lnet/minecraft/client/renderer/entity/state/AvatarRenderState;)V", at = @At("TAIL"))
     private void fsrpg$animate(AvatarRenderState state, CallbackInfo callback) {
         PlayerAnimations.apply((PlayerModel) (Object) this, state);
+        org.fsrpg.client.AvatarAppearances.prepare((PlayerModel)(Object)this,state);
     }
 }

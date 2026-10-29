@@ -14,6 +14,8 @@ public final class ClientMod {
         try { WeaponInspections.reload(net.neoforged.fml.loading.FMLPaths.CONFIGDIR.get().resolve("fsrpg")); }
         catch(Exception error){org.slf4j.LoggerFactory.getLogger("FSRPG client").warn("Unable to load weapon inspection catalogue; keeping the validated catalogue",error);}
         ClientHooks.register(modBus);
+        AvatarAppearances.install();
+        modBus.addListener(AvatarAppearances::layers);
         InspectionInput.register(modBus);
         FootworkClient.install();
     }

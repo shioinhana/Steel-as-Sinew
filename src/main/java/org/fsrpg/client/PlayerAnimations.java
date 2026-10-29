@@ -122,6 +122,7 @@ public final class PlayerAnimations {
     }
     public static void clear() { bindings.clear(); airPoses.clear(); airInertias.clear(); airOffsets.clear(); previews.clear(); AnimationAssets.clear(); SkinnedArms.clear(); renderClock.reset(); level = Minecraft.getInstance().level; }
     public static void reloadModels() {
+        AvatarAppearances.reload();
         try { WeaponInspections.reload(net.neoforged.fml.loading.FMLPaths.CONFIGDIR.get().resolve("fsrpg")); }
         catch(Exception error){LOG.warn("Unable to reload weapon inspection catalogue; retaining previous validated data",error);}
         var states = bindings.values().stream().map(binding -> binding.state).toList();
