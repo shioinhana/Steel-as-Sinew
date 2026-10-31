@@ -38,7 +38,7 @@ public final class LegacyFirstPersonAnimations {
         // main-hand item owns its native skin presentation, never that old rig.
         if(game.player!=null && (ImportedItemPresentation.supports(game.player.getMainHandItem())
                 || event.getHand()==InteractionHand.MAIN_HAND && ImportedItemPresentation.supports(event.getItemStack())))return;
-        if(game.player==null || !ClientState.drawn() || intent==null || !intent.model().startsWith("legacy_")
+        if(game.player==null || !ClientState.drawn() || intent==null || !(intent.model().startsWith("legacy_") || intent.model().equals(FullBodySword.MODEL))
                 || !game.options.getCameraType().isFirstPerson() || game.player.isSpectator())return;
         String modelName=intent.model().replace(".fsvoxel","_fp.fsvoxel");
         try {

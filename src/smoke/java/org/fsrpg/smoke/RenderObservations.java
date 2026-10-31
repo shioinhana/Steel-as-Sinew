@@ -114,8 +114,15 @@ final class RenderObservations {
         observation.addProperty("phase", ClientState.text(ClientState.snapshot(), "phase", ""));
         observation.addProperty("skill", ClientState.text(ClientState.snapshot(), "skill", ""));
         observation.add("actorPositionMeters", RpgConfig.JSON.toJsonTree(new double[]{actor.getX(), actor.getY(), actor.getZ()}));
-        var renderPosition=actor.getPosition(state.partialTick);
+        var nativeRenderPosition=actor.getPosition(state.partialTick);
+        observation.add("nativeActorRenderPositionMeters",RpgConfig.JSON.toJsonTree(new double[]{nativeRenderPosition.x,nativeRenderPosition.y,nativeRenderPosition.z}));
+        var renderPosition=new net.minecraft.world.phys.Vec3(state.x,state.y,state.z);
         observation.add("actorRenderPositionMeters",RpgConfig.JSON.toJsonTree(new double[]{renderPosition.x,renderPosition.y,renderPosition.z}));
+        observation.add("submittedRenderStatePositionMeters",RpgConfig.JSON.toJsonTree(new double[]{state.x,state.y,state.z}));
+        var cameraPosition=Minecraft.getInstance().gameRenderer.getMainCamera().position();
+        observation.add("submittedCameraPositionMeters",RpgConfig.JSON.toJsonTree(new double[]{cameraPosition.x,cameraPosition.y,cameraPosition.z}));
+        observation.add("submittedAvatarMinusCameraMeters",RpgConfig.JSON.toJsonTree(new double[]{state.x-cameraPosition.x,state.y-cameraPosition.y,state.z-cameraPosition.z}));
+        observation.add("cameraComposition",org.fsrpg.client.CameraAdjustment.diagnostics());
         observation.add("movementXZ", RpgConfig.JSON.toJsonTree(new double[]{actor.getX() - actor.xo, actor.getZ() - actor.zo}));
         observation.add("deltaMovementMetersPerTick",RpgConfig.JSON.toJsonTree(new double[]{actor.getDeltaMovement().x,actor.getDeltaMovement().y,actor.getDeltaMovement().z}));
         JsonObject rig = new JsonObject();
@@ -260,7 +267,42 @@ final class RenderObservations {
         rig.add("nativeLeftLeg", RpgConfig.JSON.toJsonTree(new float[]{model.leftLeg.x, model.leftLeg.y, model.leftLeg.z,
                 model.leftLeg.xRot, model.leftLeg.yRot, model.leftLeg.zRot}));
         observation.addProperty("lowerBodyApplicable",frame != null && actor.onGround() && !actor.isPassenger() && !state.isFallFlying && state.swimAmount <= .5f);
-        if(frame != null && frame.supportedLower() != null) {
+        if(org.fsrpg.client.FullBodySword.frame(frame)) {
+            // The production skin renderer now consumes the authored three-bone
+            // chain directly. Reconstructing it with old ModelPart knee angles
+            // would inspect a different leg from the one submitted to the GPU.
+            var finalLower=new JsonObject();finalLower.addProperty("units","native-pixels (Y down; groundY=24; 16 pixels/m)");
+            finalLower.addProperty("deformation","AuthoredSwordLegDeformation");finalLower.addProperty("groundY",24);
+            Vector3f waist=frame.world().get("body").transformPosition(new Vector3f(0,-31.25f,0));
+            finalLower.add("waist",vector(new Vector3f(waist.x/6.25f,(150-waist.y)/6.25f,-waist.z/6.25f)));
+            for(String side:List.of("right","left")){
+                Matrix4f thigh=frame.world().get(side+"_leg"),shin=frame.world().get(side+"_foreleg"),foot=frame.world().get(side+"_foot");
+                if(thigh==null||shin==null||foot==null)throw new IllegalStateException("Missing actual authored full-body leg chain: "+side);
+                var leg=new org.fsrpg.client.AuthoredSwordLegDeformation(thigh,shin,foot,frame.world().get("body"),side);
+                JsonObject observed=new JsonObject();observed.add("hip",vector(leg.point(0,0,0).mul(16)));observed.add("knee",vector(leg.point(0,6,0).mul(16)));observed.add("ankle",vector(leg.point(0,10,0).mul(16)));observed.add("soleCenter",vector(leg.point(0,12,0).mul(16)));
+                var sole=new com.google.gson.JsonArray();var armor=new com.google.gson.JsonArray();var knees=new com.google.gson.JsonArray();var ankles=new com.google.gson.JsonArray();var hips=new com.google.gson.JsonArray();
+                for(float x:new float[]{-1,1})for(float z:new float[]{-1,1}){sole.add(vector(leg.point(x*2,12,z*2).mul(16)));armor.add(vector(leg.point(x*2.25f,12.25f,z*2.25f).mul(16)));knees.add(vector(leg.point(x*2,6,z*2).mul(16)));ankles.add(vector(leg.point(x*2,10,z*2).mul(16)));hips.add(vector(leg.point(x*2,0,z*2).mul(16)));}
+                observed.add("soleCorners",sole);observed.add("armorSoleCorners",armor);observed.add("kneeCorners",knees);observed.add("ankleCorners",ankles);observed.add("hipCapCorners",hips);
+                double maximumSoleY=sole.asList().stream().mapToDouble(v->v.getAsJsonArray().get(1).getAsDouble()).max().orElse(Double.NaN);
+                observed.addProperty("maximumSoleY",maximumSoleY);observed.addProperty("support",maximumSoleY>=23.75&&maximumSoleY<=24.3?1:0);
+                double seamGap=0;
+                for(float x:new float[]{-2,2})for(float z:new float[]{-2,2}){
+                    Vector3f bodyEdge=frame.world().get("body").transformPosition(new Vector3f((side.equals("right")?-12.5f:12.5f)+x*6.25f,-31.25f,-z*6.25f));
+                    Vector3f nativeBodyEdge=new Vector3f(bodyEdge.x/6.25f,(150-bodyEdge.y)/6.25f,-bodyEdge.z/6.25f);
+                    seamGap=Math.max(seamGap,nativeBodyEdge.distance(leg.point(x,0,z).mul(16)));
+                }
+                observed.addProperty("maximumWaistSeamGapPixels",seamGap);
+                observed.add("thighWorldCm",RpgConfig.JSON.toJsonTree(thigh.get(new float[16])));observed.add("shinWorldCm",RpgConfig.JSON.toJsonTree(shin.get(new float[16])));observed.add("footWorldCm",RpgConfig.JSON.toJsonTree(foot.get(new float[16])));finalLower.add(side,observed);
+                Vector3f solePoint=leg.point(0,12,0);
+                Vector3f worldSole=worldBodyPoint(new Vector3f(solePoint.x*100,150-solePoint.y*100,-solePoint.z*100),state.bodyRot).div(100);
+                worldSole.add((float)renderPosition.x,(float)renderPosition.y,(float)renderPosition.z);observed.add("soleWorldMeters",vector(worldSole));
+            }
+            var right=finalLower.getAsJsonObject("right").getAsJsonArray("hip");var left=finalLower.getAsJsonObject("left").getAsJsonArray("hip");var pelvis=new com.google.gson.JsonArray();for(int i=0;i<3;i++)pelvis.add((right.get(i).getAsDouble()+left.get(i).getAsDouble())*.5);finalLower.add("pelvis",pelvis);
+            observation.add("finalLowerBody",finalLower);observation.addProperty("authoredSwordSkinLegs",true);
+            JsonObject receipt=new JsonObject();receipt.addProperty("active",org.fsrpg.client.SwordMotionClient.active());receipt.addProperty("sequence",org.fsrpg.client.SwordMotionClient.actionSequence());receipt.addProperty("serverTick",org.fsrpg.client.SwordMotionClient.lastAppliedTick());receipt.addProperty("expectedAdvanceMeters",org.fsrpg.client.SwordMotionClient.expectedAdvance());receipt.addProperty("actualAdvanceMeters",org.fsrpg.client.SwordMotionClient.actualAdvance());receipt.addProperty("collisionTravelFraction",org.fsrpg.client.SwordMotionClient.travelFraction());observation.add("authoritativeSwordMotionReceipt",receipt);
+            try { observation.addProperty("authoredSwordLegSubmissions",((Number)org.fsrpg.client.SkinnedArms.class.getMethod("authoredSwordLegSubmissions").invoke(null)).longValue()); }
+            catch(ReflectiveOperationException missing){throw new IllegalStateException("Production authored leg submission counter is required for actual skin verification",missing);}
+        } else if(frame != null && frame.supportedLower() != null) {
             var lower = frame.supportedLower();
             JsonObject finalLower = new JsonObject();
             finalLower.addProperty("units", "native-pixels (Y down; groundY=24; 16 pixels/m)");

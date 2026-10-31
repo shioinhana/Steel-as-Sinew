@@ -1,6 +1,14 @@
 # FSRPG 冒险与动作战斗基础模组
 
-Minecraft Java **1.21.11 / NeoForge 21.11.45 / Java 21**，当前开发版本 **0.11.0**，网络协议 **12**。服务端管理战斗判定、资源、修行、任务与奖励；客户端提供常驻 HUD、任务页、技能树、动作预览和武器输入。动画使用独立的 FSVOXEL 依赖，手持物品仍由 Minecraft 官方 ItemStack 渲染。
+Minecraft Java **1.21.11 / NeoForge 21.11.45 / Java 21**，当前开发版本 **0.12.0**，网络协议 **13**。服务端管理战斗判定、资源、修行、任务与奖励；客户端提供常驻 HUD、任务页、技能树、动作预览和武器输入。动画使用独立的 FSVOXEL 依赖，手持物品仍由 Minecraft 官方 ItemStack 渲染。
+
+0.12.0 将西洋剑改为全身协调动作：五段普攻与真实进步位移同步，大腿、小腿、脚和躯干共同发力；C 持续格挡，X 主动振刀，成功后左键专用还击。普通攻击惩罚振刀空档，蓄满右键重击有霸体、可破普通格挡，也可被振刀反制。位移由服务器逐 tick 碰撞处理，碰墙收步，格挡或闪避取消后停止原攻击推进。长枪继续沿用原有上下半身分离与枪姿控制。
+
+新参数在 combat.json 的 swordCombat 中；旧技能 ID 保留，新增 sword_parry_return。升级先备份，再按字段迁移；定制动作模型或显式关闭新模式的配置保留旧行为。
+
+0.12.0 完整构建与 **101 个回归测试任务**通过；最终同包在 DISPLAY5 通过 **16 场景 / 136 项**实机验收，1937 张原生录像帧按真实时间戳独立校验，源采样 **38.54–40.03 Hz**。站定与墙边动作均无根位移回退，支撑脚最大漂移分别为 0.635 mm、0.109 mm；第一人称和长枪格挡／刺击同时通过。见[站定五连实机录像](verification/full-body-sword-20261031/game/standing-chain-visual-review.mp4)、[实机报告](verification/full-body-sword-20261031/game/full-body-sword-review.json)及[动作独立审查](verification/full-body-sword-20261031/final-motion-audit.json)。
+
+已于 **2026-10-31** 安装官方 `1.21.11-NeoForge` 实例，实测与安装 SHA-256 均为 `52c64a9207e40dde24f26fe8354cf1873b3b071b222635475bcc326a708c5f2b`。78 个既有 FSRPG 配置文件按字段保留并迁移为 85 个文件，全身剑模式已启用；旧 JAR、完整配置备份在实例 `fsrpg-backups/20261031-224420-154-before-0.12.0-6b367cbd/`，其他 Mod、options 和用户存档保留。详见[部署记录](verification/full-body-sword-20261031/deployment.json)。
 
 0.11.0 增加外置玩家外观目录 `config/fsrpg/avatars/`：按 player / default / UUID 命名即可载入 BB 方块人物、Java 经典或纤细皮肤，以及未加密基岩皮肤几何。支持 `/fsrpg-avatar reload`，第三／第一人称与现有动作共用外观，错误重载保留旧模型；官方 Java 内外层、旧皮肤镜像和 Mojang 基岩人物几何均有专项验证。文件布局、骨名和明确限制见[外观接口说明](config/fsrpg/avatars/README.md)与[0.11.0 版本说明](docs/release-0.11.0.md)。
 

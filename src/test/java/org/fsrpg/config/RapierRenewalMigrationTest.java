@@ -57,7 +57,7 @@ public final class RapierRenewalMigrationTest {
         check(!Files.exists(missing.resolve(MODELS.get(1))),"migration does not manufacture a missing custom model");equal(before.get("skills.json"),hash(missing.resolve("skills.json")),"missing paired model does not create dangling branch actions");
     }
     private static void fresh()throws Exception {
-        Path dir=create();var d=new RpgConfig(dir).reload();equal("legacy_rapier.fsvoxel",d.skills().get("rapier_reprise").model(),"fresh installs use new branch assets");
+        Path dir=create();var d=new RpgConfig(dir).reload();equal("rapier_fullbody.fsvoxel",d.skills().get("rapier_reprise").model(),"fresh installs complete the later full-body upgrade");
         var before=hashes(dir);new RpgConfig(dir).reload();equal(before,hashes(dir),"fresh seed plus all historical migrations stays idempotent");
     }
     private static Path fixture()throws Exception {

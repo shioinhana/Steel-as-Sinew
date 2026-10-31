@@ -18,7 +18,7 @@ public final class StaminaCombatMigrationTest {
         try {
             var config = new RpgConfig(dir); var data = config.reload();
             equal(StaminaCombatRules.defaults(), data.combat().staminaCombatRules(), "fresh combat defaults");
-            equal(CombatRules.defaults(), data.combat(), "bundled combat and fallback remain identical");
+            equal(CombatRules.defaults(), CombatConfigExpectations.legacyMode(data.combat()), "bundled historical combat fields and fallback remain identical");
             check(Files.exists(dir.resolve(StaminaCombatMigration.MARKER)), "fresh seeding records migration");
             check(!Files.exists(dir.resolve(StaminaCombatMigration.BACKUP)), "fresh seed has no fictitious original");
             JsonObject old = read(dir, "combat.json").getAsJsonObject(); old.remove("staminaCombatRules");

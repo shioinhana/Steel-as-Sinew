@@ -17,7 +17,7 @@
     "blockable": true,
     "parryable": true,
     "clashable": true,
-    "model": "legacy_rapier.fsvoxel",
+    "model": "rapier_fullbody.fsvoxel",
     "action": "legacy_rapier_attack1_upper"
   },
   {
@@ -38,7 +38,7 @@
     "blockable": true,
     "parryable": true,
     "clashable": true,
-    "model": "legacy_rapier.fsvoxel",
+    "model": "rapier_fullbody.fsvoxel",
     "action": "legacy_rapier_attack2_upper"
   },
   {
@@ -59,7 +59,7 @@
     "blockable": true,
     "parryable": true,
     "clashable": true,
-    "model": "legacy_rapier.fsvoxel",
+    "model": "rapier_fullbody.fsvoxel",
     "action": "legacy_rapier_attack3_upper"
   },
   {
@@ -80,7 +80,7 @@
     "blockable": true,
     "parryable": true,
     "clashable": true,
-    "model": "legacy_rapier.fsvoxel",
+    "model": "rapier_fullbody.fsvoxel",
     "action": "legacy_rapier_attack4_upper"
   },
   {
@@ -101,7 +101,7 @@
     "blockable": true,
     "parryable": true,
     "clashable": true,
-    "model": "legacy_rapier.fsvoxel",
+    "model": "rapier_fullbody.fsvoxel",
     "action": "legacy_rapier_attack5_upper"
   },
   {
@@ -164,7 +164,7 @@
     "blockable": true,
     "parryable": true,
     "clashable": false,
-    "model": "legacy_rapier.fsvoxel",
+    "model": "rapier_fullbody.fsvoxel",
     "action": "legacy_rapier_rapier_thrust_hit_upper"
   },
   {
@@ -185,7 +185,7 @@
     "blockable": true,
     "parryable": true,
     "clashable": false,
-    "model": "legacy_rapier.fsvoxel",
+    "model": "rapier_fullbody.fsvoxel",
     "action": "rapier_riposte"
   },
   {
@@ -206,7 +206,7 @@
     "blockable": true,
     "parryable": true,
     "clashable": false,
-    "model": "legacy_rapier.fsvoxel",
+    "model": "rapier_fullbody.fsvoxel",
     "action": "rapier_reprise"
   },
   {
@@ -460,5 +460,26 @@
     "clashable": false,
     "model": "legacy_bow.fsvoxel",
     "action": "bow_snipe_release"
+  },
+  {
+    "id": "sword_parry_return",
+    "label": "剑术 · 振刀还击",
+    "weapon": "sword",
+    "input": "LEFT",
+    "windupTicks": 3,
+    "activeTicks": 3,
+    "recoveryTicks": 5,
+    "cooldownTicks": 0,
+    "staminaCost": 5,
+    "spiritCost": 0,
+    "damage": 12,
+    "reach": 4,
+    "arcDegrees": 70,
+    "knockback": 0.45,
+    "blockable": true,
+    "parryable": false,
+    "clashable": false,
+    "model": "rapier_fullbody.fsvoxel",
+    "action": "rapier_parry_return"
   }
 ]

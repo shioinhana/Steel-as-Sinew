@@ -38,6 +38,7 @@ public final class ClientHooks {
     private static final KeyMapping LEFT = new KeyMapping("key.fsrpg.left", KeyConflictContext.IN_GAME, InputConstants.Type.MOUSE, GLFW.GLFW_MOUSE_BUTTON_LEFT, CATEGORY);
     private static final KeyMapping RIGHT = new KeyMapping("key.fsrpg.right", KeyConflictContext.IN_GAME, InputConstants.Type.MOUSE, GLFW.GLFW_MOUSE_BUTTON_RIGHT, CATEGORY);
     private static final KeyMapping GUARD = key("guard", GLFW.GLFW_KEY_C);
+    private static final KeyMapping PARRY = key("parry", GLFW.GLFW_KEY_X);
     private static final KeyMapping STYLE = key("style", GLFW.GLFW_KEY_V);
     private static final KeyMapping DODGE = key("dodge", GLFW.GLFW_KEY_LEFT_ALT);
     private static final KeyMapping EDITOR = key("editor", GLFW.GLFW_KEY_K);
@@ -65,6 +66,8 @@ public final class ClientHooks {
     private static KeyMapping key(String name, int code) {
         return new KeyMapping("key.fsrpg." + name, KeyConflictContext.IN_GAME, InputConstants.Type.KEYSYM, code, CATEGORY);
     }
+    static String parryKeyLabel(){return PARRY.getTranslatedKeyMessage().getString();}
+    static String guardKeyLabel(){return GUARD.getTranslatedKeyMessage().getString();}
     /** Query native state because GUI releaseAll() and synthetic KeyMapping.setDown() are not physical edges. */
     private static boolean physicalGuardDown(Minecraft game) {
         var binding=GUARD.getKey();
@@ -125,10 +128,11 @@ public final class ClientHooks {
     }
     private static void keys(RegisterKeyMappingsEvent event) {
         event.registerCategory(CATEGORY);
-        for (KeyMapping key : new KeyMapping[]{DRAW, LEFT, RIGHT, GUARD, DODGE, EDITOR, JOURNAL, SKILL, STYLE, TREE, ART, FOOTWORK, FOOTWORK_SPECIAL}) event.register(key);
+        for (KeyMapping key : new KeyMapping[]{DRAW, LEFT, RIGHT, GUARD, PARRY, DODGE, EDITOR, JOURNAL, SKILL, STYLE, TREE, ART, FOOTWORK, FOOTWORK_SPECIAL}) event.register(key);
         CameraAdjustment.registerKeys(event, CATEGORY);
     }
     private static void payloads(RegisterClientPayloadHandlersEvent event) {
+        event.register(org.fsrpg.network.RpgSwordMotionPayload.TYPE,(payload,context)->SwordMotionClient.accept(payload));
         event.register(org.fsrpg.network.RpgGuardImpactPayload.TYPE,(payload,context)->GuardImpactPresentation.accept(payload));
         event.register(RpgBurstDashPayload.TYPE,(payload,context)->BurstDashMotion.accept(payload));
         event.register(RpgGuardCuePayload.TYPE, (payload, context) -> {
@@ -193,7 +197,7 @@ public final class ClientHooks {
         if(action.startsWith("spear")&&game.player!=null&&game.getConnection()!=null)
             game.getConnection().send(new net.minecraft.network.protocol.game.ServerboundMovePlayerPacket.Rot(
                     game.player.getYRot(),game.player.getXRot(),game.player.onGround(),game.player.horizontalCollision));
-        if (action.equals("attack") || action.equals("aimAttack") || action.equals("targetAttack") || action.startsWith("spear") || action.equals("burstDash") || action.equals("dodge") || action.equals("draw") || action.equals("guard") || action.equals("guardMode"))
+        if (action.equals("attack") || action.equals("parry") || action.equals("aimAttack") || action.equals("targetAttack") || action.startsWith("spear") || action.equals("burstDash") || action.equals("dodge") || action.equals("draw") || action.equals("guard") || action.equals("guardMode"))
             PlayerAnimations.interruptInspection();
         if (Minecraft.getInstance().getConnection() != null)
             ClientPacketDistributor.sendToServer(new RpgActionPayload(action, argument));
@@ -213,7 +217,7 @@ public final class ClientHooks {
         CameraAdjustment.tick();
         if (game.player == null || game.getConnection() == null) return;
         if(burstInputLevel!=game.level||burstInputPlayer!=game.player){
-            shiftBurstIntent.reset();BurstDashMotion.reset();shiftSprintRequested=false;
+            shiftBurstIntent.reset();BurstDashMotion.reset();SwordMotionClient.reset();shiftSprintRequested=false;
             burstInputLevel=game.level;burstInputPlayer=game.player;
         }
         updateCamera();
@@ -255,6 +259,7 @@ public final class ClientHooks {
             else CombatCamera.attack("right");
         }
         while (DODGE.consumeClick()) send("dodge", "");
+        while (PARRY.consumeClick()) if(ClientState.drawn()&&rapier)send("parry", "");
         while (SKILL.consumeClick()) {if(ClientState.drawn()&&!CombatCamera.style().equals("spear"))CombatCamera.targetAttack("skill");else send("attack", "skill");}
         while (STYLE.consumeClick()) openStyleSelector();
         while (EDITOR.consumeClick()) if(!CameraAdjustment.consumes(EDITOR))openEditor();
@@ -291,6 +296,7 @@ public final class ClientHooks {
             case "WINDUP" -> "前摇"; case "ACTIVE" -> "判定"; case "RECOVERY" -> "后摇";
             case "GUARD", "GUARDING" -> ClientState.text(state, "guardMode", "LIGHT").equals("HEAVY") ? "重格挡" : "轻格挡";
             case "DODGE", "DODGING" -> "闪避";
+            case "PARRYING" -> "振刀";
             case "DRAWING" -> "拔刀"; case "SHEATHING" -> "收刀";
             case "STUNNED" -> "硬直"; case "SHEATHED" -> "收刀";
             default -> ClientState.drawn() ? "就绪" : "探索";
@@ -299,6 +305,8 @@ public final class ClientHooks {
         for (var definition : ClientState.objects(state, "styles")) if (ClientState.text(definition, "id", "").equals(style)) style = ClientState.text(definition, "label", style);
         boolean equipped = ClientState.bool(state, "weaponEquipped", ClientState.drawn());
         String line = equipped ? style + " · " + phaseName : "探索";
+        if(equipped&&ClientState.drawn()&&ClientState.bool(state,"swordCombatEnabled",false))
+            line += " · "+guardKeyLabel()+" 格挡 / "+parryKeyLabel()+" 振刀";
         if (equipped && ClientState.number(state, "drawStateCount", 0) > 1) line += " · V 选择姿态";
         if (!ClientOptions.RPG_HUD.get()) line += "  体力 " + Math.round(ClientState.number(state, "stamina", 0))
                 + "  灵力 " + Math.round(ClientState.number(state, "spirit", 0));
@@ -306,13 +314,19 @@ public final class ClientHooks {
         gui.drawString(game.font, line, 10, 10, 0xffe4edff);
         long counterElapsed = game.level == null ? 0 : Math.max(0, game.level.getGameTime() - snapshotClientTick);
         double counterRemaining = ClientState.number(state, "counterRemainingTicks", 0) - counterElapsed;
-        if (equipped && ClientState.drawn() && counterRemaining > 0) {
+        double swordReturn=ClientState.number(state,"swordReturnRemainingTicks",0)-counterElapsed;
+        if(equipped&&ClientState.drawn()&&swordReturn>0){
+            String info="左键 · 振刀还击  "+String.format(java.util.Locale.ROOT,"%.1fs",swordReturn/20);
+            gui.fill(6,44,Math.min(gui.guiWidth()-6,15+game.font.width(info)),60,0xc0173439);
+            gui.drawString(game.font,info,10,48,0xff8ad9ff);
+        }
+        if (equipped && ClientState.drawn() && counterRemaining > 0 && swordReturn<=0) {
             String info = "左键 · 完美格挡反击 ×1.5  " + String.format(java.util.Locale.ROOT, "%.1fs", counterRemaining / 20);
             gui.fill(6, 44, Math.min(gui.guiWidth() - 6, 15 + game.font.width(info)), 60, 0xc0173439);
             gui.drawString(game.font, info, 10, 48, 0xff9ff1d3);
         }
         var openingValue = state.get("technique");
-        if (equipped && ClientState.drawn() && counterRemaining <= 0 && openingValue != null && openingValue.isJsonObject()) {
+        if (equipped && ClientState.drawn() && counterRemaining <= 0 && swordReturn<=0 && openingValue != null && openingValue.isJsonObject()) {
             var opening = openingValue.getAsJsonObject();
             long elapsed = game.level == null ? 0 : Math.max(0, game.level.getGameTime() - snapshotClientTick);
             double remaining = ClientState.number(opening, "remainingTicks", 0) - elapsed;
@@ -387,6 +401,7 @@ public final class ClientHooks {
         ShoulderOcclusionPresentation.clear();
         ImportedItemPresentation.reset();
         BurstDashMotion.reset();
+        SwordMotionClient.reset();
         GuardCuePresentation.clear();
         GuardImpactPresentation.reset();
         CreatureCombatAnimation.clear();

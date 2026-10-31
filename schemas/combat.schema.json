@@ -5,102 +5,444 @@
   "description": "config/fsrpg/combat.json。时间均为每秒 20 tick。闪避无敌开始时间 + 无敌持续时间不得超过闪避总时长，此跨字段关系由服务端重载校验。",
   "type": "object",
   "additionalProperties": false,
-  "required": ["maxStamina", "maxSpirit", "staminaRegenPerSecond", "spiritRegenPerSecond", "resourceRegenDelayTicks", "drawTicks", "sheathTicks", "guardArcDegrees", "guardDamageMultiplier", "guardStaminaCost", "perfectGuardTicks", "perfectGuardStaminaCost", "parryStunTicks", "guardBreakStunTicks", "hitStunTicks", "clashFacingArcDegrees", "dodgeDurationTicks", "dodgeInvulnerabilityStartTicks", "dodgeInvulnerabilityTicks", "dodgeCooldownTicks", "dodgeStaminaCost", "dodgeDistance", "dodgeCancelsRecovery", "allowAirDodge"],
+  "required": [
+    "maxStamina",
+    "maxSpirit",
+    "staminaRegenPerSecond",
+    "spiritRegenPerSecond",
+    "resourceRegenDelayTicks",
+    "drawTicks",
+    "sheathTicks",
+    "guardArcDegrees",
+    "guardDamageMultiplier",
+    "guardStaminaCost",
+    "perfectGuardTicks",
+    "perfectGuardStaminaCost",
+    "parryStunTicks",
+    "guardBreakStunTicks",
+    "hitStunTicks",
+    "clashFacingArcDegrees",
+    "dodgeDurationTicks",
+    "dodgeInvulnerabilityStartTicks",
+    "dodgeInvulnerabilityTicks",
+    "dodgeCooldownTicks",
+    "dodgeStaminaCost",
+    "dodgeDistance",
+    "dodgeCancelsRecovery",
+    "allowAirDodge"
+  ],
   "properties": {
-    "maxStamina": { "type": "number", "minimum": 1, "maximum": 1000000, "default": 50, "description": "0级基础体力上限，默认50。正等级x的实际上限为基础值+x^0.8+3ln(x)，保留小数；系数由staminaLevelScaling配置。" },
-    "maxSpirit": { "type": "number", "minimum": 1, "maximum": 1000000 },
-    "staminaRegenPerSecond": { "$ref": "#/$defs/resource", "default": 5, "description": "0级静止体力回复点数/秒，默认5。正等级x的静止回复为floor(基础值+sqrt(x)+ln(x))，仅回复向下取整；战斗时按staminaCombatRules.regenMultiplier缩放，不再暂停回复。" },
-    "spiritRegenPerSecond": { "$ref": "#/$defs/resource" },
-    "resourceRegenDelayTicks": { "$ref": "#/$defs/ticks", "description": "仅灵力在消耗后的回复延迟；体力使用staminaCombatRules。" },
+    "maxStamina": {
+      "type": "number",
+      "minimum": 1,
+      "maximum": 1000000,
+      "default": 50,
+      "description": "0级基础体力上限，默认50。正等级x的实际上限为基础值+x^0.8+3ln(x)，保留小数；系数由staminaLevelScaling配置。"
+    },
+    "maxSpirit": {
+      "type": "number",
+      "minimum": 1,
+      "maximum": 1000000
+    },
+    "staminaRegenPerSecond": {
+      "$ref": "#/$defs/resource",
+      "default": 5,
+      "description": "0级静止体力回复点数/秒，默认5。正等级x的静止回复为floor(基础值+sqrt(x)+ln(x))，仅回复向下取整；战斗时按staminaCombatRules.regenMultiplier缩放，不再暂停回复。"
+    },
+    "spiritRegenPerSecond": {
+      "$ref": "#/$defs/resource"
+    },
+    "resourceRegenDelayTicks": {
+      "$ref": "#/$defs/ticks",
+      "description": "仅灵力在消耗后的回复延迟；体力使用staminaCombatRules。"
+    },
     "staminaCombatRules": {
-      "type": "object", "additionalProperties": false,
+      "type": "object",
+      "additionalProperties": false,
       "description": "体力两级回复。命中、格挡、被格挡、受击、弹反、拼刀和闪避开始近期战斗状态；已发出且未接触的攻击仅保留成本乘missCostMultiplier，其它返还，不触发或延长战斗状态。接受时预扣全额，按接受时的成本结算一次；前摇中断未发出保留原全额成本。",
-      "required": ["combatTicks", "regenMultiplier", "missCostMultiplier"],
+      "required": [
+        "combatTicks",
+        "regenMultiplier",
+        "missCostMultiplier"
+      ],
       "properties": {
-        "combatTicks": { "$ref": "#/$defs/ticks", "default": 60, "description": "最后一次实际战斗行为后的持续时间，默认60tick=3秒。" },
-        "regenMultiplier": { "type": "number", "minimum": 0, "maximum": 1, "default": 0.5 },
-        "missCostMultiplier": { "type": "number", "minimum": 0, "maximum": 1, "default": 0.5 }
+        "combatTicks": {
+          "$ref": "#/$defs/ticks",
+          "default": 60,
+          "description": "最后一次实际战斗行为后的持续时间，默认60tick=3秒。"
+        },
+        "regenMultiplier": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1,
+          "default": 0.5
+        },
+        "missCostMultiplier": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1,
+          "default": 0.5
+        }
       }
     },
-    "drawTicks": { "$ref": "#/$defs/ticks" },
-    "sheathTicks": { "$ref": "#/$defs/ticks" },
-    "guardArcDegrees": { "$ref": "#/$defs/angle" },
-    "guardDamageMultiplier": { "type": "number", "minimum": 0, "maximum": 1 },
-    "guardStaminaCost": { "$ref": "#/$defs/resource", "description": "服务端每次成功格挡的实际体力扣除。0.5.3 升级按原配置乘 0.2，仅迁移一次。" },
-    "perfectGuardTicks": { "$ref": "#/$defs/ticks", "description": "普通来袭的启用完美格挡窗口，0.8.4默认7tick=0.35秒；提示攻击还须在guard_cues.json指定的[open,close]内新按C（默认怪物前摇3/5到接触），提示前按住不产生完美格挡。初次须新按C；成功后按住自动重开窗口，同一次按住最多3次完美格挡，轻重模式切换不刷新起点。时点为项目可调标定，不宣称未公开的原作帧数。0仍表示关闭。" },
-    "perfectGuardStaminaCost": { "$ref": "#/$defs/resource", "description": "服务端每次成功完美格挡的实际体力扣除。" },
-    "parryStunTicks": { "$ref": "#/$defs/ticks", "description": "被完美格挡的攻击者僵直时间，默认4tick=0.2秒；NPC同时停止实际AI与攻击。" },
-    "guardBreakStunTicks": { "$ref": "#/$defs/ticks" },
-    "hitStunTicks": { "$ref": "#/$defs/ticks" },
-    "clashFacingArcDegrees": { "$ref": "#/$defs/angle" },
+    "drawTicks": {
+      "$ref": "#/$defs/ticks"
+    },
+    "sheathTicks": {
+      "$ref": "#/$defs/ticks"
+    },
+    "guardArcDegrees": {
+      "$ref": "#/$defs/angle"
+    },
+    "guardDamageMultiplier": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1
+    },
+    "guardStaminaCost": {
+      "$ref": "#/$defs/resource",
+      "description": "服务端每次成功格挡的实际体力扣除。0.5.3 升级按原配置乘 0.2，仅迁移一次。"
+    },
+    "perfectGuardTicks": {
+      "$ref": "#/$defs/ticks",
+      "description": "普通来袭的启用完美格挡窗口，0.8.4默认7tick=0.35秒；提示攻击还须在guard_cues.json指定的[open,close]内新按C（默认怪物前摇3/5到接触），提示前按住不产生完美格挡。初次须新按C；成功后按住自动重开窗口，同一次按住最多3次完美格挡，轻重模式切换不刷新起点。时点为项目可调标定，不宣称未公开的原作帧数。0仍表示关闭。"
+    },
+    "perfectGuardStaminaCost": {
+      "$ref": "#/$defs/resource",
+      "description": "服务端每次成功完美格挡的实际体力扣除。"
+    },
+    "parryStunTicks": {
+      "$ref": "#/$defs/ticks",
+      "description": "被完美格挡的攻击者僵直时间，默认4tick=0.2秒；NPC同时停止实际AI与攻击。"
+    },
+    "guardBreakStunTicks": {
+      "$ref": "#/$defs/ticks"
+    },
+    "hitStunTicks": {
+      "$ref": "#/$defs/ticks"
+    },
+    "clashFacingArcDegrees": {
+      "$ref": "#/$defs/angle"
+    },
     "weaponClash": {
-      "type": "object", "additionalProperties": false,
+      "type": "object",
+      "additionalProperties": false,
       "description": "服务端近战相杀的接触时间窗口与伤害容差。旧配置可省略整个对象，兼容默认3tick / 3点；提供对象时两字段必须齐全。",
-      "required": ["contactWindowTicks", "damageTolerance"],
+      "required": [
+        "contactWindowTicks",
+        "damageTolerance"
+      ],
       "properties": {
-        "contactWindowTicks": { "type": "integer", "minimum": 0, "maximum": 10, "default": 3, "description": "两次近战接触允许相差的tick数，每秒20tick；默认3tick=0.15秒，0仅允许同tick接触。" },
-        "damageTolerance": { "type": "number", "minimum": 0, "maximum": 1000000, "default": 3.0, "description": "双方近战攻击用于相杀比较的伤害容差，单位为生命值点，默认3点；必须为有限非负数。" }
+        "contactWindowTicks": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 10,
+          "default": 3,
+          "description": "两次近战接触允许相差的tick数，每秒20tick；默认3tick=0.15秒，0仅允许同tick接触。"
+        },
+        "damageTolerance": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1000000,
+          "default": 3.0,
+          "description": "双方近战攻击用于相杀比较的伤害容差，单位为生命值点，默认3点；必须为有限非负数。"
+        }
       }
     },
-    "dodgeDurationTicks": { "type": "integer", "minimum": 1, "maximum": 72000 },
-    "dodgeInvulnerabilityStartTicks": { "$ref": "#/$defs/ticks" },
-    "dodgeInvulnerabilityTicks": { "$ref": "#/$defs/ticks" },
-    "dodgeCooldownTicks": { "$ref": "#/$defs/ticks" },
-    "dodgeStaminaCost": { "$ref": "#/$defs/resource", "description": "服务端接受闪避时的实际体力扣除，默认 6。" },
-    "dodgeDistance": { "type": "number", "minimum": 0, "maximum": 32 },
-    "dodgeCancelsRecovery": { "type": "boolean" },
-    "allowAirDodge": { "type": "boolean" },
-    "spearSwipeKnockbackMultiplier": { "type": "number", "minimum": 0, "maximum": 1, "default": 0.5, "description": "长枪持续刺出时划动接触的击退系数，乘以当前skill.knockback；服务端按真实划动方向处理切向推移或空中下划击坠。缺字段兼容0.5，0关闭划动击退，所有原攻击数值保留。" },
+    "dodgeDurationTicks": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 72000
+    },
+    "dodgeInvulnerabilityStartTicks": {
+      "$ref": "#/$defs/ticks"
+    },
+    "dodgeInvulnerabilityTicks": {
+      "$ref": "#/$defs/ticks"
+    },
+    "dodgeCooldownTicks": {
+      "$ref": "#/$defs/ticks"
+    },
+    "dodgeStaminaCost": {
+      "$ref": "#/$defs/resource",
+      "description": "服务端接受闪避时的实际体力扣除，默认 6。"
+    },
+    "dodgeDistance": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 32
+    },
+    "dodgeCancelsRecovery": {
+      "type": "boolean"
+    },
+    "allowAirDodge": {
+      "type": "boolean"
+    },
+    "spearSwipeKnockbackMultiplier": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1,
+      "default": 0.5,
+      "description": "长枪持续刺出时划动接触的击退系数，乘以当前skill.knockback；服务端按真实划动方向处理切向推移或空中下划击坠。缺字段兼容0.5，0关闭划动击退，所有原攻击数值保留。"
+    },
     "burstDash": {
-      "type": "object", "additionalProperties": false,
+      "type": "object",
+      "additionalProperties": false,
       "description": "地面新按Shift以initialSpeed沿输入方向设一次XZ速度，保留Y，之后原版摩擦、重力、输入与碰撞自然处理。离地不能新触发，失败不扣费且按住落地不补发。长按仅请求原版sprint，方向由真实WASD决定；Shift+C优先重格挡。原Alt闪避独立保留。",
-      "required": ["distance", "durationTicks", "staminaCost", "cooldownTicks", "runSpeed", "inputLeaseTicks", "initialSpeed"],
+      "required": [
+        "distance",
+        "durationTicks",
+        "staminaCost",
+        "cooldownTicks",
+        "runSpeed",
+        "inputLeaseTicks",
+        "initialSpeed"
+      ],
       "properties": {
-        "distance": {"type": "number", "minimum": 0.25, "maximum": 32, "default": 3.0, "description": "0.7.8兼容字段，保留原值供配置升级；0.7.9不再驱动位移或奔跑速度。"},
-        "durationTicks": {"type": "integer", "minimum": 1, "maximum": 100, "default": 10, "description": "0.7.8兼容字段，保留原值供配置升级；0.7.9不再驱动位移或奔跑速度。"},
-        "staminaCost": {"$ref": "#/$defs/resource", "default": 5.0},
-        "cooldownTicks": {"$ref": "#/$defs/ticks", "default": 10},
-        "runSpeed": {"type": "number", "minimum": 0, "maximum": 12, "default": 5.6, "description": "0.7.8兼容字段，保留原值供配置升级；0.7.9不再驱动位移或奔跑速度。"},
-        "inputLeaseTicks": {"type": "integer", "minimum": 2, "maximum": 100, "default": 12},
-        "initialSpeed": {"type": "number", "minimum": 0.1, "maximum": 80, "default": 27.0, "description": "初始水平速度，格/秒；接受时除以20只设置一次速度。普通地面无输入下默认约3格，距离受地面摩擦、输入与碰撞影响，不保证3格/0.5秒。旧配置缺省按clamp(distance*9,0.1,80)补齐。"}
+        "distance": {
+          "type": "number",
+          "minimum": 0.25,
+          "maximum": 32,
+          "default": 3.0,
+          "description": "0.7.8兼容字段，保留原值供配置升级；0.7.9不再驱动位移或奔跑速度。"
+        },
+        "durationTicks": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100,
+          "default": 10,
+          "description": "0.7.8兼容字段，保留原值供配置升级；0.7.9不再驱动位移或奔跑速度。"
+        },
+        "staminaCost": {
+          "$ref": "#/$defs/resource",
+          "default": 5.0
+        },
+        "cooldownTicks": {
+          "$ref": "#/$defs/ticks",
+          "default": 10
+        },
+        "runSpeed": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 12,
+          "default": 5.6,
+          "description": "0.7.8兼容字段，保留原值供配置升级；0.7.9不再驱动位移或奔跑速度。"
+        },
+        "inputLeaseTicks": {
+          "type": "integer",
+          "minimum": 2,
+          "maximum": 100,
+          "default": 12
+        },
+        "initialSpeed": {
+          "type": "number",
+          "minimum": 0.1,
+          "maximum": 80,
+          "default": 27.0,
+          "description": "初始水平速度，格/秒；接受时除以20只设置一次速度。普通地面无输入下默认约3格，距离受地面摩擦、输入与碰撞影响，不保证3格/0.5秒。旧配置缺省按clamp(distance*9,0.1,80)补齐。"
+        }
       }
     },
     "staminaLevelScaling": {
-      "type": "object", "additionalProperties": false,
+      "type": "object",
+      "additionalProperties": false,
       "description": "x取服务端同步的原版经验等级experienceLevel（HUD Lv），必须非负；0级直接使用基础值，避免ln(0)。只对正等级回复的完整表达式向下取整，上限保留小数。升级不补体力，降级只截到新上限。缺省兼容默认系数。",
-      "required": ["regenSqrtCoefficient", "regenLogCoefficient", "maxPowerCoefficient", "maxPowerExponent", "maxLogCoefficient"],
+      "required": [
+        "regenSqrtCoefficient",
+        "regenLogCoefficient",
+        "maxPowerCoefficient",
+        "maxPowerExponent",
+        "maxLogCoefficient"
+      ],
       "properties": {
-        "regenSqrtCoefficient": { "$ref": "#/$defs/resource", "default": 1 },
-        "regenLogCoefficient": { "$ref": "#/$defs/resource", "default": 1 },
-        "maxPowerCoefficient": { "$ref": "#/$defs/resource", "default": 1 },
-        "maxPowerExponent": { "type": "number", "minimum": 0, "maximum": 4, "default": 0.8 },
-        "maxLogCoefficient": { "$ref": "#/$defs/resource", "default": 3 }
+        "regenSqrtCoefficient": {
+          "$ref": "#/$defs/resource",
+          "default": 1
+        },
+        "regenLogCoefficient": {
+          "$ref": "#/$defs/resource",
+          "default": 1
+        },
+        "maxPowerCoefficient": {
+          "$ref": "#/$defs/resource",
+          "default": 1
+        },
+        "maxPowerExponent": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 4,
+          "default": 0.8
+        },
+        "maxLogCoefficient": {
+          "$ref": "#/$defs/resource",
+          "default": 3
+        }
       }
     },
     "perfectGuardCounter": {
-      "type": "object", "additionalProperties": false,
+      "type": "object",
+      "additionalProperties": false,
       "description": "与旧右键riposte独立。成功完美格挡后4tick内实际左键可使一招伤害乘1.5；只有成功启动攻击才消费，失败输入保留机会。到期、死亡、换武器与强制中断清理。下一招不继承倍率。缺省兼容4tick/1.5倍。",
-      "required": ["windowTicks", "damageMultiplier"],
+      "required": [
+        "windowTicks",
+        "damageMultiplier"
+      ],
       "properties": {
-        "windowTicks": { "$ref": "#/$defs/ticks", "default": 4 },
-        "damageMultiplier": { "type": "number", "minimum": 1, "maximum": 100, "default": 1.5 }
+        "windowTicks": {
+          "$ref": "#/$defs/ticks",
+          "default": 4
+        },
+        "damageMultiplier": {
+          "type": "number",
+          "minimum": 1,
+          "maximum": 100,
+          "default": 1.5
+        }
       }
     },
     "rapierTargetLock": {
-      "type": "object", "additionalProperties": false,
+      "type": "object",
+      "additionalProperties": false,
       "description": "非spear拔刀状态先由准星明确选中目标，攻击被服务端接受后锁定，只维护已选目标，不自动搜索或抢选。R先解锁，再次R才收刀。距离为双方位置的三维格数，边界包含；保留range、allowPassive和视线参数，不自动锁玩家、盟友或宠物。旧JSON键保持rapierTargetLock以保留已有配置。",
-      "required": ["enabled", "range", "allowPassive", "requireLineOfSight"],
+      "required": [
+        "enabled",
+        "range",
+        "allowPassive",
+        "requireLineOfSight"
+      ],
       "properties": {
-        "enabled": { "type": "boolean", "default": true },
-        "range": { "type": "number", "minimum": 0.5, "maximum": 64, "default": 10 },
-        "allowPassive": { "type": "boolean", "default": true },
-        "requireLineOfSight": { "type": "boolean", "default": true }
+        "enabled": {
+          "type": "boolean",
+          "default": true
+        },
+        "range": {
+          "type": "number",
+          "minimum": 0.5,
+          "maximum": 64,
+          "default": 10
+        },
+        "allowPassive": {
+          "type": "boolean",
+          "default": true
+        },
+        "requireLineOfSight": {
+          "type": "boolean",
+          "default": true
+        }
       }
+    },
+    "swordCombat": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "enabled",
+        "parryWindupTicks",
+        "parryActiveTicks",
+        "parryRecoveryTicks",
+        "parryCooldownTicks",
+        "parryStaminaCost",
+        "parryStunTicks",
+        "returnWindowTicks",
+        "chargedDamageMultiplier",
+        "chargeSuperArmor",
+        "steeringFraction",
+        "moveSpeedMultiplier",
+        "heavyMobTypes",
+        "motionDistances"
+      ],
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "parryWindupTicks": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 72000
+        },
+        "parryActiveTicks": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 72000
+        },
+        "parryRecoveryTicks": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 72000
+        },
+        "parryCooldownTicks": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 72000
+        },
+        "parryStaminaCost": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1000000
+        },
+        "parryStunTicks": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 72000
+        },
+        "returnWindowTicks": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 72000
+        },
+        "chargedDamageMultiplier": {
+          "type": "number",
+          "minimum": 1,
+          "maximum": 10
+        },
+        "chargeSuperArmor": {
+          "type": "boolean"
+        },
+        "steeringFraction": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 0.35
+        },
+        "moveSpeedMultiplier": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "heavyMobTypes": {
+          "type": "array",
+          "maxItems": 128,
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z0-9_.-]+:[a-z0-9_./-]+$"
+          }
+        },
+        "motionDistances": {
+          "type": "object",
+          "maxProperties": 128,
+          "additionalProperties": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 3
+          }
+        }
+      },
+      "description": "0.12剑术专用。旧构造和缺省JSON保留旧模式；升级仅补缺字段，定制模型自动保留旧模式。"
     }
   },
   "$defs": {
-    "ticks": { "type": "integer", "minimum": 0, "maximum": 72000 },
-    "resource": { "type": "number", "minimum": 0, "maximum": 1000000 },
-    "angle": { "type": "number", "minimum": 0, "maximum": 360 }
+    "ticks": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 72000
+    },
+    "resource": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1000000
+    },
+    "angle": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 360
+    }
   }
 }

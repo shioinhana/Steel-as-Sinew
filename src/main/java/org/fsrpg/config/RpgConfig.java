@@ -32,12 +32,14 @@ public final class RpgConfig {
     public Definitions reload() throws IOException {
         seed();
         Definitions candidate = parse(read("combat.json"), read("skills.json"), read("quests.json"), read("weapons.json"), read("styles.json"), read("collections.json"),read("skill_trees.json"),read("archery.json"));
+        validateSwordReferences(candidate);
         validator.accept(candidate);
         current = candidate;
         return candidate;
     }
     public void seed() throws IOException {
         Files.createDirectories(directory);
+        boolean explicitSwordRules=Files.exists(directory.resolve("combat.json")) && read("combat.json").getAsJsonObject().has("swordCombat");
         DefenseFlowMigration defenseFlowMigration=DefenseFlowMigration.capture(directory);
         GroundImpulseMigration groundImpulseMigration=GroundImpulseMigration.capture(directory);
         BurstDashMigration burstDashMigration=BurstDashMigration.capture(directory);
@@ -77,6 +79,15 @@ public final class RpgConfig {
         RapierTechniquesMigration.migrate(directory);
         FootworkSkillMigration.migrate(directory);
         RapierRenewalMigration.migrate(directory);
+        SwordCombatMigration.migrate(directory,explicitSwordRules);
+    }
+    static void validateSwordReferences(Definitions definitions) {
+        var rules=definitions.combat();var skills=definitions.skills();
+        if(rules.swordCombat().enabled()) {
+            SkillDefinition returnSkill=skills.get("sword_parry_return");
+            if(returnSkill==null||!returnSkill.weapon().equals("sword")||returnSkill.input()!=SkillInput.LEFT)throw new IllegalArgumentException("sword mode needs sword_parry_return LEFT sword skill");
+            for(String id:rules.swordCombat().motionDistances().keySet())if(!skills.containsKey(id)||!skills.get(id).weapon().equals("sword"))throw new IllegalArgumentException("sword movement references unknown/non-sword skill "+id);
+        }
     }
     private JsonElement read(String name) throws IOException {
         Path path = directory.resolve(name);
@@ -225,7 +236,7 @@ public final class RpgConfig {
             boolean optionalStyleExtension = record == WeaponStyleDefinition.class
                     && Set.of("heavyGuard", "techniques", "cancels", "controls").contains(component.getName());
             boolean optionalLegacyGate = record == WeaponStyleDefinition.ComboStage.class && !component.getName().equals("skillId");
-            boolean optionalTargetLock = record == CombatRules.class && Set.of("rapierTargetLock","perfectGuardCounter","staminaLevelScaling","staminaCombatRules","burstDash","spearSwipeKnockbackMultiplier","weaponClash").contains(component.getName()) && !obj.has(component.getName());
+            boolean optionalTargetLock = record == CombatRules.class && Set.of("rapierTargetLock","perfectGuardCounter","staminaLevelScaling","staminaCombatRules","burstDash","spearSwipeKnockbackMultiplier","weaponClash","swordCombat").contains(component.getName()) && !obj.has(component.getName());
             boolean optionalPartialShot = record == ArcheryRules.class && component.getName().equals("partialShotStaminaMultiplier") && !obj.has(component.getName());
             boolean optionalComboReset = record == org.fsrpg.combat.WeaponControls.class && component.getName().equals("comboResetTicks") && !obj.has(component.getName());
             boolean optionalImpulseSpeed=record==BurstDashRules.class&&component.getName().equals("initialSpeed")&&!obj.has(component.getName());
@@ -254,7 +265,7 @@ public final class RpgConfig {
                     || clazz == WeaponStyleDefinition.Techniques.class || clazz == WeaponStyleDefinition.CancelRules.class || clazz == org.fsrpg.combat.WeaponControls.class
                     || clazz == org.fsrpg.combat.RapierTargeting.Rules.class || clazz == CombatRules.PerfectGuardCounter.class
                     || clazz == StaminaLevelScaling.class || clazz == StaminaCombatRules.class || clazz == BurstDashRules.class
-                    || clazz == WeaponClashRules.class;
+                    || clazz == WeaponClashRules.class || clazz == SwordCombatRules.class;
             recordFields(value.getAsJsonObject(), clazz, completeStyleRules); return;
         }
         if (!value.isJsonPrimitive()) throw new IllegalArgumentException(path + " must be a scalar");

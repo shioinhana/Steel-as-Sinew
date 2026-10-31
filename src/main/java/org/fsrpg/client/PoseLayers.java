@@ -105,7 +105,7 @@ public final class PoseLayers {
         return switch (phase) {
             case "WINDUP" -> windup - remaining;
             case "ACTIVE" -> windup + active - remaining;
-            case "RECOVERY" -> windup + active + recovery - remaining;
+            case "RECOVERY", "PARRYING" -> windup + active + recovery - remaining;
             default -> -1;
         };
     }

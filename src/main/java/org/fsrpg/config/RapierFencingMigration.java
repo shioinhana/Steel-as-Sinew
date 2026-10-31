@@ -103,7 +103,9 @@ public final class RapierFencingMigration {
             if(apply)before.addProperty(name,old);
         }
         JsonArray skills=candidates.getAsJsonArray("skills.json"),styles=candidates.getAsJsonArray("styles.json");
-        JsonObject rapier=find(styles,"rapier"),nextSkill=find(resourceJson("/defaults/skills.json").getAsJsonArray(),FIFTH);
+        // Later sword modes decide their own models/descriptions after this historical chain upgrade.
+        JsonObject historicalTarget=resourceJson("/defaults/sword-combat-0.11.0.json").getAsJsonObject();
+        JsonObject rapier=find(styles,"rapier"),nextSkill=find(historicalTarget.getAsJsonArray("skills"),FIFTH);
         JsonObject fifth=find(skills,FIFTH);boolean plainSkills=true;
         for(var value:baseline.getAsJsonArray("skills")) {
             JsonObject old=value.getAsJsonObject(),actual=find(skills,old.get("id").getAsString());
@@ -116,7 +118,7 @@ public final class RapierFencingMigration {
         boolean enabled=modelsReady&&plainSkills&&stockChain&&compatibleFifth&&catalogHasRoom;
         JsonObject updates=new JsonObject();boolean fifthAdded=false,chainExtended=false,rootExtended=false,descriptionUpdated=false;
         if(enabled) {
-            JsonArray fresh=resourceJson("/defaults/skills.json").getAsJsonArray();
+            JsonArray fresh=historicalTarget.getAsJsonArray("skills");
             for(var value:baseline.getAsJsonArray("skills")) {
                 JsonObject old=value.getAsJsonObject();String id=old.get("id").getAsString();
                 JsonObject actual=find(skills,id),next=find(fresh,id);JsonArray fields=new JsonArray();
@@ -129,7 +131,7 @@ public final class RapierFencingMigration {
             JsonObject nextStyle=find(resourceJson("/defaults/styles.json").getAsJsonArray(),"rapier");
             rapier.add("leftCombo",nextStyle.get("leftCombo").deepCopy());chainExtended=true;
             JsonObject root=find(candidates.getAsJsonObject("skill_trees.json").getAsJsonArray("nodes"),"rapier");
-            JsonObject freshRoot=find(resourceJson("/defaults/skill_trees.json").getAsJsonObject().getAsJsonArray("nodes"),"rapier");
+            JsonObject freshRoot=find(historicalTarget.getAsJsonArray("nodes"),"rapier");
             if(root!=null&&Objects.equals(root.get("skills"),baseline.get("rootSkills"))){root.add("skills",freshRoot.get("skills").deepCopy());rootExtended=true;}
             if(root!=null&&Objects.equals(root.get("description"),baseline.get("rootDescription"))){root.add("description",freshRoot.get("description").deepCopy());descriptionUpdated=true;}
         }

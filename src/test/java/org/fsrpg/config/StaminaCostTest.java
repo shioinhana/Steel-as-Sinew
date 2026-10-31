@@ -29,7 +29,7 @@ public final class StaminaCostTest {
             compareCosts(before, resource("/defaults/" + name), name);
         }
         CombatRules bundled = RpgConfig.JSON.fromJson(resource("/defaults/combat.json"), CombatRules.class);
-        equal(bundled, CombatRules.defaults(), "pure server fallback matches reduced default config");
+        equal(CombatConfigExpectations.legacyMode(bundled), CombatRules.defaults(), "pure server fallback matches reduced historical default config");
     }
 
     private static void freshAndAuthoritativeDebits() throws Exception {
@@ -39,6 +39,7 @@ public final class StaminaCostTest {
             var definitions = config.reload();
             for (String name : FILES.subList(0, 4)) equal(resource("/defaults/" + name), read(directory, name), "fresh seed reduced once: " + name);
             for (SkillDefinition skill : definitions.skills().values()) {
+                if(skill.id().equals("sword_parry_return")){equal(ActionResult.TECHNIQUE_NOT_READY,ready(definitions.combat()).requestAttack(skill),"new conditional return never accepts a named cost-only request");continue;}
                 CombatActor actor = ready(definitions.combat());
                 actor.setResources(skill.staminaCost(), skill.spiritCost());
                 equal(ActionResult.ACCEPTED, actor.requestAttack(skill), skill.id() + " accepted at exact reduced cost");
@@ -75,7 +76,7 @@ public final class StaminaCostTest {
     }
 
     private static void checkGuard(RpgConfig.Definitions definitions, WeaponStyleDefinition style, boolean heavy, boolean perfect, double cost) {
-        CombatActor actor = ready(definitions.combat());
+        CombatActor actor = ready(CombatConfigExpectations.legacyMode(definitions.combat()));
         if (style != null) equal(ActionResult.ACCEPTED, actor.setStyle(style), "guard style accepted");
         equal(ActionResult.ACCEPTED, actor.setGuarding(true, heavy), "guard intent accepted");
         actor.setResources(cost, 100);
@@ -200,8 +201,10 @@ public final class StaminaCostTest {
         Files.writeString(directory.resolve(DefenseFlowMigration.MARKER),"{}");
         Files.writeString(directory.resolve(StaminaLevelMigration.MARKER),"{}");
         Files.writeString(directory.resolve(RapierFencingMigration.MARKER),"{}");
+        // Existing historical fixtures isolate divide-by-five costs from the 0.12 catalog addition.
+        if(Files.exists(directory.resolve("combat.json")))Files.writeString(directory.resolve(SwordCombatMigration.MARKER),"{}");
     }
-    // Project only the separately tested 0.8.5 chain and 0.10.0 conditional model moves
+    // Project the separately tested later chain, full-body models and conditional return
     // onto the template comparison. Custom-upgrade/retry fixtures are never projected.
     // compareCosts still checks every original field and every divide-by-five debit.
     private static void currentFencingTemplate(JsonElement before,String name)throws Exception {
@@ -215,12 +218,15 @@ public final class StaminaCostTest {
                     equal(id,old.get("action").getAsString(),"conditional action ID stays stable: "+id);
                     old.addProperty("model","legacy_rapier.fsvoxel");
                 }
+                if(old.get("weapon").getAsString().equals("sword")&&old.get("model").getAsString().equals("legacy_rapier.fsvoxel"))old.addProperty("model","rapier_fullbody.fsvoxel");
                 if(!changed.contains(id))continue;
                 var next=current.asList().stream().map(JsonElement::getAsJsonObject).filter(v->v.get("id").equals(old.get("id"))).findFirst().orElseThrow();
                 for(String field:List.of("label","windupTicks","activeTicks","recoveryTicks"))old.add(field,next.get(field).deepCopy());
             }
             var fifth=current.asList().stream().map(JsonElement::getAsJsonObject).filter(v->v.get("id").getAsString().equals("rapier_lunge_finish")).findFirst().orElseThrow();
             before.getAsJsonArray().asList().add(4,fifth.deepCopy());
+            var parryReturn=current.asList().stream().map(JsonElement::getAsJsonObject).filter(v->v.get("id").getAsString().equals("sword_parry_return")).findFirst().orElseThrow();
+            before.getAsJsonArray().add(parryReturn.deepCopy());
         }else if(name.equals("styles.json")) {
             for(var value:before.getAsJsonArray())if(value.getAsJsonObject().get("id").getAsString().equals("rapier")) {
                 JsonObject fifth=new JsonObject();fifth.addProperty("skillId","rapier_lunge_finish");value.getAsJsonObject().getAsJsonArray("leftCombo").add(fifth);
@@ -290,6 +296,10 @@ public final class StaminaCostTest {
             if(path.endsWith("combat.json")&&!before.getAsJsonObject().has("weaponClash")&&after.getAsJsonObject().has("weaponClash")) {
                 equal(RpgConfig.JSON.toJsonTree(WeaponClashRules.defaults()),after.getAsJsonObject().get("weaponClash"),path+" seeds exact clash defaults without rewriting existing files");
                 afterFields.remove("weaponClash");
+            }
+            if(path.endsWith("combat.json")&&!before.getAsJsonObject().has("swordCombat")&&after.getAsJsonObject().has("swordCombat")) {
+                equal(RpgConfig.JSON.toJsonTree(SwordCombatRules.defaults()),after.getAsJsonObject().get("swordCombat"),path+" seeds current sword rules without rescaling its new parry cost");
+                afterFields.remove("swordCombat");
             }
             equal(before.getAsJsonObject().keySet(), afterFields, path + " preserves all original fields");
             for (var field : before.getAsJsonObject().entrySet()) {

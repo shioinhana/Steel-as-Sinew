@@ -58,5 +58,36 @@
   "perfectGuardCounter": {
     "windowTicks": 4,
     "damageMultiplier": 1.5
+  },
+  "swordCombat": {
+    "enabled": true,
+    "parryWindupTicks": 2,
+    "parryActiveTicks": 5,
+    "parryRecoveryTicks": 9,
+    "parryCooldownTicks": 20,
+    "parryStaminaCost": 8,
+    "parryStunTicks": 16,
+    "returnWindowTicks": 24,
+    "chargedDamageMultiplier": 2,
+    "chargeSuperArmor": true,
+    "steeringFraction": 0.2,
+    "moveSpeedMultiplier": 0.25,
+    "heavyMobTypes": [
+      "minecraft:vindicator",
+      "minecraft:piglin_brute",
+      "minecraft:iron_golem",
+      "minecraft:ravager"
+    ],
+    "motionDistances": {
+      "sword_left": 0.45,
+      "rapier_downcut": 0.32,
+      "rapier_crosscut": 0.4,
+      "rapier_light_thrust": 0.25,
+      "rapier_lunge_finish": 0.85,
+      "sword_thrust": 0.65,
+      "rapier_riposte": 0.35,
+      "rapier_reprise": 0.4,
+      "sword_parry_return": 0.55
+    }
   }
 }

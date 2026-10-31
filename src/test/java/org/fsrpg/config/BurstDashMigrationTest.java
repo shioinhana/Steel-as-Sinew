@@ -15,7 +15,7 @@ public final class BurstDashMigrationTest {
     private static void fresh()throws Exception{
         Path dir=Files.createTempDirectory("fsrpg-burst-fresh-");try{
             var config=new RpgConfig(dir);var data=config.reload();
-            equal(CombatRules.defaults(),data.combat(),"new seed and fallback agree");
+            equal(CombatRules.defaults(),CombatConfigExpectations.legacyMode(data.combat()),"new seed and fallback agree on all historical combat fields");
             equal(BurstDashRules.defaults(),data.combat().burstDash(),"Shift defaults are three blocks, half second and five stamina");
             check(!Files.exists(dir.resolve(BurstDashMigration.BACKUP)),"fresh seed invents no backup");
             check(Files.exists(dir.resolve(BurstDashMigration.MARKER)),"fresh migration marked complete");

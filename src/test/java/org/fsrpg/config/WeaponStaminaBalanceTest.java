@@ -17,11 +17,12 @@ public final class WeaponStaminaBalanceTest {
                 Double cost=expected(skill);
                 if(cost==null)continue;
                 near(cost,skill.staminaCost(),skill.id()+" configured debit");
-                var actor=ready(defs.combat());actor.setResources(cost,100);
-                equal(ActionResult.ACCEPTED,actor.requestAttack(skill),"exact stamina accepts "+skill.id());
+                if(skill.id().equals("sword_parry_return"))equal(ActionResult.TECHNIQUE_NOT_READY,ready(defs.combat()).requestAttack(skill),"return requires earned opportunity and physical left intent");
+                var actor=attackReady(defs,skill);actor.setResources(cost,100);
+                equal(ActionResult.ACCEPTED,request(actor,skill),"exact stamina accepts "+skill.id());
                 near(0,actor.stamina(),"one debit "+skill.id());
-                actor=ready(defs.combat());actor.setResources(cost-.001,100);
-                equal(ActionResult.INSUFFICIENT_STAMINA,actor.requestAttack(skill),"insufficient rejects "+skill.id());
+                actor=attackReady(defs,skill);actor.setResources(cost-.001,100);
+                equal(ActionResult.INSUFFICIENT_STAMINA,request(actor,skill),"insufficient rejects "+skill.id());
                 near(cost-.001,actor.stamina(),"reject retains resources "+skill.id());
             }
             var bow=defs.archery();near(5,bow.rapidStaminaCost(),"rapid full cost");near(15,bow.snipeStaminaCost(),"sniper full cost");
@@ -57,6 +58,16 @@ public final class WeaponStaminaBalanceTest {
         if(s.weapon().equals("dual_blade"))return 8.;
         return switch(s.id()){case "spear_thrust"->10.;case "bow_rapid_release"->5.;case "bow_snipe_release"->15.;default->null;};
     }
+    private static CombatActor attackReady(RpgConfig.Definitions defs,SkillDefinition skill) {
+        if(!skill.id().equals("sword_parry_return"))return ready(defs.combat());
+        var actor=new CombatActor(UUID.randomUUID(),defs.combat());actor.setStyle(defs.styles().get("rapier"));actor.requestDrawn();
+        for(int i=0;i<defs.combat().drawTicks();i++)actor.tick();
+        equal(ActionResult.ACCEPTED,actor.requestSwordParry(),"return fixture starts actual parry");
+        for(int i=0;i<defs.combat().swordCombat().parryWindupTicks();i++)actor.tick();
+        equal(HitOutcome.PARRIED,CombatResolver.receiveSwordIncoming(null,actor,0,8,0,true,false,true,"").outcome(),"return fixture earns opportunity against heavy");
+        return actor;
+    }
+    private static ActionResult request(CombatActor actor,SkillDefinition skill){return skill.id().equals("sword_parry_return")?actor.aimedLeftSkill(skill,null):actor.requestAttack(skill);}
     private static CombatActor ready(CombatRules rules){var a=new CombatActor(UUID.randomUUID(),rules);a.requestDrawn();for(int i=0;i<rules.drawTicks();i++)a.tick();return a;}
     private static JsonElement read(Path d,String name)throws Exception{return JsonParser.parseString(Files.readString(d.resolve(name)));}
     private static void near(double expected,double actual,String text){check(Math.abs(expected-actual)<1e-8,text+": "+actual);}

@@ -24,7 +24,7 @@ public final class StaminaRegenTest {
         try {
             RpgConfig config = new RpgConfig(directory);
             CombatRules rules = config.reload().combat();
-            equal(CombatRules.defaults(), rules, "fallback matches seeded rules");
+            equal(CombatRules.defaults(), CombatConfigExpectations.legacyMode(rules), "fallback matches historical seeded rules");
             near(5, rules.staminaRegenPerSecond(), "current fresh seed starts at five");
             near(1, rules.spiritRegenPerSecond(), "spirit regeneration unchanged");
             equal(20, rules.resourceRegenDelayTicks(), "historical spirit regeneration delay unchanged");

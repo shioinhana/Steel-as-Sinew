@@ -51,6 +51,8 @@ public final class PlayerAnimations {
         double received, phaseReceived, started;
         PoseLayers.AttackClock attackClock;
         PoseLayers.PendingAction<RpgAnimationPayload> pendingAction;
+        RpgAnimationPayload swordPendingState;
+        double swordPendingReceived,swordEndpointPresented=Double.NaN;
         double sampledElapsedTicks = -1, sampledClipSeconds;
         Map<String, Pose> lastPose, transitionFrom, lastBase, swordPending;
         PoseLayers.OffsetDecay swordDecay;
@@ -68,6 +70,10 @@ public final class PlayerAnimations {
         SpearTurn.State spearTurn = new SpearTurn.State();
         SpearTurn.State swordTurn = new SpearTurn.State();
         RapierMotion.State swordLean = new RapierMotion.State();
+        FullBodySwordSupport.State fullBodySupport = new FullBodySwordSupport.State();
+        boolean swordSupportClipped;
+        long swordTravelSequence=-1;
+        double swordExpectedAdvance,swordActualAdvance,swordTravelFraction=1;
         double lastSpearChestTick = Double.NaN;
         double aimTransitionStarted, aimTransitionTicks;
         boolean aimTransitionPending;
@@ -84,7 +90,7 @@ public final class PlayerAnimations {
                 String run = PoseLayers.runAction(asset.full().rig(), state.action());
                 if (run != null) runPlayback = new PoseLayers.Playback(asset.full().rig(), run);
             }
-            if (SwordMotion.applies(asset.full())) {
+            if (SwordMotion.applies(asset.full()) && !FullBodySword.MODEL.equals(state.model())) {
                 try {
                     lowerAsset = AnimationAssets.load("spear.fsvoxel");
                     lowerPlayback = new PoseLayers.Playback(lowerAsset.full().rig(), PoseLayers.DEFAULT_STANCE);
@@ -225,7 +231,7 @@ public final class PlayerAnimations {
         }
         var nextClip=asset.full().rig().clips().get(state.action());
         var previousClip=previous==null?null:previous.asset.full().rig().clips().get(previous.state.action());
-        boolean fencingEntry=RapierMotion.fencing(nextClip)&&previous!=null&&!RapierMotion.directHandoff(previousClip,nextClip,
+        boolean fencingEntry=(FullBodySword.MODEL.equals(state.model()) || RapierMotion.fencing(nextClip))&&previous!=null&&!RapierMotion.directHandoff(previousClip,nextClip,
                 previous.sampledElapsedTicks,previous.state.windupTicks(),previous.state.activeTicks());
         // Queued fencing phrases share the actual ACTIVE-end pose. A late click
         // after natural recovery starts from the real guard with a short entry blend.
@@ -264,6 +270,13 @@ public final class PlayerAnimations {
             AnimationAssets.Loaded asset = AnimationAssets.load(state.model());
             if (!asset.full().rig().clips().containsKey(state.action())) throw new IllegalArgumentException("Missing action " + state.action());
             boolean samePresentation = previous != null && previous.asset == asset && previous.state.style().equals(state.style());
+            if(previous!=null&&previous.swordPendingState!=null) {
+                if(samePresentation&&PoseLayers.ordinaryHandoff(state.phase())) {
+                    if(state.sequence()>=previous.swordPendingState.sequence()){previous.swordPendingState=state;previous.swordPendingReceived=receivedTick;previous.received=receivedTick;}
+                    return;
+                }
+                previous.swordPendingState=null;previous.swordEndpointPresented=Double.NaN;
+            }
             if (previous != null && previous.pendingAction != null) {
                 if (state.sequence() < previous.pendingAction.sequence()) return;
                 if (samePresentation && PoseLayers.ordinaryHandoff(state.phase())) {
@@ -278,7 +291,14 @@ public final class PlayerAnimations {
                     || !PoseLayers.continuesAction(previous.state.action(), previous.state.phase(), previous.state.sequence(),
                             state.action(), state.phase(), state.sequence());
             if (replace) {
+                boolean travelClock=samePresentation&&swordTravelClock(previous);
+                if(travelClock&&PoseLayers.ordinaryHandoff(state.phase())&&SwordMotionClient.hasTravel(previous.state.swingSequence())
+                        &&SwordMotionClient.expectedAdvance(previous.state.swingSequence())+1e-8<SwordMotionClient.targetAdvance(previous.state.swingSequence())) {
+                    previous.swordPendingState=state;previous.swordPendingReceived=receivedTick;previous.swordEndpointPresented=Double.NaN;
+                    previous.received=receivedTick;return;
+                }
                 if (samePresentation && PoseLayers.ordinaryHandoff(state.phase()) && previous.attackClock != null
+                        &&!travelClock
                         && PoseLayers.protectedActive(previous.state.phase(), previous.sampledElapsedTicks, previous.attackClock.sample(receivedTick),
                                 previous.state.windupTicks(), previous.state.activeTicks())) {
                     previous.pendingAction = new PoseLayers.PendingAction<>(state, state.sequence(), state.action(), state.phase(),
@@ -340,6 +360,8 @@ public final class PlayerAnimations {
         else if (elapsed < 0) seconds = Math.max(0, renderTick - binding.started) / 20.0;
         else seconds = phaseTime(clip, Math.max(0, elapsed), server.windupTicks(), server.activeTicks(), server.recoveryTicks());
         binding.sampledElapsedTicks = elapsed; binding.sampledClipSeconds = seconds;
+        if (FullBodySword.MODEL.equals(server.model()))
+            return fullBodySwordFrame(binding,living,state,clip,elapsed,renderTick);
         boolean sword = SwordMotion.applies(binding.asset.full());
         if (LegacyMotion.applies(binding.asset.full()) && !sword) {
             seconds=LegacyMotion.actionSeconds(clip,server,elapsed,Math.max(0,renderTick-binding.started)/20);
@@ -636,6 +658,92 @@ public final class PlayerAnimations {
                 supportedLower == null ? 0 : supportedLower.left().knee(), hipBalance, supportedLower),state);
         return binding.sampled;
     }
+    private static Frame fullBodySwordFrame(Binding binding,net.minecraft.world.entity.LivingEntity entity,
+                                            AvatarRenderState state,FsvoxAnimation.Clip clip,double elapsed,double tick) {
+        var model=binding.asset.full(); var server=binding.state;
+        binding.motion.observePosition(entity.tickCount,entity.getX(),entity.getZ(),entity.getX()-entity.xo,entity.getZ()-entity.zo);
+        float moving=Locomotion.movementTarget(state.walkAnimationSpeed);
+        binding.motion.advance(tick,binding.motion.velocityX(),binding.motion.velocityZ(),entity.getYRot(),entity.isSprinting(),
+                entity.onGround(),moving,ClientOptions.MOTION_RESPONSE.get().floatValue());
+        double seconds;
+        String source=LegacyMotion.source(clip);
+        if (server.phase().equals("READY") && (source.equals("static_idle") || source.equals("idle_upper"))) {
+            String gait=LegacyMotion.gait(model,entity,state.walkAnimationSpeed,server);
+            if(model.rig().clips().containsKey(gait))clip=model.rig().clips().get(gait);
+            float phase=binding.motion.gaitPhase(tick,moving,0,.55f);
+            seconds=moving>.05f?phase*.6662/(Math.PI*2)*clip.duration():binding.motion.breathingSeconds(tick,1);
+        } else if(elapsed>=0) {
+            seconds=swordSeconds(binding,clip,elapsed,tick);
+        } else seconds=LegacyMotion.actionSeconds(clip,server,elapsed,Math.max(0,tick-binding.started)/20);
+        binding.sampledClipSeconds=seconds;
+        var pose=FullBodySword.aimHead(LegacyPlayback.sample(model,clip,seconds),entity.getXRot(),state.yRot);
+        boolean ownTravel=entity==Minecraft.getInstance().player&&(entity.onGround()||SwordMotionClient.active(server.swingSequence()))&&elapsed>=0&&FullBodySword.action(clip)
+                &&(server.phase().equals("WINDUP")||server.phase().equals("ACTIVE")||server.phase().equals("RECOVERY"));
+        if(ownTravel) {
+            swordSupportObservation(binding);
+            if(binding.swordTravelSequence>=0) {
+                if(binding.swordSupportClipped)pose=binding.fullBodySupport.apply(model,pose,tick,binding.swordTravelSequence,
+                        binding.swordExpectedAdvance*100,binding.swordActualAdvance*100,binding.swordTravelFraction);
+                else binding.fullBodySupport.observe(model,pose,tick,binding.swordTravelSequence,binding.swordExpectedAdvance*100,binding.swordActualAdvance*100);
+            }
+        } else {binding.fullBodySupport.reset();binding.swordSupportClipped=false;binding.swordTravelSequence=-1;}
+        if(binding.transitionFrom!=null && binding.transitionTicks>0) {
+            float weight=PoseLayers.transitionWeight(tick,binding.transitionStarted,binding.transitionTicks);
+            if(weight<1){pose=RapierMotion.bridge(binding.transitionFrom,pose,weight);transitionFrames++;}
+            else binding.transitionFrom=null;
+        }
+        binding.lastPose=pose;binding.lastBase=pose;binding.lastLowerWeight=1;
+        pose=retargetSkin(state,model,pose);
+        pose=inspectionPose(binding,entity,pose,tick);
+        binding.sampledRenderFrame=renderFrameId;renderSamples++;lastSampleTick=tick;
+        // Full actions keep their own hip and both legs in air as well as on ground.
+        // The spear's takeoff-pose/IK/turn-step layers must never replace these tracks.
+        binding.sampled=new Frame(model,binding.asset.weapon(),pose,model.worldMatrices(pose),1,moving,tick,FullBodySword.LAYER,
+                LegacyMotion.knee(pose,"right"),LegacyMotion.knee(pose,"left"),new PresentationMotion.Balance(0,0,0),null);
+        return binding.sampled;
+    }
+    private static void swordSupportObservation(Binding binding) {
+        long sequence=binding.state.swingSequence();
+        if(SwordMotionClient.hasTravel(sequence)) {
+            binding.swordTravelSequence=sequence;
+            binding.swordExpectedAdvance=SwordMotionClient.expectedAdvance(sequence);binding.swordActualAdvance=SwordMotionClient.actualAdvance(sequence);
+            binding.swordTravelFraction=SwordMotionClient.travelFraction(sequence);
+            // Steering changes the projected distance without clipping the step.
+            binding.swordSupportClipped|=binding.swordTravelFraction<.98;
+        }
+    }
+    private static double swordDistance(Binding binding) {
+        if(!FullBodySword.MODEL.equals(binding.state.model()))return 0;
+        var game=Minecraft.getInstance();if(game.player==null||!binding.state.entityId().equals(game.player.getUUID()))return 0;
+        var clip=binding.asset.full().rig().clips().get(binding.state.action());
+        double authored=0;
+        for(String tag:clip.tags())if(tag.startsWith("motion_distance:"))try{authored=Double.parseDouble(tag.substring(16));}catch(NumberFormatException ignored){}
+        if(authored<=0)return 0;
+        var distances=ClientState.object(ClientState.object(ClientState.snapshot(),"swordCombatRules"),"motionDistances");
+        for(var skill:ClientState.skills())if(ClientState.text(skill,"action","").equals(clip.id()))return ClientState.number(distances,ClientState.text(skill,"id",""),authored);
+        return authored;
+    }
+    private static boolean swordTravelClock(Binding binding) {
+        double distance=swordDistance(binding);long sequence=binding.state.swingSequence();
+        if(distance<=0)return false;
+        // A jump may terminate server travel while the airborne attack still plays normally.
+        return !SwordMotionClient.hasTravel(sequence)||SwordMotionClient.active(sequence)||SwordMotionClient.targetAdvance(sequence)>=distance-1e-8;
+    }
+    private static double swordSeconds(Binding binding,FsvoxAnimation.Clip clip,double elapsed,double tick) {
+        var state=binding.state;
+        if(swordTravelClock(binding)) {
+            long sequence=state.swingSequence();
+            double expected=SwordMotionClient.expectedAdvance(sequence);
+            if(binding.swordPendingState!=null&&Double.isNaN(binding.swordEndpointPresented)
+                    &&expected+1e-8>=SwordMotionClient.targetAdvance(sequence))binding.swordEndpointPresented=tick;
+            double source= SwordTravelTimeline.sourceFraction(expected,swordDistance(binding));
+            binding.sampledElapsedTicks=source<.26?source/.26*state.windupTicks():source<.86
+                    ?state.windupTicks()+(source-.26)/.60*state.activeTicks()
+                    :state.windupTicks()+state.activeTicks()+(source-.86)/.14*state.recoveryTicks();
+            return source*clip.duration();
+        }
+        return FullBodySword.seconds(clip,state.phase(),elapsed,state.windupTicks(),state.activeTicks(),state.recoveryTicks(),Math.max(0,tick-binding.started)/20);
+    }
     private static Frame airFrame(net.minecraft.world.entity.Entity entity,RpgAnimationPayload intent,Frame current,AvatarRenderState state) {
         boolean inAir=entity.isAlive()&&!entity.onGround()&&!entity.isPassenger()&&!entity.isInWater()&&!state.isFallFlying&&state.swimAmount<=.5f;
         var air=airPoses.computeIfAbsent(entity.getUUID(),id->new AirPose.State<Frame>());
@@ -706,6 +814,14 @@ public final class PlayerAnimations {
     }
     public static void clearPreview(AvatarRenderState state) { previews.remove(state); }
     private static Binding advancePending(UUID entity, Binding binding, double tick) {
+        if(binding.swordPendingState!=null) {
+            if(Double.isNaN(binding.swordEndpointPresented)||tick<=binding.swordEndpointPresented)return binding;
+            var state=binding.swordPendingState;
+            double elapsed=PoseLayers.attackElapsed(state.phase(),state.phaseRemaining(),state.windupTicks(),state.activeTicks(),state.recoveryTicks());
+            if(elapsed>=0)elapsed+=Math.max(0,tick-binding.swordPendingReceived);
+            var next=nextBinding(state,binding.asset,binding,tick,elapsed,binding.swordPendingReceived);
+            next.received=binding.received;bindings.put(entity,next);return next;
+        }
         if(binding.pendingAction==null||!binding.pendingAction.ready(tick))return binding;
         var pending=binding.pendingAction;var state=pending.value();
         var next=nextBinding(state,binding.asset,binding,tick,
@@ -737,6 +853,8 @@ public final class PlayerAnimations {
         if(b.pendingAction!=null)elapsed=b.pendingAction.holdElapsed(elapsed,renderTick);
         b.sampledElapsedTicks=elapsed;
         var clip=b.asset.full().rig().clips().get(b.state.action());
+        if (FullBodySword.MODEL.equals(b.state.model()) && elapsed>=0)
+            return swordSeconds(b,clip,elapsed,renderTick);
         return elapsed>=0&&RapierMotion.cut(clip)?RapierMotion.clipTime(clip,elapsed,b.state.windupTicks(),b.state.activeTicks(),b.state.recoveryTicks())
                 :LegacyMotion.actionSeconds(clip,b.state,elapsed,Math.max(0,renderTick-b.started)/20,firstPerson);
     }
@@ -811,13 +929,13 @@ public final class PlayerAnimations {
         SkinnedArms.prepare(model, frame);
         Map<String, Matrix4f> world = frame.world();
         boolean legacy=LegacyMotion.applies(frame.model());
-        if (world.containsKey("body")) place(model.body, world.get("body"), new Vector3f(0, legacy && !SwordMotion.applies(frame.model()) ? 43.75f : 75, 0));
+        if (world.containsKey("body")) place(model.body, world.get("body"), new Vector3f(0, FullBodySword.frame(frame) || legacy && !SwordMotion.applies(frame.model()) ? 43.75f : 75, 0));
         if (world.containsKey("head")) place(model.head, world.get("head"), new Vector3f());
         if (frame.supportedLower() != null) {
             supportedLeg(model.rightLeg, frame.supportedLower().right().pose());
             supportedLeg(model.leftLeg, frame.supportedLower().left().pose());
         }
-        else if(legacy && (!SwordMotion.applies(frame.model()) || previews.containsKey(state))) {
+        else if(FullBodySword.frame(frame) || legacy && (!SwordMotion.applies(frame.model()) || previews.containsKey(state))) {
             if(world.containsKey("right_leg"))place(model.rightLeg,world.get("right_leg"),new Vector3f());
             if(world.containsKey("left_leg"))place(model.leftLeg,world.get("left_leg"),new Vector3f());
         }

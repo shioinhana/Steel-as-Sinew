@@ -17,7 +17,7 @@ public final class StaminaLevelMigrationTest {
     private static void fresh()throws Exception {
         Path dir=Files.createTempDirectory("fsrpg-level-fresh-");try {
             var config=new RpgConfig(dir);var rules=config.reload().combat();
-            equal(CombatRules.defaults(),rules,"bundled and pure defaults agree");near(50,rules.maxStamina(),"fresh base cap");near(5,rules.staminaRegenPerSecond(),"fresh base rate");
+            equal(CombatRules.defaults(),CombatConfigExpectations.legacyMode(rules),"bundled and pure historical defaults agree");near(50,rules.maxStamina(),"fresh base cap");near(5,rules.staminaRegenPerSecond(),"fresh base rate");
             check(!Files.exists(dir.resolve(StaminaLevelMigration.BACKUP).resolve("combat.json")),"fresh has no invented source backup");
             var once=allBytes(dir);config.reload();equal(once,allBytes(dir),"fresh repeated seed is byte idempotent including markers");
         }finally{cleanup(dir);}

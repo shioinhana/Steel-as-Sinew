@@ -164,7 +164,7 @@ public final class ConfigTest {
         try {
             RpgConfig config = new RpgConfig(directory);
             RpgConfig.Definitions initial = config.reload();
-            equal(22, initial.skills().size(), "default skills include five-stage fencing, combined slash and bow actions");
+            equal(23, initial.skills().size(), "default skills include five-stage fencing, conditional sword return, combined slash and bow actions");
             equal(3, initial.quests().definitions().size(), "default tutorial count");
             for (String name : List.of("combat.json", "skills.json", "quests.json", "weapons.json", "styles.json", "collections.json", "skill_trees.json", "archery.json")) {
                 check(Files.isRegularFile(directory.resolve(name)), "seed creates " + name);

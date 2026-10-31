@@ -56,6 +56,8 @@ public final class RpgServer {
     private final MinecraftServer server;
     private final RpgConfig config;
     private QuestService quests;
+    private final Map<UUID,SwordMotionPlan> swordMotions=new HashMap<>();
+    private static final Identifier SWORD_MOVE_ID=Identifier.fromNamespaceAndPath("fsrpg","sword_action_movement");
     private CollectionService collections;
     private final CollectionStore collectionStore;
     private long collectionSavedRevision = -1;
@@ -294,6 +296,7 @@ public final class RpgServer {
         }});
         bus.addListener((LivingKnockBackEvent event)->{
             if(instance!=null&&event.getEntity().getUUID().equals(instance.suppressedSpearKnockback)){event.setCanceled(true);return;}
+            if(instance!=null&&event.getEntity() instanceof ServerPlayer armored&&instance.actor(armored).swordSuperArmor()){event.setCanceled(true);return;}
             if(instance!=null&&event.getEntity() instanceof ServerPlayer p&&event.getStrength()>0)instance.training.forced(p,10);
         });
         bus.addListener((net.neoforged.neoforge.event.entity.EntityTeleportEvent event)->{if(instance!=null){
@@ -409,6 +412,7 @@ public final class RpgServer {
                     moveCharge(p);startedSkills(p);
                 }
                 case "rapierCancel" -> a.cancelChargedPreparation();
+                case "parry" -> {if(!argument.isBlank())throw new IllegalArgumentException("parry takes no argument");if(!hasWeapon(p))throw new IllegalStateException("请先手持剑");accepted(a.requestSwordParry());message="振刀：只迎击重击，普攻可打断";}
                 case "spearPress", "spearMove", "spearRelease" -> {spearIntent(p,a,action,argument);startedSkills(p);}
                 case "targetAttack" -> targetAttack(p,a,argument);
                 case "aimAttack" -> {
@@ -475,7 +479,7 @@ public final class RpgServer {
                     press.held=physicalHeld;if(fresh)press.serial++;
                     if (held && !hasWeapon(p)) throw new IllegalStateException("请先手持战斗武器");
                     boolean heavy=argument.equals("heavy")||argument.equals("held_heavy");
-                    boolean opportunity=fresh&&creatureMelee.guardOpportunity(p);
+                    boolean opportunity=!a.swordCombatEnabled()&&fresh&&creatureMelee.guardOpportunity(p);
                     // GUI/equipment suspension is not a physical release and cannot reset
                     // the three-perfect chain or invent a fresh window when input resumes.
                     if(held&&!fresh&&!a.guardHeld())a.suspendGuarding();
@@ -810,18 +814,65 @@ public final class RpgServer {
             if(!result.accepted())throw new IllegalStateException(comboRejection(result));
             return;
         }
-        if(!effects.rapierThrust())throw new IllegalStateException("突刺需要80次西洋剑击杀及对应修行条件，请查看 P 技能树");
+        if(!actor.swordCombatEnabled()&&!effects.rapierThrust())throw new IllegalStateException("突刺需要80次西洋剑击杀及对应修行条件，请查看 P 技能树");
         SkillDefinition skill=config.current().skills().get("sword_thrust");
         skill=new SkillDefinition(skill.id(),skill.label(),skill.weapon(),skill.input(),rules.windupTicks(),rules.activeTicks(),rules.recoveryTicks(),rules.cooldownTicks(),skill.staminaCost(),skill.spiritCost(),rules.thrustDamage(),rules.range(),skill.arcDegrees(),skill.knockback(),skill.blockable(),skill.parryable(),skill.clashable(),skill.model(),skill.action());
-        accepted(actor.requestRapierThrust(skill,attackAim(player),effects.rapierParry(),effects.rapierParry(),rules.fullChargeTicks(),rules.guardBreakCooldownTicks()));
+        accepted(actor.requestRapierThrust(skill,attackAim(player),actor.swordCombatEnabled()||effects.rapierParry(),!actor.swordCombatEnabled()&&effects.rapierParry(),rules.fullChargeTicks(),rules.guardBreakCooldownTicks()));
     }
     private void moveCharge(ServerPlayer player) {
         if(!actor(player).consumeChargeLunge())return;
+        if(actor(player).swordCombatEnabled())return;
         double speed=config.current().skillTrees().rules().rapier().lungeSpeedMps()/20;
         var aim=actor(player).attackAim();
         Vec3 direction=aim==null?player.getLookAngle().normalize():Vec3.directionFromRotation((float)aim.sample(0).pitch(),(float)aim.sample(0).yaw());
         player.setDeltaMovement(player.getDeltaMovement().add(direction.scale(speed)));
         player.hurtMarked=true;training.forced(player,10);
+    }
+    /** A thin sole probe distinguishes genuine support from a wall beside an airborne player. */
+    private static boolean swordSupported(ServerPlayer player,AABB box) {
+        double inset=1e-5;
+        AABB sole=new AABB(box.minX+inset,box.minY-.002,box.minZ+inset,box.maxX-inset,box.minY,box.maxZ-inset);
+        return player.level().findSupportingBlock(player,sole).isPresent();
+    }
+    private void moveSword(ServerPlayer player,CombatActor actor) {
+        // Vanilla acknowledges each position correction with onGround=false. That packet is not
+        // evidence of a jump: keep a plan while the real feet remain supported and are not rising.
+        boolean moving=actor.swordCombatEnabled()&&actor.currentSkill()!=null&&!player.isPassenger()&&!player.isInWater()&&!player.isInLava()&&!player.isFallFlying()
+                &&player.getDeltaMovement().y<=1e-7&&swordSupported(player,player.getBoundingBox());
+        boolean limited=actor.swordCombatEnabled()&&(actor.currentSkill()!=null||actor.phase()==CombatPhase.PARRYING);
+        var attribute=player.getAttribute(net.minecraft.world.entity.ai.attributes.Attributes.MOVEMENT_SPEED);
+        if(attribute!=null){double amount=limited?actor.rules().swordCombat().moveSpeedMultiplier()-1:0;var previous=attribute.getModifier(SWORD_MOVE_ID);if(previous==null||Math.abs(previous.amount()-amount)>1e-9){if(previous!=null)attribute.removeModifier(SWORD_MOVE_ID);if(Math.abs(amount)>1e-9)attribute.addTransientModifier(new net.minecraft.world.entity.ai.attributes.AttributeModifier(SWORD_MOVE_ID,amount,net.minecraft.world.entity.ai.attributes.AttributeModifier.Operation.ADD_MULTIPLIED_TOTAL));}}
+        SwordMotionPlan plan=swordMotions.get(player.getUUID());
+        if(plan==null)return;
+        if(!moving||plan.sequence()!=actor.snapshot().swingSequence()) {
+            swordMotions.remove(player.getUUID());
+            PacketDistributor.sendToPlayer(player,new RpgSwordMotionPayload(player.getUUID(),player.getId(),player.level().dimension().identifier().toString(),plan.sequence(),ticks,player.getX(),player.getY(),player.getZ(),false,1,plan.expectedAdvance(),plan.actualAdvance()));return;
+        }
+        if(actor.chargeSnapshot().holding())return;
+        double progress=SwordMotionPlan.progress(actor.snapshot().skillElapsedTicks()+1,actor.currentSkill());
+        var input=player.getLastClientMoveIntent();var step=plan.advance(progress,input.x,input.z);
+        Vec3 delta=new Vec3(step.x(),0,step.z());double beforeX=player.getX(),beforeY=player.getY(),beforeZ=player.getZ();
+        if(delta.lengthSqr()>1e-12){
+            Vec3 end=player.position().add(delta);
+            boolean safe=player.level().hasChunkAt(net.minecraft.core.BlockPos.containing(end))&&player.level().getWorldBorder().isWithinBounds(net.minecraft.core.BlockPos.containing(end));
+            // No root-motion fall off cliffs. Ordinary jump/fall remains vanilla and cancels this plan.
+            safe&=swordSupported(player,player.getBoundingBox().move(delta));
+            if(safe){
+                player.setOnGround(true); // Restore only the support just verified above, including vanilla step-up eligibility.
+                player.move(MoverType.SELF,delta);training.forced(player,2);
+                player.setOnGround(swordSupported(player,player.getBoundingBox()));
+            }
+        }
+        double endpointX=player.getX(),endpointY=player.getY(),endpointZ=player.getZ();
+        double appliedX=endpointX-beforeX,appliedY=endpointY-beforeY,appliedZ=endpointZ-beforeZ;
+        plan.recordActual(appliedX,appliedZ);
+        // The receipt atomically installs endpoint + visual debt before vanilla resets old/current
+        // to this same endpoint. Reversing these packets can show the endpoint for one frame first.
+        PacketDistributor.sendToPlayer(player,new RpgSwordMotionPayload(player.getUUID(),player.getId(),player.level().dimension().identifier().toString(),plan.sequence(),ticks,endpointX,endpointY,endpointZ,true,delta.lengthSqr()<1e-12?1:Math.clamp(Math.hypot(appliedX,appliedZ)/delta.length(),0,1),plan.expectedAdvance(),plan.actualAdvance(),appliedX,appliedY,appliedZ));
+        if(Math.hypot(appliedX,appliedZ)>1e-9){
+            player.connection.teleport(endpointX,endpointY,endpointZ,player.getYRot(),player.getXRot());
+            player.setOnGround(swordSupported(player,player.getBoundingBox()));
+        }
     }
     private AttackAim attackAim(ServerPlayer player) {
         refreshTargetLock(player, false);
@@ -886,6 +937,7 @@ public final class RpgServer {
             training.tick(p,a);archery.tick(p,a,archeryProgress(p));footwork.tick(p);
             if (a.currentSkill() != null && !validSwing(p)) a.stun(1);
             if (a.phase() == CombatPhase.GUARDING && !hasWeapon(p)) a.setGuarding(false);
+            moveSword(p,a);
             prepareSpearRays(p,a);
         }
         List<PendingHit> pendingHits = new ArrayList<>();
@@ -953,6 +1005,7 @@ public final class RpgServer {
         return mainItem(p).equals(swingItems.get(p.getUUID())) && (actor(p).style()==null || !actor(p).style().controls().dual() || BuiltInRegistries.ITEM.getKey(p.getOffhandItem().getItem()).toString().equals(swingOffhands.get(p.getUUID()))) && (skill == null || weaponMatches(p, skill));
     }
     private long opponentSequence(LivingEntity opponent,ServerPlayer attacker,long sequence) {
+        if(actor(attacker).swordHeavyAttack()||actor(attacker).swordSuperArmor() || opponent instanceof ServerPlayer q && (actor(q).swordHeavyAttack()||actor(q).swordSuperArmor()) || actor(attacker).swordCombatEnabled()&&swordHeavyMob(opponent))return -1;
         for(var c:meleeContacts.contacts()) if(c.attacker().equals(opponent.getUUID()) && c.victim().equals(attacker.getUUID())
                 && c.value().opponentSequence()==sequence) return c.sequence();
         if(opponent instanceof ServerPlayer p) {
@@ -1031,11 +1084,12 @@ public final class RpgServer {
                 &&CombatResolver.withinArc(RpgServer.facing(enemy,player),config.current().combat().clashFacingArcDegrees());
     }
     private boolean windowClashOnActivation(ServerPlayer player,CombatActor a,SkillDefinition skill) {
+        if(a.swordHeavyAttack()||a.swordSuperArmor())return false;
         if(!a.drawn()||!hasWeapon(player)||!validSwing(player)||a.invulnerable())return false;
         var enemies=player.level().getEntitiesOfClass(Mob.class,player.getBoundingBox().inflate(skill.reach()),Mob::isAlive);
         enemies.sort(Comparator.comparingDouble((Mob enemy)->attackDistance(player,enemy)).thenComparing(enemy->enemy.getUUID().toString()));
         for(Mob enemy:enemies){
-            if(a.hasHit(enemy.getUUID())||attackDistance(player,enemy)>skill.reach()||!windowClashFacing(player,enemy,skill))continue;
+            if(a.hasHit(enemy.getUUID())||attackDistance(player,enemy)>skill.reach()||!windowClashFacing(player,enemy,skill)||a.swordCombatEnabled()&&swordHeavyMob(enemy))continue;
             var candidate=creatureMelee.windowClashCandidate(enemy,player,player.level().getGameTime());
             if(candidate==null)continue;
             double multiplier=a.attackDamageMultiplier();
@@ -1237,7 +1291,9 @@ public final class RpgServer {
         if (resolvingDamage || !(event.getEntity() instanceof ServerPlayer p) || event.getSource().getDirectEntity() == null) return;
         reconcileAndSync(p);
         training.incoming(p,event.getSource().getEntity());
-        if(creatureClash(event,p))return;
+        boolean directMelee=sourceEntity!=null&&sourceEntity==event.getSource().getDirectEntity();
+        boolean swordHeavy=directMelee&&(sourceEntity instanceof ServerPlayer q?actor(q).swordHeavyAttack():swordHeavyMob(sourceEntity)&&creatureMelee.invocationContactTick(sourceEntity,event.getSource().getDirectEntity(),p)!=null);
+        if((!actor(p).swordCombatEnabled()||!actor(p).swordSuperArmor()&&!swordHeavy)&&creatureClash(event,p))return;
         if(archery.onIncoming(event,archeryProgress(p)))return;
         if(actor(p).receiveChargedParry()==1){
             actor(p).markCombatActivity();
@@ -1250,12 +1306,18 @@ public final class RpgServer {
         double angle = direct instanceof AbstractArrow arrow ? angle(p.getLookAngle(), arrow.getDeltaMovement().scale(-1)) : facing(p, direct);
         GuardPress press=guardPresses.get(p.getUUID());
         Boolean precise=creatureMelee.claimGuardAuthorization(source,direct,p,press==null?0:press.serial,press!=null&&press.held);
-        var result = precise==null?CombatResolver.receiveIncoming(attacker, actor(p), angle, Math.min(1_000_000, event.getAmount()), 0, true, true, direct instanceof AbstractArrow)
+        var result = actor(p).swordCombatEnabled()?CombatResolver.receiveSwordIncoming(attacker,actor(p),angle,Math.min(1_000_000,event.getAmount()),0,true,direct instanceof AbstractArrow,swordHeavy,"")
+                :precise==null?CombatResolver.receiveIncoming(attacker, actor(p), angle, Math.min(1_000_000, event.getAmount()), 0, true, true, direct instanceof AbstractArrow)
                 :CombatResolver.receiveTelegraphed(attacker,actor(p),angle,Math.min(1_000_000,event.getAmount()),0,true,true,false,precise);
         if(result.outcome()!=HitOutcome.DODGED)recordArcheryContact(source,direct);
         if(result.outcome()==HitOutcome.BLOCKED&&result.dealsDamage())markGuardedDamage(p,event.getSource());
         if (result.dealsDamage()) event.setAmount((float) result.damage()); else event.setCanceled(true);
         if (result.outcome() != HitOutcome.HIT) effects(source, p, result);
+    }
+    /** Only an authored, live melee sequence is classified as heavy; arbitrary damage cannot borrow its type. */
+    private boolean swordHeavyMob(Entity entity){
+        if(!(entity instanceof LivingEntity living)||!config.current().combat().swordCombat().heavyMobTypes().contains(BuiltInRegistries.ENTITY_TYPE.getKey(entity.getType()).toString()))return false;
+        var attack=creatureMelee.snapshot(living);return attack!=null&&!attack.clip().isEmpty();
     }
     private boolean creatureClash(LivingIncomingDamageEvent event,ServerPlayer defender) {
         Entity source=event.getSource().getEntity(),direct=event.getSource().getDirectEntity();
@@ -1347,7 +1409,7 @@ public final class RpgServer {
         if (!(victim.level() instanceof net.minecraft.server.level.ServerLevel level)) return;
         if (stunAttacker && result.outcome() == HitOutcome.PARRIED && attacker instanceof LivingEntity living
                 && !(living instanceof ServerPlayer)) {
-            int duration = victim instanceof ServerPlayer defender ? actor(defender).guardRules().parryStunTicks() : config.current().combat().parryStunTicks();
+            int duration = victim instanceof ServerPlayer defender ? actor(defender).swordCombatEnabled()?actor(defender).rules().swordCombat().parryStunTicks():actor(defender).guardRules().parryStunTicks() : config.current().combat().parryStunTicks();
             if (duration > 0 && living.isAlive()) {
                 enemyStuns.put(living.getUUID(), new EnemyStun(living, living.level().getGameTime() + duration));
                 creatureMelee.cancelAttacker(living);
@@ -1361,7 +1423,7 @@ public final class RpgServer {
             level.playSound(null, victim.blockPosition(), SoundEvents.SHIELD_BLOCK.value(), SoundSource.PLAYERS, 0.8f, result.outcome() == HitOutcome.PARRIED ? 1.5f : 1.0f);
             level.sendParticles(ParticleTypes.CRIT, victim.getX(), victim.getY() + 1, victim.getZ(), 8, 0.25, 0.25, 0.25, 0.1);
             if (result.outcome() == HitOutcome.PARRIED && victim instanceof ServerPlayer p) {
-                p.displayClientMessage(Component.literal("§b完美格挡 · 0.2秒内左键反击 ×1.5"), true);
+                p.displayClientMessage(Component.literal(actor(p).swordCombatEnabled()?"§b振刀成功 · 左键专用还击":"§b完美格挡 · 0.2秒内左键反击 ×1.5"), true);
                 send(p, "", null);
             }
         }
@@ -1512,6 +1574,7 @@ public final class RpgServer {
             validatedCreatureCombat = candidate;
             validatedGuardCues = GuardCueSettings.read(config.directory().resolve("guard_cues.json"));
         } catch (IOException error) { throw new IllegalArgumentException("creature_combat.json: " + error.getMessage(),error); }
+        for(String id:definitions.combat().swordCombat().heavyMobTypes())if(!BuiltInRegistries.ENTITY_TYPE.containsKey(Identifier.parse(id)))throw new IllegalArgumentException("Unknown sword heavy entity "+id);
         definitions.collections().validateReferences(id -> BuiltInRegistries.ITEM.containsKey(Identifier.parse(id)),
                 id -> BuiltInRegistries.ENTITY_TYPE.containsKey(Identifier.parse(id)), id -> BuiltInRegistries.POTION.containsKey(Identifier.parse(id)));
         for (var group : definitions.weapons().groups().values()) {
@@ -1554,6 +1617,11 @@ public final class RpgServer {
             swingOffhands.put(player.getUUID(),off);
             damageItems.put(player.getUUID(),actor.style()!=null&&actor.style().controls().leftHand(started.skillId())?off:mainItem(player));
             quests.useSkill(player.getUUID(), started.skillId());
+            if(actor.swordCombatEnabled()){
+                double distance=actor.rules().swordCombat().motionDistances().getOrDefault(started.skillId(),0.0);
+                var aim=actor.attackAim();double yaw=aim==null?player.getYRot():aim.sample(0).yaw();
+                swordMotions.put(player.getUUID(),new SwordMotionPlan(started.swingSequence(),yaw,distance,actor.rules().swordCombat().steeringFraction()));
+            }
         }
         return !starts.isEmpty();
     }
@@ -1580,11 +1648,12 @@ public final class RpgServer {
             model="legacy_dual_blade.fsvoxel";
             if(skill==null)action=actor.phase()==CombatPhase.DRAWING?"dual_draw":actor.phase()==CombatPhase.GUARDING?"dual_guard":"dual_idle_"+Math.max(0,actor.leftSide()+1)+Math.max(0,actor.rightSide()+1);
         }
-        if(visible&&styleId.equals("rapier")&&model.startsWith("legacy_")) {
+        if(visible&&styleId.equals("rapier")&&(model.startsWith("legacy_")||model.equals("rapier_fullbody.fsvoxel"))) {
             if(actor.phase()==CombatPhase.DRAWING)action="rapier_draw";
             if(skill!=null&&skill.id().equals("sword_thrust")&&actor.phase()==CombatPhase.WINDUP&&actor.chargeSnapshot().holding())
                 action=actor.chargeSnapshot().fullyCharged()?"rapier_full_charge":"rapier_charge";
         }
+        if(visible&&actor.swordCombatEnabled()&&actor.phase()==CombatPhase.PARRYING){var r=actor.rules().swordCombat();action="rapier_parry";windup=r.parryWindupTicks();active=r.parryActiveTicks();recovery=r.parryRecoveryTicks();}
         if(visible&&styleId.equals("bow")) {
             var bow=archery.snapshot(player,archeryProgress(player));model="legacy_bow.fsvoxel";action=bow.animationAction();
             // The actor can become visible before the independent bow controller is active.
@@ -1601,7 +1670,7 @@ public final class RpgServer {
         }
         return new RpgAnimationPayload(player.getUUID(), styleId, model, action, phase, remaining,
                 windup,active,recovery,
-                animationSequences.getOrDefault(player.getUUID(), 0L), visible,actor.leftSide(),actor.rightSide(),actor.attackAim(),actor.spearAttackHeld());
+                animationSequences.getOrDefault(player.getUUID(), 0L), visible,actor.leftSide(),actor.rightSide(),actor.attackAim(),actor.spearAttackHeld(),snapshot.swingSequence());
     }
     private void broadcastAnimation(ServerPlayer player, boolean heartbeat) {
         CombatActor actor = actor(player);
@@ -1678,6 +1747,12 @@ public final class RpgServer {
         snapshot.addProperty("attackDamageMultiplier", actor(p).attackDamageMultiplier());
         snapshot.addProperty("legacySkills",true);
         snapshot.add("charge",RpgConfig.JSON.toJsonTree(actor(p).chargeSnapshot()));
+        snapshot.addProperty("swordCombatEnabled",actor(p).swordCombatEnabled());
+        snapshot.addProperty("swordHeavyAttack",actor(p).swordHeavyAttack());
+        snapshot.addProperty("swordSuperArmor",actor(p).swordSuperArmor());
+        snapshot.addProperty("swordParryWindow",actor(p).swordParryWindow());
+        snapshot.addProperty("swordReturnRemainingTicks",actor(p).swordReturnRemainingTicks());
+        snapshot.add("swordCombatRules",RpgConfig.JSON.toJsonTree(actor(p).rules().swordCombat()));
         snapshot.add("targetLock",RpgConfig.JSON.toJsonTree(rapierTargets.snapshot(p, actor(p))));
         var bowProgress=archeryProgress(p);var bowJson=archery.snapshotJson(p,bowProgress);var bowRules=archery.rules();
         bowJson.addProperty("fullSnipeArrowSpeed",ArcheryScores.arrowSpeed(bowRules,bowProgress,true,1));

@@ -13,7 +13,7 @@ public final class DefenseFlowMigrationTest {
         Path fresh=Files.createTempDirectory("fsrpg-defense-fresh-");
         try{
             var config=new RpgConfig(fresh);var d=config.reload();
-            check(d.combat().equals(CombatRules.defaults()),"fresh immutable and bundled rules agree");
+            check(CombatConfigExpectations.legacyMode(d.combat()).equals(CombatRules.defaults()),"fresh historical rules agree with legacy fallback");
             check(d.combat().perfectGuardTicks()==7&&d.combat().weaponClash().contactWindowTicks()==3,"fresh seven-tick guard and three-tick clash");
             check(GuardCueSettings.read(fresh.resolve("guard_cues.json")).equals(GuardCueSettings.defaults()),"fresh cue agrees with seven-tick defaults");
             byte[] before=Files.readAllBytes(fresh.resolve("combat.json"));config.reload();

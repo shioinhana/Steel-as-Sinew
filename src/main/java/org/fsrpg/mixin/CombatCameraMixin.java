@@ -16,8 +16,9 @@ public abstract class CombatCameraMixin {
     @Shadow protected abstract void setPosition(Vec3 position);
     @Inject(method="setup",at=@At("TAIL"))
     private void fsrpg$shoulder(Level level,Entity entity,boolean detached,boolean mirror,float partial,CallbackInfo ci) {
-        if(entity!=Minecraft.getInstance().player||!detached||mirror)return;
-        Vec3 result=CombatCamera.cameraPosition(level,entity,(Camera)(Object)this,partial);
-        if(result!=null)setPosition(result);
+        if(entity!=Minecraft.getInstance().player)return;
+        Camera camera=(Camera)(Object)this;
+        Vec3 result=detached&&!mirror?CombatCamera.cameraPosition(level,entity,camera,partial):null;
+        setPosition(result!=null?result:CombatCamera.swordCameraPosition(level,entity,camera));
     }
 }

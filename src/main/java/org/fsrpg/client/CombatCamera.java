@@ -80,7 +80,7 @@ public final class CombatCamera {
         var game=Minecraft.getInstance();
         updateView();
         if(entity!=game.player||!active())return null;
-        Vec3 eye=entity.getEyePosition(partial);
+        Vec3 eye=entity.getEyePosition(partial).add(SwordMotionClient.renderOffset(entity));
         long started=System.nanoTime();
         var composition=CameraAdjustment.position();
         var local=new org.joml.Vector3f((float)composition.side(),(float)composition.height(),(float)composition.distance()).rotate(camera.rotation());
@@ -108,6 +108,12 @@ public final class CombatCamera {
         lastClipNanos=now;
         double eased=clipSmoother.advance(Math.clamp(fraction,0,1),frameSeconds);
         return offset.scale(Math.clamp(eased,0,1));
+    }
+    /** First/front-person views share the avatar's presentation and retain final-point wall safety. */
+    public static Vec3 swordCameraPosition(net.minecraft.world.level.Level level,net.minecraft.world.entity.Entity entity,Camera camera) {
+        updateView();
+        Vec3 offset=SwordMotionClient.renderOffset(entity),base=camera.position();
+        return offset.lengthSqr()<1e-12?base:base.add(clipCamera(level,entity,base,offset));
     }
     public static Vec3 burstDirection(){
         var game=Minecraft.getInstance();if(game.player==null)return Vec3.ZERO;

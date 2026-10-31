@@ -51,6 +51,27 @@ public final class CombatActor {
     private record QueuedThrust(int fullTicks, int breakCooldown) {}
     private QueuedThrust queuedThrust;
     private int chargeElapsed, chargeFullTicks, chargeBreakCooldown;
+    private boolean swordHeavyCommitted;
+    private long swordParryReadyAt, swordReturnUntil;
+    private int swordParryElapsed;
+    public boolean swordCombatEnabled(){return rules.swordCombat().enabled() && style!=null && style.presentationStyleId().equals("rapier");}
+    public boolean swordHeavyAttack(){return swordCombatEnabled() && swordHeavyCommitted && skill!=null;}
+    public boolean swordSuperArmor(){return swordCombatEnabled() && rules.swordCombat().chargeSuperArmor() && chargeArmed && (phase==CombatPhase.WINDUP || swordHeavyCommitted && phase==CombatPhase.ACTIVE);}
+    public int swordReturnRemainingTicks(){return swordCombatEnabled()?(int)Math.max(0,swordReturnUntil-tick):0;}
+    public boolean swordParryWindow(){var r=rules.swordCombat();return swordCombatEnabled() && phase==CombatPhase.PARRYING && swordParryElapsed>=r.parryWindupTicks() && swordParryElapsed<r.parryWindupTicks()+r.parryActiveTicks();}
+    public ActionResult requestSwordParry(){
+        if(!swordCombatEnabled())return ActionResult.UNSUPPORTED_INPUT;
+        if(!drawn)return ActionResult.NOT_DRAWN;
+        if(tick<swordParryReadyAt)return ActionResult.COOLDOWN;
+        if(pendingHitStun>0 || phase!=CombatPhase.READY && phase!=CombatPhase.GUARDING && phase!=CombatPhase.RECOVERY && !(phase==CombatPhase.WINDUP && chargeArmed))return ActionResult.BUSY;
+        var r=rules.swordCombat();if(!consumeStamina(r.parryStaminaCost()))return ActionResult.INSUFFICIENT_STAMINA;
+        clearAttack();clearTechniques();clearCounter();guardHeld=false;heavyGuard=false;resetGuardChain();burstDash.stopMotion();
+        swordParryElapsed=0;phase=CombatPhase.PARRYING;phaseRemaining=r.parryDurationTicks();swordParryReadyAt=tick+r.parryCooldownTicks();swingSequence++;markCombatActivity();return ActionResult.ACCEPTED;
+    }
+    public void swordParrySucceeded(){
+        if(!swordParryWindow())throw new IllegalStateException("no active sword parry");
+        finishSuccessfulDefense();swordReturnUntil=tick+rules.swordCombat().returnWindowTicks();guardHeld=false;
+    }
     public int leftSide() { return style != null && style.controls().legacyDual() ? leftRest : -1; }
     public int rightSide() { return style != null && style.controls().legacyDual() ? rightRest : -1; }
     public record ChargeSnapshot(boolean active, boolean holding, int elapsedTicks, boolean fullyCharged, boolean parried) {}
@@ -218,6 +239,7 @@ public final class CombatActor {
     }
     /** Telegraphed attacks require their own press, or a still-fresh automatic rearm after a real perfect. */
     public boolean guardPerfectAgainst(Boolean cueAuthorized) {
+        if (swordCombatEnabled()) return false;
         if (phase != CombatPhase.GUARDING || !drawn || heldPerfectGuards>=3 || guardRules().perfectGuardTicks()<=0) return false;
         return cueAuthorized==null ? inPerfectGuardWindow() : cueAuthorized || guardAutoRearmed();
     }
@@ -233,7 +255,7 @@ public final class CombatActor {
         phase=drawn?CombatPhase.READY:CombatPhase.SHEATHED;
         if (drawn && style != null && style.controls().legacyDual()) resetDualHandsAndStreaks();
     }
-    private void clearTechniques() { riposteUntil = repriseUntil = 0; }
+    private void clearTechniques() { riposteUntil = repriseUntil = swordReturnUntil = 0; }
     private void clearCounter() { counterUntil = 0; attackDamageMultiplier = 1; }
 
     public List<SkillStart> drainStartedSkills() {
@@ -456,7 +478,7 @@ public final class CombatActor {
     }
     /** 0 means no interception, 1 blocks the hit, 2 is full-charge guard break and the hit proceeds. */
     public int receiveChargedParry() {
-        if(!chargeArmed || !chargeParryEnabled || phase!=CombatPhase.WINDUP) return 0;
+        if(swordCombatEnabled() || !chargeArmed || !chargeParryEnabled || phase!=CombatPhase.WINDUP) return 0;
         if(chargeParried || chargeElapsed>=chargeFullTicks) {
             String id=skill.id(); int cooldown=chargeBreakCooldown;
             stun(1); skillReadyAt.put(id,tick+cooldown); return 2;
@@ -466,11 +488,13 @@ public final class CombatActor {
     private void commitCharge() {
         if(!chargeArmed) return;
         chargeHeld=false; chargeLungePending=true;
+        if(swordCombatEnabled() && !swordHeavyCommitted && chargeElapsed>=chargeFullTicks) {swordHeavyCommitted=true;attackDamageMultiplier*=rules.swordCombat().chargedDamageMultiplier();}
         if(!chargeParried) skillReadyAt.put(skill.id(),tick+skill.cooldownTicks());
     }
 
     private ActionResult startAttack(SkillDefinition requested, boolean chained, int stage, String styleId) {
         if (requested == null) throw new IllegalArgumentException("skill is required");
+        if(requested.id().equals("sword_parry_return") && (!swordCombatEnabled() || swordReturnRemainingTicks()==0 || !leftIntent))return ActionResult.TECHNIQUE_NOT_READY;
         if (!drawn) return ActionResult.NOT_DRAWN;
         boolean allowedPhase = phase == CombatPhase.READY || phase == CombatPhase.GUARDING
                 || chained && (phase == CombatPhase.WINDUP || phase == CombatPhase.RECOVERY);
@@ -496,7 +520,7 @@ public final class CombatActor {
         skill = timed; attackAim=inputAim;
         attackDamageMultiplier = counter ? rules.perfectGuardCounter().damageMultiplier() : 1;
         if (counter) counterUntil = 0;
-        chargeArmed=chargeHeld=chargeParryEnabled=chargeParried=chargeLungePending=chargeBranch=false; chargeElapsed=0;
+        chargeArmed=chargeHeld=chargeParryEnabled=chargeParried=chargeLungePending=chargeBranch=false; chargeElapsed=0;swordHeavyCommitted=false;
         if(style!=null && style.controls().legacyDual()) {
             var controls=style.controls(); int destination=controls.destination(requested.id());
             if(destination>=0) {
@@ -558,6 +582,7 @@ public final class CombatActor {
         if (style == null || !style.enabled()) return comboResult(ComboInputStatus.REJECTED, ActionResult.STYLE_DISABLED, 0, "");
         if (input == null || skills == null) throw new IllegalArgumentException("input and skill catalog are required");
         style.validateSkills(skills);
+        if(input==SkillInput.LEFT && swordReturnRemainingTicks()>0) return requestNext(skills.get("sword_parry_return"),0,style);
         if(dual() && (input==SkillInput.LEFT || input==SkillInput.RIGHT)) {
             var c=style.controls();
             String id=c.directionalSkill(input,leftRest,rightRest,leftSwingStreak>0);
@@ -693,7 +718,7 @@ public final class CombatActor {
     }
 
     public boolean inPerfectGuardWindow() {
-        return phase == CombatPhase.GUARDING && heldPerfectGuards<3 && tick - guardStarted < guardRules().perfectGuardTicks();
+        return !swordCombatEnabled() && phase == CombatPhase.GUARDING && heldPerfectGuards<3 && tick - guardStarted < guardRules().perfectGuardTicks();
     }
 
     public boolean defenseLimitReached() {
@@ -766,6 +791,7 @@ public final class CombatActor {
     public void queueHitStun(int ticks) {
         SkillDefinition.checkTicks(ticks, "hit stun ticks", true);
         markCombatActivity();
+        if(swordSuperArmor())return;
         clearTechniques();
         // Preserve this tick's already committed outgoing strike for deterministic trades.
         // The next authoritative stun clears its multiplier with the rest of the attack.
@@ -813,6 +839,7 @@ public final class CombatActor {
                             repriseUntil = tick + style.techniques().repriseWindowTicks();
                     }
                 }
+                case PARRYING -> {swordParryElapsed++;if(--phaseRemaining<=0)phase=drawn?CombatPhase.READY:CombatPhase.SHEATHED;}
                 case STUNNED -> { if (--phaseRemaining <= 0) phase = drawn ? CombatPhase.READY : CombatPhase.SHEATHED; }
                 default -> { }
             }
@@ -822,7 +849,7 @@ public final class CombatActor {
         if(style!=null && style.controls().legacyDual() && phase==CombatPhase.READY && tick-lastDualEnd>=40) leftRest=rightRest=-1;
         skillReadyAt.entrySet().removeIf(entry -> entry.getValue() <= tick);
         if(!drawn||phase==CombatPhase.STUNNED||phase==CombatPhase.DODGING||phase==CombatPhase.SHEATHING
-                ||phase==CombatPhase.DRAWING||phase==CombatPhase.GUARDING)burstDash.stopMotion();
+                ||phase==CombatPhase.DRAWING||phase==CombatPhase.GUARDING||phase==CombatPhase.PARRYING)burstDash.stopMotion();
         return new CombatTick(before, phase, dodgeDistance,burstDash.tick(tick));
     }
 
@@ -844,7 +871,7 @@ public final class CombatActor {
         if(!grounded)return ActionResult.AIR_BURST_DISABLED;
         if(style!=null&&!style.enabled())return ActionResult.STYLE_DISABLED;
         if(pendingHitStun>0||phase==CombatPhase.STUNNED||phase==CombatPhase.DODGING||phase==CombatPhase.SHEATHING
-                ||phase==CombatPhase.DRAWING||phase==CombatPhase.GUARDING||burstDash.active())return ActionResult.BUSY;
+                ||phase==CombatPhase.DRAWING||phase==CombatPhase.GUARDING||phase==CombatPhase.PARRYING||burstDash.active())return ActionResult.BUSY;
         if(burstDash.coolingDown(tick))return ActionResult.COOLDOWN;
         if(!consumeStamina(rules.burstDash().staminaCost()))return ActionResult.INSUFFICIENT_STAMINA;
         burstDash.begin(tick,directionX,directionZ,rules.burstDash());
@@ -924,7 +951,7 @@ public final class CombatActor {
         if(skill!=null && dual()) lastDualEnd=tick;
         skill = null; attackAim=null; skillElapsed = 0; swingVictims.clear(); resetCombo();
         attackDamageMultiplier = 1;
-        chargeArmed=chargeHeld=chargeParryEnabled=chargeParried=chargeLungePending=chargeBranch=false; chargeElapsed=0;
+        chargeArmed=chargeHeld=chargeParryEnabled=chargeParried=chargeLungePending=chargeBranch=false; chargeElapsed=0;swordHeavyCommitted=false;
     }
     private void finishDraw() { drawn = true; phase = CombatPhase.READY; phaseRemaining = 0; }
     private void resetDualHandsAndStreaks() { leftRest=rightRest=-1; leftSwingStreak=rightSwingStreak=0; }

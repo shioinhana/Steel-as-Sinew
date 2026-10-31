@@ -86,7 +86,9 @@ public final class RapierRenewalMigration {
         String techniqueModel="models/rapier.fsvoxel";
         boolean stockTechnique=Files.isRegularFile(directory.resolve(techniqueModel))&&hash(directory.resolve(techniqueModel)).equals(baseline.getAsJsonObject("models").get(techniqueModel).getAsString());
         JsonObject updates=new JsonObject();JsonArray actual=candidates.getAsJsonArray("skills.json");
-        JsonArray oldSkills=baseline.getAsJsonArray("skills"),freshSkills=resource("skills.json").getAsJsonArray();
+        // Keep the historical target independent of the opt-in full-body upgrade.
+        JsonObject historicalTarget=resource("sword-combat-0.11.0.json").getAsJsonObject();
+        JsonArray oldSkills=baseline.getAsJsonArray("skills"),freshSkills=historicalTarget.getAsJsonArray("skills");
         if(compatible)for(String id:IDS) {
             JsonObject old=find(oldSkills,id),next=find(freshSkills,id),row=find(actual,id);if(row==null||old==null||next==null)continue;
             if(!Objects.equals(row.get("model"),old.get("model"))||!Objects.equals(row.get("action"),old.get("action")))continue;
@@ -100,7 +102,7 @@ public final class RapierRenewalMigration {
         JsonArray descriptions=new JsonArray();
         if(compatible) {
             JsonArray oldNodes=baseline.getAsJsonArray("nodes"),
-                    newNodes=resource("skill_trees.json").getAsJsonObject().getAsJsonArray("nodes"),
+                    newNodes=historicalTarget.getAsJsonArray("nodes"),
                     actualNodes=candidates.getAsJsonObject("skill_trees.json").getAsJsonArray("nodes");
             for(String id:List.of("rapier","rapier_thrust","rapier_parry_thrust")) {
                 JsonObject old=find(oldNodes,id),next=find(newNodes,id),row=find(actualNodes,id);

@@ -33,7 +33,7 @@ public final class PerfectGuardMigrationTest {
             equal(4,definitions.combat().parryStunTicks(),"new global parry stun is four ticks");
             equal(CombatRules.PerfectGuardCounter.defaults(),definitions.combat().perfectGuardCounter(),"new counter defaults are four ticks and 1.5 damage");
             JsonObject historicalDefaults=RpgConfig.JSON.toJsonTree(CombatRules.defaults()).getAsJsonObject();historicalDefaults.addProperty("perfectGuardTicks",2);
-            equal(RpgConfig.JSON.fromJson(historicalDefaults,CombatRules.class),definitions.combat(),"historical two-tick constructor and bundled combat config agree");
+            equal(RpgConfig.JSON.fromJson(historicalDefaults,CombatRules.class),CombatConfigExpectations.legacyMode(definitions.combat()),"historical two-tick constructor and bundled combat config agree");
             check(Files.exists(directory.resolve(PerfectGuardMigration.MARKER)),"fresh defaults mark completed migration");
             check(!Files.exists(directory.resolve(PerfectGuardMigration.BACKUP)),"fresh correct defaults need no invented previous files");
             Map<String,String> before=texts(directory);PerfectGuardMigration.migrate(directory);equal(before,texts(directory),"historical repeated migration is byte-idempotent");

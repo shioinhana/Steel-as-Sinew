@@ -81,7 +81,14 @@ public final class GuardCuePresentation {
             var point = anchor(tracked.entity, partial);
             var screen = project(point, event.getGuiGraphics());
             if (screen == null || !unoccluded(point)) continue;
-            draw(event.getGuiGraphics(), screen.x, screen.y, sample.progress(), screen.z);
+            boolean sword=ClientState.bool(ClientState.snapshot(),"swordCombatEnabled",false);
+            boolean heavy=false;
+            if(sword){
+                var types=ClientState.object(ClientState.snapshot(),"swordCombatRules").get("heavyMobTypes");
+                String type=net.minecraft.core.registries.BuiltInRegistries.ENTITY_TYPE.getKey(tracked.entity.getType()).toString();
+                if(types!=null&&types.isJsonArray())for(var id:types.getAsJsonArray())if(id.isJsonPrimitive()&&type.equals(id.getAsString()))heavy=true;
+            }
+            draw(event.getGuiGraphics(), screen.x, screen.y, sample.progress(), screen.z,sword,heavy);
             renderedFrames++;
             if (tracked.lastVisibleSequence != sample.sequence()) { tracked.lastVisibleSequence = sample.sequence(); visibleFlashes++; }
             lastFrame = new Frame(entry.getKey(), sample.sequence(), sample.serverGameTime(), sample.flashGameTime(), sample.openGameTime(),
@@ -126,10 +133,11 @@ public final class GuardCuePresentation {
                 ClipContext.Block.COLLIDER, ClipContext.Fluid.NONE, game.player)).getType() == HitResult.Type.MISS;
     }
 
-    private static void draw(GuiGraphics gui, float x, float y, double progress, float scale) {
+    private static void draw(GuiGraphics gui, float x, float y, double progress, float scale,boolean sword,boolean heavy) {
         // One attack-release envelope, never a blinking loop. Milliseconds are supplied independently of guard eligibility.
         double opacity = Math.min(1, .4 + progress * 6) * Math.pow(1 - progress, .7);
-        int gold = (int) Math.round(235 * opacity) << 24 | 0xffc74e;
+        int accent=sword?(heavy?0x49bcff:0xdddddd):0xffc74e;
+        int gold = (int) Math.round(235 * opacity) << 24 | accent;
         int cream = (int) Math.round(255 * opacity) << 24 | 0xfff6ce;
         float pulse = (float) (scale * (1 + .2 * Math.sin(Math.PI * progress)));
         var pose = gui.pose(); pose.pushMatrix(); pose.translate(x, y); pose.scale(pulse, pulse);
@@ -137,7 +145,7 @@ public final class GuardCuePresentation {
         for (int i = 0; i < 48; i++) {
             double a = i * Math.PI * 2 / 48;
             int px = (int) Math.round(Math.cos(a) * ringRadius), py = (int) Math.round(Math.sin(a) * ringRadius);
-            gui.fill(px, py, px + 1, py + 1, (int) Math.round(120 * opacity) << 24 | 0xffc74e);
+            gui.fill(px, py, px + 1, py + 1, (int) Math.round(120 * opacity) << 24 | accent);
         }
         for (int py = -18; py <= 18; py++) {
             double at = Math.abs(py);
@@ -148,6 +156,10 @@ public final class GuardCuePresentation {
         }
         gui.fill(-2, -6, 3, 7, cream); gui.fill(-6, -2, 7, 3, cream);
         pose.popMatrix();
+        if(sword){
+            String hint=heavy?ClientHooks.parryKeyLabel()+" 振刀":ClientHooks.guardKeyLabel()+" 格挡";
+            gui.drawString(Minecraft.getInstance().font,hint,(int)x-Minecraft.getInstance().font.width(hint)/2,(int)y+22,0xff000000|accent);
+        }
     }
 
     public static Frame lastFrame() { return lastFrame; }

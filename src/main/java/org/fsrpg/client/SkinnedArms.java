@@ -24,16 +24,19 @@ public final class SkinnedArms {
     private static final Map<Model<?>, Actor> actors = new WeakHashMap<>();
     private static final Map<ModelPart, Skin> meshes = new IdentityHashMap<>();
     private static final Map<ModelPart, Skin> legMeshes = new IdentityHashMap<>();
+    private static final Map<ModelPart, Skin> authoredLegMeshes = new IdentityHashMap<>();
     private static final Map<ModelPart, Skin> torsoMeshes = new IdentityHashMap<>();
     private static final ArrayDeque<Context> contexts = new ArrayDeque<>();
     private static long renderedSegments;
     private static long renderedLegSections;
     private static long renderedTorsoSections;
+    private static long authoredSwordLegSubmissions;
     private SkinnedArms() {}
     public static long renderedSegments() { return renderedSegments; }
     public static long renderedLegSections() { return renderedLegSections; }
     public static long renderedTorsoSections() {return renderedTorsoSections;}
-    static void clear() { actors.clear(); meshes.clear(); legMeshes.clear(); torsoMeshes.clear(); contexts.clear(); }
+    public static long authoredSwordLegSubmissions() {return authoredSwordLegSubmissions;}
+    static void clear() { actors.clear(); meshes.clear(); legMeshes.clear(); authoredLegMeshes.clear(); torsoMeshes.clear(); contexts.clear(); }
     static void prepare(HumanoidModel<?> model, PlayerAnimations.Frame frame) {
         actors.remove(model);
         if (frame != null && frame.world().containsKey("right_forearm") && frame.world().containsKey("left_forearm"))
@@ -52,6 +55,13 @@ public final class SkinnedArms {
         }
         boolean rightLeg = part == actor.model.rightLeg, leftLeg = part == actor.model.leftLeg;
         if (rightLeg || leftLeg) {
+            if(FullBodySword.frame(actor.frame)) {
+                String side=rightLeg?"right":"left";
+                var world=actor.frame.world();
+                drawAuthoredLeg(part,new AuthoredSwordLegDeformation(world.get(side+"_leg"),world.get(side+"_foreleg"),world.get(side+"_foot"),world.get("body"),side),
+                        poses,consumer,light,overlay,tint);
+                return true;
+            }
             float flexion = rightLeg ? actor.frame.rightKnee() : actor.frame.leftKnee();
             if (flexion <= .0001f&&!connectedWaist) return false;
             drawLeg(part, new LegDeformation(part.x, part.y, part.z, part.xRot, part.yRot, part.zRot, flexion, actor.frame.supportedLower() != null,
@@ -63,6 +73,12 @@ public final class SkinnedArms {
         if (!part.visible) return true;
         draw(part, side, actor.frame, poses, consumer, light, overlay, tint);
         return true;
+    }
+    private static void drawAuthoredLeg(ModelPart part,AuthoredSwordLegDeformation leg,PoseStack poses,VertexConsumer consumer,int light,int overlay,int tint) {
+        if(!part.visible)return;
+        Skin skin=authoredLegMeshes.computeIfAbsent(part,p->split(p,AuthoredSwordLegDeformation.SECTION_PLANES));
+        if(!part.skipDraw){MinecraftMeshRenderer.prepare(leg.deform(skin.mesh),poses.last(),tint,light,overlay).submit(consumer);authoredSwordLegSubmissions++;renderedLegSections+=3;}
+        for(ModelPart child:((ModelPartAccess)(Object)part).fsvoxel$children().values())drawAuthoredLeg(child,leg,poses,consumer,light,overlay,tint);
     }
     private static void drawTorso(ModelPart part,TorsoDeformation torso,PoseStack poses,VertexConsumer consumer,int light,int overlay,int tint) {
         if(!part.visible)return;
