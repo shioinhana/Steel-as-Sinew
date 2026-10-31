@@ -1,0 +1,1120 @@
+{
+  "designVersion": 1,
+  "status": "proposal_only_not_runtime_configuration",
+  "baseline": "FSRPG 0.11.0",
+  "date": "2026-10-31",
+  "currency": {
+    "silverUnitsPerGold": 100
+  },
+  "conditionFormat": "Natural language design requirements; not executable predicates",
+  "prerequisiteSemantics": {
+    "requires_all": "all listed node completions",
+    "requires_any": "for every inner list, at least one node completion"
+  },
+  "sourceDocument": "docs/冒险任务树与游玩体验设计-2026-10-31.md",
+  "shared_awards": [
+    {
+      "id": "proposal.adventure.first_master",
+      "trigger_any": [
+        "R06",
+        "D06",
+        "S06",
+        "A06"
+      ],
+      "once_per_player_per_world": true,
+      "reward_design": {
+        "mind": 2,
+        "body": 2,
+        "footwork": 4
+      }
+    }
+  ],
+  "nodes": [
+    {
+      "code": "M00",
+      "id": "proposal.adventure.m00",
+      "title": "拾起行记",
+      "requires_all": [],
+      "requires_any": [],
+      "completion_design": "首次进入启用冒险规则的世界，打开一次行记；已有角色可从迁移入口进入",
+      "reward_design": {
+        "silver_units": 0,
+        "vanilla_xp": 20,
+        "grants": "冒险行记入口、附近安全教学点指引；死亡可从J重开，无需保管实体书"
+      },
+      "repeatable": false
+    },
+    {
+      "code": "M01",
+      "id": "proposal.adventure.m01",
+      "title": "今晚有落脚处",
+      "requires_all": [
+        "M00"
+      ],
+      "requires_any": [],
+      "completion_design": "完成一次安全营地休息并实际吃完一种食物；有效睡眠也可替代营地休息",
+      "reward_design": {
+        "silver_units": 0,
+        "vanilla_xp": 20,
+        "grants": "开启心法；教学场资格；面包3；营地休息是新增交互，不改变世界时间"
+      },
+      "repeatable": false
+    },
+    {
+      "code": "M02",
+      "id": "proposal.adventure.m02",
+      "title": "先拿稳武器",
+      "requires_all": [
+        "M01"
+      ],
+      "requires_any": [],
+      "completion_design": "四类训练器任选一种，完成3次有效接触、1次主动停手回架及1次安全普通防守；训练器和基础操作临时授权自动借出",
+      "reward_design": {
+        "silver_units": 0,
+        "vanilla_xp": 20,
+        "grants": "永久认证所选武器入门；安全教学防守后开启煅体、步法；返还训练器，发所选石质武器组或弓与16箭"
+      },
+      "repeatable": false
+    },
+    {
+      "code": "M03",
+      "id": "proposal.adventure.m03",
+      "title": "第一次平安归来",
+      "requires_all": [
+        "M02"
+      ],
+      "requires_any": [],
+      "completion_design": "参与击败1只真实敌对生物，再回到任一安全营地；原初次狩猎完成记录可抵战斗项",
+      "reward_design": {
+        "silver_units": 8,
+        "vanilla_xp": 20,
+        "grants": "白色冒险者资格与白牌；心法2/煅体2/步法4一次性训练奖励；开启野外委托"
+      },
+      "repeatable": false
+    },
+    {
+      "code": "M04",
+      "id": "proposal.adventure.m04",
+      "title": "看见前摇",
+      "requires_all": [
+        "M03"
+      ],
+      "requires_any": [],
+      "completion_design": "教学敌人的3次不同攻击中，分别完成普通格挡或离开有效攻击范围；不要求精准格挡",
+      "reward_design": {
+        "silver_units": 6,
+        "vanilla_xp": 20,
+        "grants": "防御教学进阶；食物补给包1"
+      },
+      "repeatable": false
+    },
+    {
+      "code": "M05",
+      "id": "proposal.adventure.m05",
+      "title": "留力再战",
+      "requires_all": [
+        "M04"
+      ],
+      "requires_any": [],
+      "completion_design": "在同场教学遭遇中实际攻击至体力低于40%，脱离接触至回到60%，再有效命中1次；不要求耗空",
+      "reward_design": {
+        "silver_units": 6,
+        "vanilla_xp": 20,
+        "grants": "体力与空挥反馈教程完成；食物补给包1"
+      },
+      "repeatable": false
+    },
+    {
+      "code": "M06",
+      "id": "proposal.adventure.m06",
+      "title": "把路走通",
+      "requires_all": [
+        "M03"
+      ],
+      "requires_any": [],
+      "completion_design": "绑定一个自建或公共营地，实地到达2个不同调查点并返回；调查点可沿途生成",
+      "reward_design": {
+        "silver_units": 10,
+        "vanilla_xp": 20,
+        "grants": "营地登记、路线标记；火把16；开放生活支线"
+      },
+      "repeatable": false
+    },
+    {
+      "code": "M07",
+      "id": "proposal.adventure.m07",
+      "title": "铜牌委托",
+      "requires_all": [
+        "M05",
+        "M06"
+      ],
+      "requires_any": [
+        [
+          "R02",
+          "D02",
+          "S02",
+          "A02"
+        ]
+      ],
+      "completion_design": "完成狩猎、勘路、运补中任一铜牌合同；合同分别为清理1处遭遇/调查3点/真实交付8份面包或等值食物",
+      "reward_design": {
+        "silver_units": 20,
+        "vanilla_xp": 20,
+        "grants": "铜色资格与铜牌；主动技能槽A；升级券1，可选铁质近战武器组或全耐久弓加32箭；首轮分支重选免费"
+      },
+      "repeatable": false
+    },
+    {
+      "code": "M08",
+      "id": "proposal.adventure.m08",
+      "title": "选择接敌方式",
+      "requires_all": [
+        "M07"
+      ],
+      "requires_any": [],
+      "completion_design": "通过一场带远程敌人的教学遭遇：利用遮挡接近并击败射手，或远程压制并击败，或侧路抵达目标撤离区，三选一",
+      "reward_design": {
+        "silver_units": 12,
+        "vanilla_xp": 20,
+        "grants": "敌情笔记；箭24或盾1或补给包2任选一"
+      },
+      "repeatable": false
+    },
+    {
+      "code": "M09",
+      "id": "proposal.adventure.m09",
+      "title": "旧道上的求援",
+      "requires_all": [
+        "M08"
+      ],
+      "requires_any": [],
+      "completion_design": "到达失联驿站，救援终端交互后处理伏击并带回信物；可清敌或开通逃生路线完成救援",
+      "reward_design": {
+        "silver_units": 15,
+        "vanilla_xp": 20,
+        "grants": "营地间路线网络、旧道事件重访；不做长距离脆弱NPC护送"
+      },
+      "repeatable": false
+    },
+    {
+      "code": "M10",
+      "id": "proposal.adventure.m10",
+      "title": "形成自己的打法",
+      "requires_all": [
+        "M09"
+      ],
+      "requires_any": [
+        [
+          "R04",
+          "D04",
+          "S04",
+          "A04"
+        ]
+      ],
+      "completion_design": "在营地装配两个已学主动技能并完成一次预览；没有强制施放连招窗口",
+      "reward_design": {
+        "silver_units": 0,
+        "vanilla_xp": 20,
+        "grants": "主动技能槽B即时开放；一次免费装配教学；此任务开放后即可装备第二槽并完成条件"
+      },
+      "repeatable": false
+    },
+    {
+      "code": "M11",
+      "id": "proposal.adventure.m11",
+      "title": "旧道守门人",
+      "requires_all": [
+        "M10"
+      ],
+      "requires_any": [],
+      "completion_design": "击败旧道守门人；门前训练可无限重试；结果通过即可，精准格挡/无伤仅作额外评级",
+      "reward_design": {
+        "silver_units": 40,
+        "vanilla_xp": 20,
+        "grants": "银色资格与银牌；强化工坊服务、支线精英合同；心法2/煅体2/步法4"
+      },
+      "repeatable": false
+    },
+    {
+      "code": "M12",
+      "id": "proposal.adventure.m12",
+      "title": "地下的回声",
+      "requires_all": [
+        "M11"
+      ],
+      "requires_any": [],
+      "completion_design": "找到1处真实试炼区域并调查入口、补给点、活动刷怪笼3类线索；缺少近邻结构可生成独立公会试炼遗址",
+      "reward_design": {
+        "silver_units": 20,
+        "vanilla_xp": 20,
+        "grants": "试炼复盘入口；试炼补给包1；结构替代实例必须实际运行相同服务端试炼流程"
+      },
+      "repeatable": false
+    },
+    {
+      "code": "M13",
+      "id": "proposal.adventure.m13",
+      "title": "完成一轮试炼",
+      "requires_all": [
+        "M12"
+      ],
+      "requires_any": [],
+      "completion_design": "实际参与并完成1个试炼刷怪笼的完整激活周期，服务端记录完成与贡献；进入房间不计",
+      "reward_design": {
+        "silver_units": 35,
+        "vanilla_xp": 20,
+        "grants": "永久试炼记录；首个晶币1；学校第五课开放"
+      },
+      "repeatable": false
+    },
+    {
+      "code": "M14",
+      "id": "proposal.adventure.m14",
+      "title": "混战中的选择",
+      "requires_all": [
+        "M13"
+      ],
+      "requires_any": [],
+      "completion_design": "完成近战牵制者加远程支援者的混合遭遇，完成任一战术目标：切掉射手/用地形断开射线并逐个处理/守住撤离点",
+      "reward_design": {
+        "silver_units": 20,
+        "vanilla_xp": 20,
+        "grants": "混战认证；补给包2；战后按来源列出受伤原因"
+      },
+      "repeatable": false
+    },
+    {
+      "code": "M15",
+      "id": "proposal.adventure.m15",
+      "title": "钴牌远征者",
+      "requires_all": [
+        "M14"
+      ],
+      "requires_any": [
+        [
+          "R05",
+          "D05",
+          "S05",
+          "A05"
+        ]
+      ],
+      "completion_design": "返回营地登记试炼和任一武器的第五课认证",
+      "reward_design": {
+        "silver_units": 60,
+        "vanilla_xp": 20,
+        "grants": "钴色资格与钴牌；下界调查合同；营地外观旗帜；心法2/煅体2/步法4"
+      },
+      "repeatable": false
+    },
+    {
+      "code": "M16",
+      "id": "proposal.adventure.m16",
+      "title": "远征前的准备",
+      "requires_all": [
+        "M15"
+      ],
+      "requires_any": [],
+      "completion_design": "登记一处下界入口，随身携带可食用物8份、耐火药水1瓶及足够耐久的所选武器；只检查不扣除",
+      "reward_design": {
+        "silver_units": 20,
+        "vanilla_xp": 20,
+        "grants": "一次性耐火药水补给1；下界路线图；缺药者可用20银在钴牌补给点买1瓶"
+      },
+      "repeatable": false
+    },
+    {
+      "code": "M17",
+      "id": "proposal.adventure.m17",
+      "title": "熔火驿路",
+      "requires_all": [
+        "M16"
+      ],
+      "requires_any": [],
+      "completion_design": "在下界建立或登记安全落脚点，到达2个目标区后带回实地勘测记录；不要求特定移动技能",
+      "reward_design": {
+        "silver_units": 35,
+        "vanilla_xp": 20,
+        "grants": "下界币3；下界工坊开放；基础路线允许搭桥与采掘"
+      },
+      "repeatable": false
+    },
+    {
+      "code": "M18",
+      "id": "proposal.adventure.m18",
+      "title": "熔炉执旗者",
+      "requires_all": [
+        "M17"
+      ],
+      "requires_any": [],
+      "completion_design": "完成熔炉精英遭遇；处理直线冲击、区域压迫和重击恢复期，任何武器均可通过",
+      "reward_design": {
+        "silver_units": 50,
+        "vanilla_xp": 20,
+        "grants": "下界币5；一份任选武器的侧向改造配方；不发纯倍率最强装备"
+      },
+      "repeatable": false
+    },
+    {
+      "code": "M19",
+      "id": "proposal.adventure.m19",
+      "title": "通往终界",
+      "requires_all": [
+        "M18"
+      ],
+      "requires_any": [],
+      "completion_design": "找到要塞并登记有效末地入口，完成补给检查；原版已点亮入口可追认，不重复消耗末影之眼",
+      "reward_design": {
+        "silver_units": 30,
+        "vanilla_xp": 20,
+        "grants": "末地路线册；箭32或补给包2；可练习水晶处理和落点观察"
+      },
+      "repeatable": false
+    },
+    {
+      "code": "M20",
+      "id": "proposal.adventure.m20",
+      "title": "终界归航",
+      "requires_all": [
+        "M19"
+      ],
+      "requires_any": [],
+      "completion_design": "实际参与击败末影龙并离开末地或在末地安全营地结算；只追认本人已有服务端屠龙或有效参战记录，全服龙战完成记录不能替代个人事实",
+      "reward_design": {
+        "silver_units": 80,
+        "vanilla_xp": 20,
+        "grants": "永久屠龙记录；西洋剑终阶认证资格；晶币2；末影龙沿用原版战斗，特殊攻击不伪作可精准格挡"
+      },
+      "repeatable": false
+    },
+    {
+      "code": "M21",
+      "id": "proposal.adventure.m21",
+      "title": "金牌的含义",
+      "requires_all": [
+        "M20"
+      ],
+      "requires_any": [],
+      "completion_design": "返回任一公会营地，选择战斗、勘探或营建之一作为个人冒险记录封面",
+      "reward_design": {
+        "silver_units": 100,
+        "vanilla_xp": 20,
+        "grants": "金色资格与金牌；终局合同；纪念旗、行记结局；心法2/煅体2/步法4；主线完结"
+      },
+      "repeatable": false
+    },
+    {
+      "code": "R01",
+      "id": "proposal.adventure.r01",
+      "title": "剑尖与回架",
+      "requires_all": [
+        "M02"
+      ],
+      "requires_any": [],
+      "completion_design": "在训练场免费借用西洋剑入门能力；完成当前五段中任意连续3段真实命中，并主动停止续段1次",
+      "reward_design": {
+        "silver_units": 4,
+        "vanilla_xp": 15,
+        "grants": "永久西洋剑入门认证；无需另付旧根节点成本"
+      },
+      "repeatable": false
+    },
+    {
+      "code": "R02",
+      "id": "proposal.adventure.r02",
+      "title": "一刺到位",
+      "requires_all": [
+        "R01"
+      ],
+      "requires_any": [],
+      "completion_design": "用已学普攻在敌人攻击落空后的恢复期命中3次；训练敌人受控循环",
+      "reward_design": {
+        "silver_units": 8,
+        "vanilla_xp": 15,
+        "grants": "认证现有刺击sword_thrust；解锁提案踏锋刺；槽A在铜牌开放，训练场可先试用"
+      },
+      "repeatable": false
+    },
+    {
+      "code": "R03",
+      "id": "proposal.adventure.r03",
+      "title": "让出攻击线",
+      "requires_all": [
+        "R02",
+        "M07"
+      ],
+      "requires_any": [],
+      "completion_design": "普通Alt闪避结束后12tick内被服务端接受的右键回刺随后真实命中，共2次；可分开尝试；不得用B闪刺代替本目标",
+      "reward_design": {
+        "silver_units": 12,
+        "vanilla_xp": 15,
+        "grants": "认证闪步回刺应用；解锁提案让锋回刺；只侧移，不自动格挡"
+      },
+      "repeatable": false
+    },
+    {
+      "code": "R04",
+      "id": "proposal.adventure.r04",
+      "title": "读懂反击",
+      "requires_all": [
+        "R03"
+      ],
+      "requires_any": [],
+      "completion_design": "二选一：轻精准格挡2次，且其中一次成功后4tick内被接受的左键攻击随后命中；或普通格挡后在敌人恢复期命中4次；均可在固定节奏训练中重试",
+      "reward_design": {
+        "silver_units": 20,
+        "vanilla_xp": 15,
+        "grants": "认证蓄力拨挡刺及其现有条件还击；解锁提案挑星；精准路线另记技术评级，两种通关奖励相同"
+      },
+      "repeatable": false
+    },
+    {
+      "code": "R05",
+      "id": "proposal.adventure.r05",
+      "title": "留到最后的锋刃",
+      "requires_all": [
+        "R04",
+        "M13"
+      ],
+      "requires_any": [],
+      "completion_design": "未满蓄承接一次可拨挡近战并释放命中2次，再完成一场允许自由配装的剑术试炼；试炼不要求吃满蓄破防；另任选1个已经获得的主动技能，在该课实际命中或成功换位1次",
+      "reward_design": {
+        "silver_units": 30,
+        "vanilla_xp": 15,
+        "grants": "解锁提案折光步；四招全开放、自由选四装二；西洋剑进阶认证"
+      },
+      "repeatable": false
+    },
+    {
+      "code": "R06",
+      "id": "proposal.adventure.r06",
+      "title": "终刺有度",
+      "requires_all": [
+        "R05",
+        "M20"
+      ],
+      "requires_any": [],
+      "completion_design": "完成一次高阶剑术遭遇，至少一次右键突刺命中生命低于50%的敌人；不用尚未获得的处决伤害作条件；自由装备的两招须各有1次有效运用，可分阶段累计，不要求同场用四招",
+      "reward_design": {
+        "silver_units": 50,
+        "vanilla_xp": 15,
+        "grants": "永久认证缺血处决；专属检视变体与剑术称号；Boss追加伤害仍需总伤害预算评估；首次任一大师课另触发共享奖励first_master：心2/体2/步4，每个世界每位玩家仅一次",
+        "shared_award_ids": [
+          "proposal.adventure.first_master"
+        ]
+      },
+      "repeatable": false
+    },
+    {
+      "code": "D01",
+      "id": "proposal.adventure.d01",
+      "title": "左右手各有位置",
+      "requires_all": [
+        "M02"
+      ],
+      "requires_any": [],
+      "completion_design": "借用双刀入门，完成左左后转右、右右后转左各1组有效攻击；教学明确同侧第三刀为什么被拒绝",
+      "reward_design": {
+        "silver_units": 4,
+        "vanilla_xp": 15,
+        "grants": "永久双刀入门认证；训练器支持主副手完整借用"
+      },
+      "repeatable": false
+    },
+    {
+      "code": "D02",
+      "id": "proposal.adventure.d02",
+      "title": "用命中保持节奏",
+      "requires_all": [
+        "D01"
+      ],
+      "requires_any": [],
+      "completion_design": "对3个不同训练目标完成左右交替命中，至少一次联动斩归中；不要求尚未解锁的连击层",
+      "reward_design": {
+        "silver_units": 8,
+        "vanilla_xp": 15,
+        "grants": "认证3层连击；解锁提案燕剪"
+      },
+      "repeatable": false
+    },
+    {
+      "code": "D03",
+      "id": "proposal.adventure.d03",
+      "title": "走着打",
+      "requires_all": [
+        "D02",
+        "M07"
+      ],
+      "requires_any": [],
+      "completion_design": "在真实移动中达到3层并持续命中2个不同目标；走跑可用，禁止拿空挥刷层",
+      "reward_design": {
+        "silver_units": 12,
+        "vanilla_xp": 15,
+        "grants": "解锁提案残月避斩；移动中双刀考核"
+      },
+      "repeatable": false
+    },
+    {
+      "code": "D04",
+      "id": "proposal.adventure.d04",
+      "title": "剪开包围",
+      "requires_all": [
+        "D03"
+      ],
+      "requires_any": [],
+      "completion_design": "在三方向分批来敌的训练中，使用燕剪命中1次、联动斩归中1次，并从场边出口脱离包围",
+      "reward_design": {
+        "silver_units": 20,
+        "vanilla_xp": 15,
+        "grants": "认证4层上限；解锁提案并翼挑"
+      },
+      "repeatable": false
+    },
+    {
+      "code": "D05",
+      "id": "proposal.adventure.d05",
+      "title": "试炼的六次呼吸",
+      "requires_all": [
+        "D04",
+        "M13"
+      ],
+      "requires_any": [],
+      "completion_design": "在一次独立试炼遭遇中达到4层，并对3个不同敌人有效命中；无需连续无伤，也不要求预先6层；另任选1个已经获得的主动技能，在该课实际命中或成功换位1次",
+      "reward_design": {
+        "silver_units": 30,
+        "vanilla_xp": 15,
+        "grants": "认证5层与试炼6层资格；解锁提案落羽交锋；层数仍由真实命中逐层积累"
+      },
+      "repeatable": false
+    },
+    {
+      "code": "D06",
+      "id": "proposal.adventure.d06",
+      "title": "双刃不停，脚步有路",
+      "requires_all": [
+        "D05",
+        "M15"
+      ],
+      "requires_any": [],
+      "completion_design": "完成一场混合大师遭遇，达6层1次并成功撤出1次近身合围；空中追击仅额外评级；自由装备的两招须各有1次有效运用，可分阶段累计，不要求同场用四招",
+      "reward_design": {
+        "silver_units": 50,
+        "vanilla_xp": 15,
+        "grants": "双刀大师称号、交刀检视与刀鞘外观；无永久增伤；首次任一大师课另触发共享奖励first_master：心2/体2/步4，每个世界每位玩家仅一次",
+        "shared_award_ids": [
+          "proposal.adventure.first_master"
+        ]
+      },
+      "repeatable": false
+    },
+    {
+      "code": "S01",
+      "id": "proposal.adventure.s01",
+      "title": "枪尖就是准星",
+      "requires_all": [
+        "M02"
+      ],
+      "requires_any": [],
+      "completion_design": "保留现有长枪可直接使用；分别在近、中、远三个合法射程靶完成点刺；禁止用动画伸长冒充命中",
+      "reward_design": {
+        "silver_units": 4,
+        "vanilla_xp": 15,
+        "grants": "长枪训练根认证与距离反馈；新增成长树资格，不撤销旧玩家长枪操作"
+      },
+      "repeatable": false
+    },
+    {
+      "code": "S02",
+      "id": "proposal.adventure.s02",
+      "title": "放得出，收得回",
+      "requires_all": [
+        "S01"
+      ],
+      "requires_any": [],
+      "completion_design": "完成3次点刺后收枪，并在一次保持刺出中依靠拖动真实接触2个不同目标；同目标重复扫过不加数",
+      "reward_design": {
+        "silver_units": 8,
+        "vanilla_xp": 15,
+        "grants": "解锁提案撤步横拦；长枪控距入门"
+      },
+      "repeatable": false
+    },
+    {
+      "code": "S03",
+      "id": "proposal.adventure.s03",
+      "title": "守住身前的线",
+      "requires_all": [
+        "S02",
+        "M07"
+      ],
+      "requires_any": [],
+      "completion_design": "对2个试图接近的训练敌人用撤步横拦各命中1次，然后完成一次横执枪身格挡；不要求自动招架",
+      "reward_design": {
+        "silver_units": 12,
+        "vanilla_xp": 15,
+        "grants": "解锁提案进关贯；退守流认证"
+      },
+      "repeatable": false
+    },
+    {
+      "code": "S04",
+      "id": "proposal.adventure.s04",
+      "title": "步到枪到",
+      "requires_all": [
+        "S03"
+      ],
+      "requires_any": [],
+      "completion_design": "进关贯击中1次；另一次持枪保持中转向扫中侧方合法目标后释放回架；接触与位移分别计数",
+      "reward_design": {
+        "silver_units": 20,
+        "vanilla_xp": 15,
+        "grants": "解锁提案托月；主动双握动作进阶"
+      },
+      "repeatable": false
+    },
+    {
+      "code": "S05",
+      "id": "proposal.adventure.s05",
+      "title": "高低皆有锋",
+      "requires_all": [
+        "S04",
+        "M13"
+      ],
+      "requires_any": [],
+      "completion_design": "托月真实命中可挑飞训练敌人1次；对免疫挑飞的训练重甲敌完成1次合法命中；再完成长枪遭遇；另任选1个已经获得的主动技能，在该课实际命中或成功换位1次",
+      "reward_design": {
+        "silver_units": 30,
+        "vanilla_xp": 15,
+        "grants": "解锁提案压锋；四招全开放；免疫敌练习只要求合法命中"
+      },
+      "repeatable": false
+    },
+    {
+      "code": "S06",
+      "id": "proposal.adventure.s06",
+      "title": "一杆守一隅",
+      "requires_all": [
+        "S05",
+        "M15"
+      ],
+      "requires_any": [],
+      "completion_design": "完成单人可用的据点试炼：3波合计6名敌人，至少3次阻止已标记敌人越过防线；据点耐久剩余大于0；自由装备的两招须各有1次有效运用，可分阶段累计，不要求同场用四招",
+      "reward_design": {
+        "silver_units": 50,
+        "vanilla_xp": 15,
+        "grants": "长枪大师称号、横枪检视与旗缨外观；多人增加并行路线而非只堆生命；首次任一大师课另触发共享奖励first_master：心2/体2/步4，每个世界每位玩家仅一次",
+        "shared_award_ids": [
+          "proposal.adventure.first_master"
+        ]
+      },
+      "repeatable": false
+    },
+    {
+      "code": "A01",
+      "id": "proposal.adventure.a01",
+      "title": "每支箭都有来处",
+      "requires_all": [
+        "M02"
+      ],
+      "requires_any": [],
+      "completion_design": "借用弓术入门，消耗教学箭分别完成速射、狙击命中各1次及近战撞击1次",
+      "reward_design": {
+        "silver_units": 4,
+        "vanilla_xp": 15,
+        "grants": "永久弓术入门认证；普通箭16；教学箭离场回收"
+      },
+      "repeatable": false
+    },
+    {
+      "code": "A02",
+      "id": "proposal.adventure.a02",
+      "title": "先有射击空间",
+      "requires_all": [
+        "A01"
+      ],
+      "requires_any": [],
+      "completion_design": "对接近中的敌人用普通移动或近战撞击拉开距离，再用真实箭命中3次；固定训练目标可重试",
+      "reward_design": {
+        "silver_units": 8,
+        "vanilla_xp": 15,
+        "grants": "认证连续引弓；解锁提案离弦步"
+      },
+      "repeatable": false
+    },
+    {
+      "code": "A03",
+      "id": "proposal.adventure.a03",
+      "title": "看懂抛物线",
+      "requires_all": [
+        "A02",
+        "M07"
+      ],
+      "requires_any": [],
+      "completion_design": "在无遮挡且实际距离12格以上命中3次移动训练靶；可无限补充专用教学箭",
+      "reward_design": {
+        "silver_units": 12,
+        "vanilla_xp": 15,
+        "grants": "认证落点预测；解锁提案跃弦；训练不依赖尚未获得的预测线"
+      },
+      "repeatable": false
+    },
+    {
+      "code": "A04",
+      "id": "proposal.adventure.a04",
+      "title": "决定弓的性格",
+      "requires_all": [
+        "A03"
+      ],
+      "requires_any": [],
+      "completion_design": "在互斥分支试用场分别试用如梭和啮矢，选择其一；再完成一次射手加近战敌的遭遇",
+      "reward_design": {
+        "silver_units": 20,
+        "vanilla_xp": 15,
+        "grants": "认证150分组的所选分支；解锁提案绊足矢；不直接赠送150成长分"
+      },
+      "repeatable": false
+    },
+    {
+      "code": "A05",
+      "id": "proposal.adventure.a05",
+      "title": "箭线穿过战场",
+      "requires_all": [
+        "A04",
+        "M13"
+      ],
+      "requires_any": [],
+      "completion_design": "训练场分别临时授权岩下电与穿堂风，试用后选择其一并命中1次对应训练目标；随后通过一次弓术遭遇；另任选1个已经获得的主动技能，在该课实际命中或成功换位1次",
+      "reward_design": {
+        "silver_units": 30,
+        "vanilla_xp": 15,
+        "grants": "认证250分组所选分支；解锁提案坠羽矢；离场撤销未选临时分支；穿堂风保留既有3格边界，其他箭不继承穿墙"
+      },
+      "repeatable": false
+    },
+    {
+      "code": "A06",
+      "id": "proposal.adventure.a06",
+      "title": "高处的一箭",
+      "requires_all": [
+        "A05",
+        "M15"
+      ],
+      "requires_any": [],
+      "completion_design": "在不同高度的3个安全射位各命中1个真实目标并完成弓术大师遭遇；不用飞行或高阶登云到达；自由装备的两招须各有1次有效运用，可分阶段累计，不要求同场用四招",
+      "reward_design": {
+        "silver_units": 50,
+        "vanilla_xp": 15,
+        "grants": "认证狙击镜；弓术大师称号、箭袋外观；倍镜仍可关闭；首次任一大师课另触发共享奖励first_master：心2/体2/步4，每个世界每位玩家仅一次",
+        "shared_award_ids": [
+          "proposal.adventure.first_master"
+        ]
+      },
+      "repeatable": false
+    },
+    {
+      "code": "F01",
+      "id": "proposal.adventure.f01",
+      "title": "停，走，再起步",
+      "requires_all": [
+        "M03"
+      ],
+      "requires_any": [],
+      "completion_design": "完成地面Shift冲量1次、Alt闪避1次、正常步行绕开障碍1次；分别显示费用和是否有无敌",
+      "reward_design": {
+        "silver_units": 5,
+        "vanilla_xp": 12,
+        "grants": "步法行记与距离标记；三种移动不混为一个技能"
+      },
+      "repeatable": false
+    },
+    {
+      "code": "F02",
+      "id": "proposal.adventure.f02",
+      "title": "脱兔或飞鸿",
+      "requires_all": [
+        "F01",
+        "M07"
+      ],
+      "requires_any": [],
+      "completion_design": "在安全场分别试用两种B流派并选择一种，再完成有两种路线的短课程",
+      "reward_design": {
+        "silver_units": 10,
+        "vanilla_xp": 12,
+        "grants": "永久认证所选流派；免费首次重选；B不覆盖Shift与Alt"
+      },
+      "repeatable": false
+    },
+    {
+      "code": "F03",
+      "id": "proposal.adventure.f03",
+      "title": "抬头还有一条路",
+      "requires_all": [
+        "F02",
+        "M11"
+      ],
+      "requires_any": [],
+      "completion_design": "使用临时教学登云完成一次空中跳并落在安全平台；离场撤销临时能力",
+      "reward_design": {
+        "silver_units": 15,
+        "vanilla_xp": 12,
+        "grants": "登云一认证；冒险技巧槽容量提升至至少1，不消耗传统每150步法的额度"
+      },
+      "repeatable": false
+    },
+    {
+      "code": "F04",
+      "id": "proposal.adventure.f04",
+      "title": "借墙与借势",
+      "requires_all": [
+        "F03",
+        "M13"
+      ],
+      "requires_any": [],
+      "completion_design": "临时教学登云二完成蹬墙与踩头各1次；踩头使用专用训练实体",
+      "reward_design": {
+        "silver_units": 20,
+        "vanilla_xp": 12,
+        "grants": "登云二认证；冒险技巧槽容量提升至至少2；空中特技G保留24tick共享冷却"
+      },
+      "repeatable": false
+    },
+    {
+      "code": "F05",
+      "id": "proposal.adventure.f05",
+      "title": "落地也是动作",
+      "requires_all": [
+        "F02",
+        "M15"
+      ],
+      "requires_any": [],
+      "completion_design": "临时试用若轻一/二，完成可用楼梯返回起点的高低路线；安全接落不要求真摔伤",
+      "reward_design": {
+        "silver_units": 25,
+        "vanilla_xp": 12,
+        "grants": "若轻一/二认证、技巧槽容量提升至至少3；补做低阶课不会降容量；与登云共用，若轻二须装备若轻一"
+      },
+      "repeatable": false
+    },
+    {
+      "code": "F06",
+      "id": "proposal.adventure.f06",
+      "title": "选一条登峰路",
+      "requires_all": [
+        "F04",
+        "F05",
+        "M21"
+      ],
+      "requires_any": [],
+      "completion_design": "临时试用登云三与若轻三，完成各自对应路线，再选择冒险终阶流派",
+      "reward_design": {
+        "silver_units": 40,
+        "vanilla_xp": 12,
+        "grants": "终阶二选一：登云三或若轻三；重选在营地免费；若轻三零冷却属原规则，高阶实战是否限制须专项平衡"
+      },
+      "repeatable": false
+    },
+    {
+      "code": "L01",
+      "id": "proposal.adventure.l01",
+      "title": "一处属于你的营地",
+      "requires_all": [
+        "M06"
+      ],
+      "requires_any": [],
+      "completion_design": "登记含床或休息垫、火源、储物点的自建区域；服务端检查实际方块且区域所有者同意",
+      "reward_design": {
+        "silver_units": 8,
+        "vanilla_xp": 10,
+        "grants": "公会营地标牌配方；家具配方；不免费传送"
+      },
+      "repeatable": false
+    },
+    {
+      "code": "L02",
+      "id": "proposal.adventure.l02",
+      "title": "餐桌也能教人",
+      "requires_all": [
+        "L01"
+      ],
+      "requires_any": [],
+      "completion_design": "实际食用3种不同食物；不要求稀有食材，旧食物种类记录可追认",
+      "reward_design": {
+        "silver_units": 10,
+        "vanilla_xp": 10,
+        "grants": "旅行口粮配方；补给包1；保留原有食物修行收益"
+      },
+      "repeatable": false
+    },
+    {
+      "code": "L03",
+      "id": "proposal.adventure.l03",
+      "title": "种下一次远行",
+      "requires_all": [
+        "L01"
+      ],
+      "requires_any": [],
+      "completion_design": "按现有交易规则完成2种作物提交；已有记录可追认，不再次扣除",
+      "reward_design": {
+        "silver_units": 10,
+        "vanilla_xp": 10,
+        "grants": "灌溉/储粮装饰配方；既有种子选择与10种作物里程碑照常保留"
+      },
+      "repeatable": false
+    },
+    {
+      "code": "L04",
+      "id": "proposal.adventure.l04",
+      "title": "观察比猎杀更多",
+      "requires_all": [
+        "M07"
+      ],
+      "requires_any": [],
+      "completion_design": "对3种敌人的攻击成功防守或避开各1次，并提交其常见掉落各1；无需全部稀有掉落",
+      "reward_design": {
+        "silver_units": 15,
+        "vanilla_xp": 10,
+        "grants": "敌情卡和展示底座；现有63种收集目录作为独立收藏挑战保留"
+      },
+      "repeatable": false
+    },
+    {
+      "code": "L05",
+      "id": "proposal.adventure.l05",
+      "title": "修好再出发",
+      "requires_all": [
+        "M11",
+        "L01"
+      ],
+      "requires_any": [],
+      "completion_design": "用实际材料完成1次修理与1次侧向改造预览，再决定应用或取消改造",
+      "reward_design": {
+        "silver_units": 20,
+        "vanilla_xp": 10,
+        "grants": "工坊侧向改造服务；首改免费人工费，材料仍消耗；预览取消不收费"
+      },
+      "repeatable": false
+    },
+    {
+      "code": "L06",
+      "id": "proposal.adventure.l06",
+      "title": "让远行有归处",
+      "requires_all": [
+        "L02",
+        "L03",
+        "L04",
+        "L05"
+      ],
+      "requires_any": [],
+      "completion_design": "完成1次营地补给合同或建设第二营地；合同实际扣12份口粮，第二营地须独立登记",
+      "reward_design": {
+        "silver_units": 30,
+        "vanilla_xp": 10,
+        "grants": "营建者称号、营地旗；便携营地外观套件；不会解锁强于战斗毕业装的装备"
+      },
+      "repeatable": false
+    },
+    {
+      "code": "E01",
+      "id": "proposal.adventure.e01",
+      "title": "第一份大师合同",
+      "requires_all": [
+        "M21"
+      ],
+      "requires_any": [
+        [
+          "R06",
+          "D06",
+          "S06",
+          "A06"
+        ]
+      ],
+      "completion_design": "完成任一大师精英合同；从重甲、远程、地形三类中自选一类",
+      "reward_design": {
+        "silver_units": 60,
+        "vanilla_xp": 25,
+        "grants": "晶币1；大师合同池；此节点首通一次，后续合同按独立重复规则结算"
+      },
+      "repeatable": false
+    },
+    {
+      "code": "E02",
+      "id": "proposal.adventure.e02",
+      "title": "异种的招式",
+      "requires_all": [
+        "E01"
+      ],
+      "requires_any": [],
+      "completion_design": "完成3个不同敌情标签的合同，允许换武器；同模板同实例只算一次",
+      "reward_design": {
+        "silver_units": 80,
+        "vanilla_xp": 25,
+        "grants": "晶币2；怪物展示册与外观染色"
+      },
+      "repeatable": false
+    },
+    {
+      "code": "E03",
+      "id": "proposal.adventure.e03",
+      "title": "再学一门武艺",
+      "requires_all": [
+        "M21"
+      ],
+      "requires_any": [],
+      "completion_design": "将任意第二武器完成到第四课；已学两类可追认",
+      "reward_design": {
+        "silver_units": 60,
+        "vanilla_xp": 25,
+        "grants": "双学派称号、第二武器的检视外观；无全职业必修要求"
+      },
+      "repeatable": false
+    },
+    {
+      "code": "E04",
+      "id": "proposal.adventure.e04",
+      "title": "远征队的分工",
+      "requires_all": [
+        "E01"
+      ],
+      "requires_any": [],
+      "completion_design": "多人共同完成1次远征合同，或单人完成等价的牵制/破局/撤离三阶段合同",
+      "reward_design": {
+        "silver_units": 80,
+        "vanilla_xp": 25,
+        "grants": "队伍旗或独行旗任选；晶币1；不把联机作为单机通关门槛"
+      },
+      "repeatable": false
+    },
+    {
+      "code": "E05",
+      "id": "proposal.adventure.e05",
+      "title": "重访旧道",
+      "requires_all": [
+        "E02"
+      ],
+      "requires_any": [],
+      "completion_design": "在可选困难变体中击败旧道与熔炉两名精英；无伤、限装只作为挑战徽记条件",
+      "reward_design": {
+        "silver_units": 100,
+        "vanilla_xp": 25,
+        "grants": "两套纪念检视/盔甲外观；晶币2；普通版的技能奖励仍可获得"
+      },
+      "repeatable": false
+    },
+    {
+      "code": "E06",
+      "id": "proposal.adventure.e06",
+      "title": "把故事留在营地",
+      "requires_all": [
+        "E01",
+        "L06"
+      ],
+      "requires_any": [],
+      "completion_design": "在营地放置任意三件自己的冒险纪念物并完成行记归档；不收走纪念物",
+      "reward_design": {
+        "silver_units": 40,
+        "vanilla_xp": 25,
+        "grants": "个人冒险展示墙与结局相册；全收集无需清空所有可重复合同"
+      },
+      "repeatable": false
+    }
+  ]
+}
