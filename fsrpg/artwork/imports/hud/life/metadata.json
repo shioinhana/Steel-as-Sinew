@@ -1,0 +1,47 @@
+{
+  "jobId": "job_a4df489e33754ec7be63ae9c6f6869be",
+  "images": [
+    {
+      "index": "01",
+      "fileName": "01_切图_1.png",
+      "name": "切图 1",
+      "jobId": "job_a4df489e33754ec7be63ae9c6f6869be"
+    },
+    {
+      "index": "02",
+      "fileName": "02_切图_2.png",
+      "name": "切图 2",
+      "jobId": "job_a4df489e33754ec7be63ae9c6f6869be"
+    },
+    {
+      "index": "03",
+      "fileName": "03_切图_3.png",
+      "name": "切图 3",
+      "jobId": "job_a4df489e33754ec7be63ae9c6f6869be"
+    },
+    {
+      "index": "04",
+      "fileName": "04_切图_4.png",
+      "name": "切图 4",
+      "jobId": "job_a4df489e33754ec7be63ae9c6f6869be"
+    },
+    {
+      "index": "05",
+      "fileName": "05_切图_5.png",
+      "name": "切图 5",
+      "jobId": "job_a4df489e33754ec7be63ae9c6f6869be"
+    },
+    {
+      "index": "06",
+      "fileName": "06_切图_6.png",
+      "name": "切图 6",
+      "jobId": "job_a4df489e33754ec7be63ae9c6f6869be"
+    },
+    {
+      "index": "07",
+      "fileName": "07_切图_7.png",
+      "name": "切图 7",
+      "jobId": "job_a4df489e33754ec7be63ae9c6f6869be"
+    }
+  ]
+}

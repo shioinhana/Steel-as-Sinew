@@ -1,0 +1,11 @@
+.gradle/
+build/
+run/
+.idea/
+*.log
+__pycache__/
+dist/
+delivery/
+workbench/
+verification/
+*.jfr

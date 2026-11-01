@@ -1,0 +1,115 @@
+{
+  "format": "fsrpg.rapier-fencing.v1",
+  "version": "0.8.5",
+  "authorization": "User explicitly authorized a complete 4-6 phrase single-handed rapier rework",
+  "samplingHz": 120,
+  "sourcePhase": {
+    "windupEnd": 0.26,
+    "activeEnd": 0.86
+  },
+  "handoff": "Previous ACTIVE end equals next source first pose; independent recovery returns to guard",
+  "phrases": [
+    "direct-thrust",
+    "disengage-thrust",
+    "opposition-thrust",
+    "short-return-cut",
+    "lunge-thrust"
+  ],
+  "files": [
+    {
+      "path": "src/main/resources/assets/fsrpg/fsvoxel/models/legacy_rapier.fsvoxel",
+      "originalSha256": "6c23401a5010c59d1d1a01dff6a48be1684b3ecd0f2f072652530507d962123a",
+      "newSha256": "7a03daf4fb62df9677d89d1d1a6379d905a2954a060d750f56c2469889dd6881",
+      "changedActions": [
+        "legacy_rapier_attack1",
+        "legacy_rapier_attack1_upper",
+        "legacy_rapier_attack2",
+        "legacy_rapier_attack2_upper",
+        "legacy_rapier_attack3",
+        "legacy_rapier_attack3_upper",
+        "legacy_rapier_attack4",
+        "legacy_rapier_attack4_upper",
+        "legacy_rapier_attack5",
+        "legacy_rapier_attack5_upper",
+        "legacy_rapier_idle_upper",
+        "legacy_rapier_run_hold",
+        "legacy_rapier_run_hold_back",
+        "legacy_rapier_run_hold_left",
+        "legacy_rapier_run_hold_right",
+        "legacy_rapier_static_idle",
+        "legacy_rapier_walk_hold",
+        "legacy_rapier_walk_hold_back",
+        "legacy_rapier_walk_hold_left",
+        "legacy_rapier_walk_hold_right",
+        "rapier_attack1",
+        "rapier_attack2",
+        "rapier_attack3",
+        "rapier_attack4",
+        "rapier_attack5",
+        "rapier_idle",
+        "rapier_run",
+        "rapier_stance"
+      ],
+      "unchangedActions": 52,
+      "geometryUnchanged": true,
+      "officialItemCarrierUnchanged": true,
+      "previousFourAttacksReplaced": true,
+      "addedActions": [
+        "legacy_rapier_attack5",
+        "legacy_rapier_attack5_upper",
+        "rapier_attack5"
+      ]
+    },
+    {
+      "path": "src/main/resources/assets/fsrpg/fsvoxel/models/legacy_rapier_fp.fsvoxel",
+      "originalSha256": "227b5cfdf5e709eed25db0e2b88c557feccd2bb97c6dc39e7794716ba1f5de07",
+      "newSha256": "4e499e54aeff95c3a782ecc5aedbf8dc03057470e4bfa3490d8867a6cc3aa1d4",
+      "changedActions": [
+        "legacy_rapier_attack1",
+        "legacy_rapier_attack1_upper",
+        "legacy_rapier_attack2",
+        "legacy_rapier_attack2_upper",
+        "legacy_rapier_attack3",
+        "legacy_rapier_attack3_upper",
+        "legacy_rapier_attack4",
+        "legacy_rapier_attack4_upper",
+        "legacy_rapier_attack5",
+        "legacy_rapier_attack5_upper",
+        "legacy_rapier_run_hold",
+        "legacy_rapier_static_idle",
+        "legacy_rapier_walk_hold",
+        "rapier_attack1",
+        "rapier_attack2",
+        "rapier_attack3",
+        "rapier_attack4",
+        "rapier_attack5",
+        "rapier_idle",
+        "rapier_run",
+        "rapier_stance"
+      ],
+      "unchangedActions": 43,
+      "geometryUnchanged": true,
+      "officialItemCarrierUnchanged": true,
+      "previousFourAttacksReplaced": true,
+      "addedActions": [
+        "legacy_rapier_attack5",
+        "legacy_rapier_attack5_upper",
+        "rapier_attack5"
+      ]
+    }
+  ],
+  "assets": [
+    {
+      "entry": "assets/fsrpg/fsvoxel/models/legacy_rapier.fsvoxel",
+      "relativePath": "models/legacy_rapier.fsvoxel",
+      "beforeSha256": "6c23401a5010c59d1d1a01dff6a48be1684b3ecd0f2f072652530507d962123a",
+      "afterSha256": "7a03daf4fb62df9677d89d1d1a6379d905a2954a060d750f56c2469889dd6881"
+    },
+    {
+      "entry": "assets/fsrpg/fsvoxel/models/legacy_rapier_fp.fsvoxel",
+      "relativePath": "models/legacy_rapier_fp.fsvoxel",
+      "beforeSha256": "227b5cfdf5e709eed25db0e2b88c557feccd2bb97c6dc39e7794716ba1f5de07",
+      "afterSha256": "4e499e54aeff95c3a782ecc5aedbf8dc03057470e4bfa3490d8867a6cc3aa1d4"
+    }
+  ]
+}

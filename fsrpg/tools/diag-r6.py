@@ -1,0 +1,2 @@
+from pathlib import Path
+p=Path('tools/sword-path.mjs');s=p.read_text(encoding='utf8');anchor='if(times.length&&!queries.every(q=>q.local))d.keyGeometry=';s=s.replace(anchor,"if(times.length&&!queries.every(q=>q.local))d.contactGeometry=values.flatMap((v,i)=>times[i]>=.27&&times[i]<=.60?[{time:times[i],elbow:v.elbow,palm:v.palm,tip:v.tip,pronation:v.pronation??0}]:[]);\n "+anchor);p.write_text(s,encoding='utf8')

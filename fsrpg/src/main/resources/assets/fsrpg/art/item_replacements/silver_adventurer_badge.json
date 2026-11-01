@@ -1,0 +1,48 @@
+{
+  "id": "fsrpg:silver_adventurer_badge",
+  "label": "银色冒险者牌",
+  "source": "artwork/imports/white_adventurer/白色冒险者.bbmodel",
+  "sourceSha256": "3def8bca4337a495ba82017a60d41c517af36aaa09f4e193d983c7ac7bf32b7c",
+  "elements": 169,
+  "sourceElements": 169,
+  "hiddenOrUnexportedElements": 0,
+  "groups": 2,
+  "rootGroups": 2,
+  "faces": 1014,
+  "textures": [
+    {
+      "id": "fsrpg:textures/item/silver_adventurer_badge_0.png",
+      "width": 64,
+      "height": 64,
+      "sha256": "8aca3d45624fd7c8a1173f6f95ecfdad393fd7987cc7c2b17438f8f84d40707b"
+    }
+  ],
+  "textureOverride": null,
+  "boundsPixels": [
+    [
+      0.975732,
+      -0.47713,
+      -4.24161
+    ],
+    [
+      15.024268,
+      2.77713,
+      19.94161
+    ]
+  ],
+  "profile": "flat",
+  "displayContexts": [
+    "gui",
+    "ground",
+    "fixed",
+    "head",
+    "firstperson_righthand",
+    "firstperson_lefthand",
+    "thirdperson_righthand",
+    "thirdperson_lefthand",
+    "on_shelf"
+  ],
+  "item": "fsrpg:silver_adventurer_badge",
+  "replacementTargetConfirmedByUser": true,
+  "scope": "Retain the 0.7.3 silver item replacement and its original source."
+}

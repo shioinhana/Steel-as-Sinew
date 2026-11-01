@@ -1,0 +1,70 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "FSRPG cosmetic weapon inspections",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "actions"],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "actions": {
+      "type": "array", "minItems": 1, "maxItems": 64,
+      "items": {
+        "type": "object", "additionalProperties": false,
+        "required": ["id", "style", "title", "duration", "enter", "exit", "keys"],
+        "properties": {
+          "id": { "type": "string", "pattern": "^[a-z][a-z0-9_]{2,63}$" },
+          "style": { "enum": ["rapier", "dual_blade", "spear", "bow"] },
+          "title": { "type": "string", "minLength": 1, "maxLength": 80 },
+          "duration": { "type": "number", "minimum": 2, "maximum": 15, "description": "Seconds; enter + exit must be less than duration." },
+          "enter": { "type": "number", "minimum": 0.3, "maximum": 3 },
+          "exit": { "type": "number", "minimum": 0.3, "maximum": 3 },
+          "keys": {
+            "type": "array", "minItems": 3, "maxItems": 100,
+            "description": "Strictly increasing normalized t, with exact first t=0 and last t=1.",
+            "items": {
+              "type": "object", "additionalProperties": false,
+              "required": ["t", "body", "right", "left", "pole"],
+              "properties": {
+                "t": { "type": "number", "minimum": 0, "maximum": 1 },
+                "body": {
+                  "type": "array", "minItems": 4, "maxItems": 4,
+                  "items": { "type": "number", "minimum": -45, "maximum": 45 },
+                  "description": "[chest yaw, forward lean, bank, head pitch], degrees."
+                },
+                "right": { "$ref": "#/$defs/hand" },
+                "left": { "$ref": "#/$defs/hand" },
+                "pole": {
+                  "type": "array", "minItems": 7, "maxItems": 7, "items": false,
+                  "prefixItems": [
+                    { "type": "number", "minimum": -95, "maximum": 95 },
+                    { "type": "number", "minimum": 30, "maximum": 190 },
+                    { "type": "number", "minimum": -35, "maximum": 100 },
+                    { "type": "number", "minimum": -720, "maximum": 720 },
+                    { "type": "number", "minimum": -720, "maximum": 720 },
+                    { "type": "number", "minimum": -720, "maximum": 720 },
+                    { "type": "number", "minimum": 20, "maximum": 65 }
+                  ],
+                  "description": "[center x/y/z in cm, shaft yaw/elevation/roll in degrees, palm spacing cm]."
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "hand": {
+      "type": "array", "minItems": 6, "maxItems": 6, "items": false,
+      "prefixItems": [
+        { "type": "number", "minimum": -95, "maximum": 95 },
+        { "type": "number", "minimum": 30, "maximum": 190 },
+        { "type": "number", "minimum": -35, "maximum": 100 },
+        { "type": "number", "minimum": -720, "maximum": 720 },
+        { "type": "number", "minimum": -720, "maximum": 720 },
+        { "type": "number", "minimum": -720, "maximum": 720 }
+      ],
+      "description": "[wrist x/y/z in cm, yaw/elevation/roll in degrees]. Sword angles orient the actual blade; empty/bow hands orient the palm, with the bow's existing root frame."
+    }
+  }
+}

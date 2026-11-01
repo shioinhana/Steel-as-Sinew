@@ -1,0 +1,31 @@
+{
+  "required": true,
+  "minVersion": "0.8",
+  "package": "org.fsrpg.mixin",
+  "compatibilityLevel": "JAVA_21",
+  "client": [
+    "PlayerModelMixin",
+    "SwordTravelRenderMixin",
+    "AvatarSkinMixin",
+    "AvatarHandMixin",
+    "HumanoidArmorMixin",
+    "ModelRenderContextMixin",
+    "SkinnedArmMixin",
+    "HeldItemMixin",
+    "ItemStateAccess",
+    "ItemLayerAccess",
+    "CombatMouseMixin",
+    "CombatCameraMixin",
+    "ShoulderPickMixin",
+    "ShoulderInteractionMixin",
+    "GuardDamageCameraMixin",
+    "GuardDamagePacketMixin",
+    "ClientInputAccess",
+    "GameRendererAccess",
+    "ShoulderWorldViewMixin",
+    "GuiContextAccess"
+  ],
+  "injectors": {
+    "defaultRequire": 1
+  }
+}

@@ -1,0 +1,22 @@
+// Run the preserved old spear solver first on the same focused diagnostics classpath.
+// .\gradlew.bat -I tools/spear-baseline.gradle spearSafetyBaseline --console=plain
+allprojects {
+    afterEvaluate { project ->
+        def oldOutput=project.layout.buildDirectory.dir('spear-baseline')
+        def oldCompiler=project.tasks.register('compileSpearBaseline', JavaCompile) {
+            dependsOn project.tasks.named('testClasses')
+            source project.file('verification/spear-solver-20261012/before/SpearAimPose.java')
+            destinationDirectory=oldOutput
+            classpath=project.sourceSets.test.runtimeClasspath
+            javaCompiler=project.javaToolchains.compilerFor { languageVersion=JavaLanguageVersion.of(21) }
+            options.encoding='UTF-8'
+        }
+        project.tasks.register('spearSafetyBaseline', JavaExec) {
+            dependsOn oldCompiler
+            classpath=project.files(oldOutput)+project.sourceSets.test.runtimeClasspath
+            mainClass='org.fsrpg.client.SpearSafetyTest'
+            jvmArgs '-Dfile.encoding=UTF-8'
+            args 'verification/spear-solver-20261012/baseline.json'
+        }
+    }
+}

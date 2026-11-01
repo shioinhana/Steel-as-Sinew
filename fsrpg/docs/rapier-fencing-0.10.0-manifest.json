@@ -1,0 +1,137 @@
+{
+  "format": "fsrpg.rapier-fencing.v2",
+  "version": "0.10.0",
+  "samplingHz": 120,
+  "sourcePhase": {
+    "windupEnd": 0.26,
+    "contact": 0.56,
+    "activeEnd": 0.86
+  },
+  "phrases": [
+    "direct-thrust",
+    "rising-cut",
+    "diagonal-cut",
+    "return-cut",
+    "lunge-thrust"
+  ],
+  "branches": [
+    "charged-thrust",
+    "riposte",
+    "reprise"
+  ],
+  "handoff": "Previous ACTIVE end equals next source first pose; unqueued recovery returns to guard",
+  "anatomy": {
+    "armSegmentCm": 37.5,
+    "maxWristFlexionDegrees": 34,
+    "maxForearmPronationDegrees": 30,
+    "baseStanceDegrees": 65,
+    "maxTorsoExtraYawDegrees": 9
+  },
+  "files": [
+    {
+      "path": "src/main/resources/assets/fsrpg/fsvoxel/models/legacy_rapier.fsvoxel",
+      "changedActions": [
+        "legacy_rapier_attack1",
+        "legacy_rapier_attack1_upper",
+        "legacy_rapier_attack2",
+        "legacy_rapier_attack2_upper",
+        "legacy_rapier_attack3",
+        "legacy_rapier_attack3_upper",
+        "legacy_rapier_attack4",
+        "legacy_rapier_attack4_upper",
+        "legacy_rapier_attack5",
+        "legacy_rapier_attack5_upper",
+        "legacy_rapier_attack_dual",
+        "legacy_rapier_attack_dual_upper",
+        "legacy_rapier_idle_upper",
+        "legacy_rapier_rapier_thrust_hit",
+        "legacy_rapier_rapier_thrust_hit_upper",
+        "legacy_rapier_rapier_thrust_miss",
+        "legacy_rapier_rapier_thrust_miss_upper",
+        "legacy_rapier_run_hold",
+        "legacy_rapier_run_hold_back",
+        "legacy_rapier_run_hold_left",
+        "legacy_rapier_run_hold_right",
+        "legacy_rapier_static_idle",
+        "legacy_rapier_walk_hold",
+        "legacy_rapier_walk_hold_back",
+        "legacy_rapier_walk_hold_left",
+        "legacy_rapier_walk_hold_right",
+        "rapier_attack1",
+        "rapier_attack2",
+        "rapier_attack3",
+        "rapier_attack4",
+        "rapier_attack5",
+        "rapier_charge",
+        "rapier_counter",
+        "rapier_full_charge",
+        "rapier_idle",
+        "rapier_reprise",
+        "rapier_riposte",
+        "rapier_run",
+        "rapier_stance",
+        "rapier_thrust_hit",
+        "rapier_thrust_miss"
+      ],
+      "unchangedActions": 41,
+      "geometryUnchanged": true,
+      "officialItemCarrierUnchanged": true
+    },
+    {
+      "path": "src/main/resources/assets/fsrpg/fsvoxel/models/legacy_rapier_fp.fsvoxel",
+      "changedActions": [
+        "legacy_rapier_attack1",
+        "legacy_rapier_attack1_upper",
+        "legacy_rapier_attack2",
+        "legacy_rapier_attack2_upper",
+        "legacy_rapier_attack3",
+        "legacy_rapier_attack3_upper",
+        "legacy_rapier_attack4",
+        "legacy_rapier_attack4_upper",
+        "legacy_rapier_attack5",
+        "legacy_rapier_attack5_upper",
+        "legacy_rapier_attack_dual",
+        "legacy_rapier_attack_dual_upper",
+        "legacy_rapier_rapier_thrust_hit",
+        "legacy_rapier_rapier_thrust_hit_upper",
+        "legacy_rapier_rapier_thrust_miss",
+        "legacy_rapier_rapier_thrust_miss_upper",
+        "legacy_rapier_run_hold",
+        "legacy_rapier_static_idle",
+        "legacy_rapier_walk_hold",
+        "rapier_attack1",
+        "rapier_attack2",
+        "rapier_attack3",
+        "rapier_attack4",
+        "rapier_attack5",
+        "rapier_charge",
+        "rapier_counter",
+        "rapier_full_charge",
+        "rapier_idle",
+        "rapier_reprise",
+        "rapier_riposte",
+        "rapier_run",
+        "rapier_stance",
+        "rapier_thrust_hit",
+        "rapier_thrust_miss"
+      ],
+      "unchangedActions": 32,
+      "geometryUnchanged": true,
+      "officialItemCarrierUnchanged": true
+    }
+  ],
+  "assets": [
+    {
+      "entry": "assets/fsrpg/fsvoxel/models/legacy_rapier.fsvoxel",
+      "relativePath": "models/legacy_rapier.fsvoxel",
+      "beforeSha256": "7a03daf4fb62df9677d89d1d1a6379d905a2954a060d750f56c2469889dd6881",
+      "afterSha256": "79499eb54e14a7f521fd8548f56201002996dcaf0de8a32d602df742484e1080"
+    },
+    {
+      "entry": "assets/fsrpg/fsvoxel/models/legacy_rapier_fp.fsvoxel",
+      "relativePath": "models/legacy_rapier_fp.fsvoxel",
+      "beforeSha256": "4e499e54aeff95c3a782ecc5aedbf8dc03057470e4bfa3490d8867a6cc3aa1d4",
+      "afterSha256": "5fce40df7dcb72366e63159b64ef004935a022dfaddedacb82b630adb525ed02"
+    }
+  ]
+}

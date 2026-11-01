@@ -1,0 +1,799 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://fsrpg.example/schemas/skill_trees.schema.json",
+  "title": "FSRPG legacy cultivation skill trees",
+  "description": "Server-owned learning costs, actual-event growth and old cultivation effects. Times are ticks (20/s); motion is metres or m/s. Cross-references, increasing thresholds, prerequisites, exclusivity, and effect-tree compatibility are additionally checked by SkillTreeCatalog.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "rules",
+    "nodes"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": 1
+    },
+    "rules": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "training",
+        "rapier",
+        "dual",
+        "longTerm"
+      ],
+      "properties": {
+        "training": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "mindActiveTicksPerPoint",
+            "mindHungerPerPoint",
+            "bodyUnlockHp",
+            "bodyMetersPerPoint",
+            "bodyMinedPerPoint",
+            "footworkUnlockBodyTotal",
+            "footworkMetersPerPoint",
+            "footworkCap",
+            "mindHealthThresholds",
+            "mindHealthPerLevel",
+            "regenDoubleMind",
+            "regenLowFoodMind",
+            "regenLowFoodLevel",
+            "bodyDamageThresholds",
+            "bodyDamagePerLevel",
+            "bodyAttackSpeedThresholds",
+            "bodyAttackSpeedPerLevelSeconds",
+            "minAttackIntervalSeconds",
+            "bodyBowFactorPerLevel",
+            "bodyMiningThresholds",
+            "bodyMiningFactorPerLevel",
+            "footworkMaxSpeedBonus"
+          ],
+          "properties": {
+            "mindActiveTicksPerPoint": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 1000000000
+            },
+            "mindHungerPerPoint": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 1000
+            },
+            "bodyUnlockHp": {
+              "type": "number",
+              "minimum": 0.01,
+              "maximum": 100000
+            },
+            "bodyMetersPerPoint": {
+              "type": "number",
+              "minimum": 0.01,
+              "maximum": 1000000
+            },
+            "bodyMinedPerPoint": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 1000000
+            },
+            "footworkUnlockBodyTotal": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 1000000000
+            },
+            "footworkMetersPerPoint": {
+              "type": "number",
+              "minimum": 0.01,
+              "maximum": 1000000
+            },
+            "footworkCap": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 1000000
+            },
+            "mindHealthThresholds": {
+              "type": "array",
+              "minItems": 1,
+              "maxItems": 32,
+              "uniqueItems": true,
+              "items": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 1000000000
+              }
+            },
+            "mindHealthPerLevel": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 100
+            },
+            "regenDoubleMind": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 1000000000
+            },
+            "regenLowFoodMind": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 1000000000
+            },
+            "regenLowFoodLevel": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 20
+            },
+            "bodyDamageThresholds": {
+              "type": "array",
+              "minItems": 1,
+              "maxItems": 32,
+              "uniqueItems": true,
+              "items": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 1000000000
+              }
+            },
+            "bodyDamagePerLevel": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 100
+            },
+            "bodyAttackSpeedThresholds": {
+              "type": "array",
+              "minItems": 1,
+              "maxItems": 32,
+              "uniqueItems": true,
+              "items": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 1000000000
+              }
+            },
+            "bodyAttackSpeedPerLevelSeconds": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 10
+            },
+            "minAttackIntervalSeconds": {
+              "type": "number",
+              "minimum": 0.05,
+              "maximum": 10
+            },
+            "bodyBowFactorPerLevel": {
+              "type": "number",
+              "minimum": 0.01,
+              "maximum": 1
+            },
+            "bodyMiningThresholds": {
+              "type": "array",
+              "minItems": 1,
+              "maxItems": 32,
+              "uniqueItems": true,
+              "items": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 1000000000
+              }
+            },
+            "bodyMiningFactorPerLevel": {
+              "type": "number",
+              "minimum": 0.01,
+              "maximum": 1
+            },
+            "footworkMaxSpeedBonus": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 10
+            }
+          }
+        },
+        "rapier": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "windupTicks",
+            "activeTicks",
+            "recoveryTicks",
+            "cooldownTicks",
+            "fullChargeTicks",
+            "guardBreakCooldownTicks",
+            "lungeSpeedMps",
+            "baseSlashDamage",
+            "thrustMultiplier",
+            "parriedMultiplier",
+            "executionMissingHealthShare",
+            "range"
+          ],
+          "properties": {
+            "windupTicks": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 72000
+            },
+            "activeTicks": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 72000
+            },
+            "recoveryTicks": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 72000
+            },
+            "cooldownTicks": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 72000
+            },
+            "fullChargeTicks": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 72000
+            },
+            "guardBreakCooldownTicks": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 72000
+            },
+            "lungeSpeedMps": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 100
+            },
+            "baseSlashDamage": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1000
+            },
+            "thrustMultiplier": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 100
+            },
+            "parriedMultiplier": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 100
+            },
+            "executionMissingHealthShare": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1
+            },
+            "range": {
+              "type": "number",
+              "minimum": 0.1,
+              "maximum": 64
+            }
+          }
+        },
+        "dual": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "holdMoveBonus",
+            "swingMovePenalty",
+            "layerSwingBonus",
+            "decayTicks",
+            "linkedSlashCooldownTicks"
+          ],
+          "properties": {
+            "holdMoveBonus": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 10
+            },
+            "swingMovePenalty": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 0.99
+            },
+            "layerSwingBonus": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 10
+            },
+            "decayTicks": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 72000
+            },
+            "linkedSlashCooldownTicks": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 72000
+            }
+          }
+        },
+        "footwork": {
+          "type": "object",
+          "description": "Optional for pre-0.8.6 files. Defaults preserve the implemented 0.1.1 movement rules; metres, m/s, and 20 server ticks/s.",
+          "additionalProperties": false,
+          "required": [
+            "selectionPoints",
+            "rabbitDistance",
+            "rabbitInvulnerabilityTicks",
+            "rabbitCooldownTicks",
+            "flyingSwanCurveLinear",
+            "flyingSwanCooldownTicks",
+            "flyingSwanWindowTicks",
+            "jumpIntervalTicks",
+            "chargedJumpHeightMultiplier",
+            "wallRange",
+            "targetRange",
+            "targetDamageShare",
+            "specialCooldownTicks",
+            "airDragFactor",
+            "jumpImpulseMps",
+            "lightThirdRemovesCooldown",
+            "combinationCooldownTicks",
+            "flashThrustDamageShare"
+          ],
+          "properties": {
+            "selectionPoints": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 1000000000
+            },
+            "rabbitDistance": {
+              "type": "number",
+              "minimum": 0.01,
+              "maximum": 64
+            },
+            "rabbitInvulnerabilityTicks": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 72000
+            },
+            "rabbitCooldownTicks": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 72000
+            },
+            "flyingSwanCurveLinear": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 100
+            },
+            "flyingSwanCooldownTicks": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 72000
+            },
+            "flyingSwanWindowTicks": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 72000
+            },
+            "jumpIntervalTicks": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 72000
+            },
+            "chargedJumpHeightMultiplier": {
+              "type": "number",
+              "minimum": 1,
+              "maximum": 100
+            },
+            "wallRange": {
+              "type": "number",
+              "minimum": 0.01,
+              "maximum": 64
+            },
+            "targetRange": {
+              "type": "number",
+              "minimum": 0.01,
+              "maximum": 64
+            },
+            "targetDamageShare": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1
+            },
+            "specialCooldownTicks": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 72000
+            },
+            "airDragFactor": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1
+            },
+            "jumpImpulseMps": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 100
+            },
+            "lightThirdRemovesCooldown": {
+              "type": "boolean"
+            },
+            "combinationCooldownTicks": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 72000
+            },
+            "flashThrustDamageShare": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1
+            }
+          }
+        },
+        "longTerm": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "enabled",
+            "baseDailyDecay",
+            "masteryDecay",
+            "masteryDecayDays",
+            "initialAptitudeMin",
+            "initialAptitudeMax",
+            "bossInsightBonus",
+            "bossInsightBonusCap",
+            "efficiencyPercentCap"
+          ],
+          "properties": {
+            "enabled": {
+              "type": "boolean"
+            },
+            "baseDailyDecay": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1
+            },
+            "masteryDecay": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1
+            },
+            "masteryDecayDays": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 3650
+            },
+            "initialAptitudeMin": {
+              "type": "integer",
+              "minimum": -99,
+              "maximum": 100
+            },
+            "initialAptitudeMax": {
+              "type": "integer",
+              "minimum": -99,
+              "maximum": 100
+            },
+            "bossInsightBonus": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 200
+            },
+            "bossInsightBonusCap": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 1000
+            },
+            "efficiencyPercentCap": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 1000
+            }
+          }
+        }
+      }
+    },
+    "nodes": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 256,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "tree",
+          "label",
+          "description",
+          "automatic",
+          "cost",
+          "requirements",
+          "prerequisites",
+          "exclusiveGroup",
+          "effect",
+          "value",
+          "skills"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[a-z0-9_.:-]{1,100}$"
+          },
+          "tree": {
+            "enum": [
+              "rapier",
+              "dual_blade",
+              "bow",
+              "footwork"
+            ]
+          },
+          "label": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 80
+          },
+          "description": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 1200
+          },
+          "automatic": {
+            "type": "boolean"
+          },
+          "cost": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "mind",
+              "body",
+              "footwork"
+            ],
+            "properties": {
+              "mind": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 1000000000
+              },
+              "body": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 1000000000
+              },
+              "footwork": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 1000000000
+              }
+            }
+          },
+          "requirements": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "mind",
+              "body",
+              "footwork",
+              "score",
+              "trial",
+              "dragon"
+            ],
+            "properties": {
+              "mind": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 1000000000
+              },
+              "body": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 1000000000
+              },
+              "footwork": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 1000000000
+              },
+              "score": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 1000000000
+              },
+              "trial": {
+                "type": "boolean"
+              },
+              "dragon": {
+                "type": "boolean"
+              }
+            }
+          },
+          "prerequisites": {
+            "type": "array",
+            "maxItems": 16,
+            "uniqueItems": true,
+            "items": {
+              "type": "string",
+              "pattern": "^[a-z0-9_.:-]{1,100}$"
+            }
+          },
+          "exclusiveGroup": {
+            "type": "string",
+            "pattern": "^$|^[a-z0-9_.:-]{1,100}$"
+          },
+          "effect": {
+            "enum": [
+              "BOW_AUTO_CHARGE",
+              "BOW_SCOPE",
+              "BOW_TRAJECTORY",
+              "CHUAN_TANG_FENG",
+              "RABBIT",
+              "FLYING_SWAN",
+              "CLOUD_STEP",
+              "CLOUD_STEP_II",
+              "CLOUD_STEP_III",
+              "LIGHT_BODY",
+              "LIGHT_BODY_II",
+              "LIGHT_BODY_III",
+              "DUAL_COMBO_CAP",
+              "NIE_SHI",
+              "RAPIER_EXECUTION",
+              "RAPIER_PARRY",
+              "RAPIER_THRUST",
+              "ROOT_BOW",
+              "ROOT_DUAL",
+              "ROOT_RAPIER",
+              "RU_SUO",
+              "YAN_XIA_DIAN"
+            ]
+          },
+          "value": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 12
+          },
+          "skills": {
+            "type": "array",
+            "maxItems": 64,
+            "uniqueItems": true,
+            "items": {
+              "type": "string",
+              "pattern": "^[a-z0-9_.:-]{1,100}$"
+            }
+          }
+        },
+        "allOf": [
+          {
+            "if": {
+              "properties": {
+                "effect": {
+                  "enum": [
+                    "ROOT_RAPIER",
+                    "ROOT_DUAL",
+                    "ROOT_BOW",
+                    "RU_SUO",
+                    "NIE_SHI",
+                    "YAN_XIA_DIAN",
+                    "CHUAN_TANG_FENG",
+                    "RABBIT",
+                    "FLYING_SWAN",
+                    "CLOUD_STEP",
+                    "CLOUD_STEP_II",
+                    "CLOUD_STEP_III",
+                    "LIGHT_BODY",
+                    "LIGHT_BODY_II",
+                    "LIGHT_BODY_III"
+                  ]
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "automatic": {
+                  "const": false
+                }
+              }
+            },
+            "else": {
+              "properties": {
+                "automatic": {
+                  "const": true
+                },
+                "cost": {
+                  "properties": {
+                    "mind": {
+                      "const": 0
+                    },
+                    "body": {
+                      "const": 0
+                    },
+                    "footwork": {
+                      "const": 0
+                    }
+                  }
+                }
+              }
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "effect": {
+                  "enum": [
+                    "RU_SUO",
+                    "NIE_SHI"
+                  ]
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "exclusiveGroup": {
+                  "const": "archery_150"
+                }
+              }
+            },
+            "else": {
+              "if": {
+                "properties": {
+                  "effect": {
+                    "enum": [
+                      "YAN_XIA_DIAN",
+                      "CHUAN_TANG_FENG"
+                    ]
+                  }
+                }
+              },
+              "then": {
+                "properties": {
+                  "exclusiveGroup": {
+                    "const": "archery_250"
+                  }
+                }
+              },
+              "else": {
+                "if": {
+                  "properties": {
+                    "effect": {
+                      "enum": [
+                        "RABBIT",
+                        "FLYING_SWAN"
+                      ]
+                    }
+                  }
+                },
+                "then": {
+                  "properties": {
+                    "exclusiveGroup": {
+                      "const": "footwork_style"
+                    }
+                  }
+                },
+                "else": {
+                  "properties": {
+                    "exclusiveGroup": {
+                      "const": ""
+                    }
+                  }
+                }
+              }
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "effect": {
+                  "const": "DUAL_COMBO_CAP"
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "value": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 12
+                }
+              }
+            },
+            "else": {
+              "properties": {
+                "value": {
+                  "const": 0
+                }
+              }
+            }
+          }
+        ]
+      }
+    }
+  }
+}

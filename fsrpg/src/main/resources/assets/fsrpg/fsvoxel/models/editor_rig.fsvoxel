@@ -1,0 +1,35 @@
+FSVOXEL	1	model
+; Text-editable editor demonstrator. Units are centimeters; action times are seconds.
+; The editor retimes 0..0.35 as windup, 0.35..0.55 as active, and 0.55..1 as recovery.
+; Reload model in the K window after editing config/fsrpg/models/editor_rig.fsvoxel.
+summary	{"kind":"model","purpose":"fsrpg_phase_editor_preview","status":"ready"}
+id	"fsrpg.editor_rig"
+name	"Adventure sword timing demonstrator"
+type	"object"
+units	{"voxel_cm":1}
+material	"cloth"	{"color":"#648ccc","roughness":0.9,"metalness":0}
+material	"leather"	{"color":"#564837","roughness":0.9,"metalness":0}
+material	"skin"	{"color":"#ddb48c","roughness":0.8,"metalness":0}
+material	"steel"	{"color":"#b9dcec","roughness":0.2,"metalness":0.8}
+material	"gold"	{"color":"#d8af64","roughness":0.4,"metalness":0.6}
+part	"root"	{"transform":{"position":[0,0,0]}}
+part	"body"	{"parent":"root","transform":{"position":[0,70,0]}}
+part	"head"	{"parent":"body","transform":{"position":[0,72,0]}}
+part	"right_leg"	{"parent":"root","transform":{"position":[-12,70,0]}}
+part	"left_leg"	{"parent":"root","transform":{"position":[12,70,0]}}
+part	"right_arm"	{"parent":"body","transform":{"position":[-28,63,0]}}
+part	"left_arm"	{"parent":"body","transform":{"position":[28,63,0]}}
+part	"sword"	{"parent":"right_arm","transform":{"position":[0,-50,0],"rotation":[0,0,-12]}}
+box	"body"	"set"	"cloth"	[-20,0,-12]	[40,65,24]
+box	"head"	"set"	"skin"	[-14,0,-14]	[28,28,28]
+box	"right_leg"	"set"	"leather"	[-8,-70,-9]	[16,70,18]
+box	"left_leg"	"set"	"leather"	[-8,-70,-9]	[16,70,18]
+box	"right_arm"	"set"	"skin"	[-8,-56,-8]	[16,56,16]
+box	"left_arm"	"set"	"cloth"	[-8,-56,-8]	[16,56,16]
+box	"sword"	"set"	"leather"	[-2,-14,-3]	[4,14,6]
+box	"sword"	"set"	"gold"	[-11,-2,-4]	[22,4,8]
+box	"sword"	"set"	"steel"	[-3,2,-2]	[6,73,4]
+socket	{"id":"weapon_tip","part":"sword","position":[0,75,0]}
+action	{"id":"sword_left","duration":1,"layer":"full","mode":"delta","interpolation":"smoothstep","tracks":{"body":[{"time":0,"rotation":[0,0,0]},{"time":0.35,"rotation":[0,30,0]},{"time":0.55,"rotation":[0,-35,0]},{"time":1,"rotation":[0,0,0]}],"right_arm":[{"time":0,"rotation":[-10,0,-12]},{"time":0.35,"rotation":[-105,-20,-15]},{"time":0.55,"rotation":[-25,50,-85]},{"time":1,"rotation":[-10,0,-12]}]},"events":[{"time":0.35,"name":"active_begin","payload":{}},{"time":0.55,"name":"active_end","payload":{}}]}
+action	{"id":"sword_right","duration":1,"layer":"full","mode":"delta","interpolation":"smoothstep","tracks":{"body":[{"time":0,"rotation":[0,0,0]},{"time":0.35,"rotation":[0,-40,0]},{"time":0.55,"rotation":[0,35,0]},{"time":1,"rotation":[0,0,0]}],"right_arm":[{"time":0,"rotation":[-10,0,-12]},{"time":0.35,"rotation":[-50,55,-95]},{"time":0.55,"rotation":[-105,-40,-15]},{"time":1,"rotation":[-10,0,-12]}]},"events":[{"time":0.35,"name":"active_begin","payload":{}},{"time":0.55,"name":"active_end","payload":{}}]}
+action	{"id":"sword_thrust","duration":1,"layer":"full","mode":"delta","interpolation":"smoothstep","tracks":{"body":[{"time":0,"rotation":[0,0,0]},{"time":0.35,"rotation":[0,-80,0]},{"time":0.55,"rotation":[0,70,0]},{"time":1,"rotation":[0,0,0]}],"right_arm":[{"time":0,"rotation":[-10,0,-12]},{"time":0.35,"rotation":[-150,0,-25]},{"time":0.55,"rotation":[-5,0,-100]},{"time":1,"rotation":[-10,0,-12]}]},"events":[{"time":0.35,"name":"active_begin","payload":{}},{"time":0.55,"name":"active_end","payload":{}}]}

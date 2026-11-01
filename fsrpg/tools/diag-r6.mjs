@@ -1,0 +1,1 @@
+import fs from'node:fs';for(const d of JSON.parse(fs.readFileSync('verification/dual-cuts-r6b/sword-path.json')).filter(d=>d.id==='dual_rl'&&d.side==='right'))for(const v of d.contactGeometry.filter(v=>v.time<.37))console.log(v.time,v.tip,v.pronation);

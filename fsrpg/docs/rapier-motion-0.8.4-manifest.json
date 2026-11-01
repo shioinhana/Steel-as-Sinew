@@ -1,0 +1,64 @@
+{
+  "format": "fsrpg.rapier-rework.v1",
+  "version": "0.8.4",
+  "authorization": "User explicitly requested replacement rapier cuts and combined movement/reaction posture",
+  "samplingHz": 120,
+  "sourcePhase": {
+    "windupEnd": 0.26,
+    "activeEnd": 0.86
+  },
+  "files": [
+    {
+      "path": "src/main/resources/assets/fsrpg/fsvoxel/models/legacy_rapier.fsvoxel",
+      "originalSha256": "9c0a0f4cd41a1795e988d00de0e2a062090384a43f1b78e51169a21d379de145",
+      "newSha256": "6c23401a5010c59d1d1a01dff6a48be1684b3ecd0f2f072652530507d962123a",
+      "changedActions": [
+        "legacy_rapier_attack1",
+        "legacy_rapier_attack1_upper",
+        "legacy_rapier_attack2",
+        "legacy_rapier_attack2_upper",
+        "legacy_rapier_attack3",
+        "legacy_rapier_attack3_upper",
+        "rapier_attack1",
+        "rapier_attack2",
+        "rapier_attack3"
+      ],
+      "unchangedActions": 68,
+      "geometryUnchanged": true,
+      "thrustFourthUnchanged": true
+    },
+    {
+      "path": "src/main/resources/assets/fsrpg/fsvoxel/models/legacy_rapier_fp.fsvoxel",
+      "originalSha256": "f19261c98806e513120359e29b4a50dba5c3dc28d6cf7650e4da0d09afa3c5b5",
+      "newSha256": "227b5cfdf5e709eed25db0e2b88c557feccd2bb97c6dc39e7794716ba1f5de07",
+      "changedActions": [
+        "legacy_rapier_attack1",
+        "legacy_rapier_attack1_upper",
+        "legacy_rapier_attack2",
+        "legacy_rapier_attack2_upper",
+        "legacy_rapier_attack3",
+        "legacy_rapier_attack3_upper",
+        "rapier_attack1",
+        "rapier_attack2",
+        "rapier_attack3"
+      ],
+      "unchangedActions": 52,
+      "geometryUnchanged": true,
+      "thrustFourthUnchanged": true
+    }
+  ],
+  "assets": [
+    {
+      "entry": "assets/fsrpg/fsvoxel/models/legacy_rapier.fsvoxel",
+      "relativePath": "models/legacy_rapier.fsvoxel",
+      "beforeSha256": "9c0a0f4cd41a1795e988d00de0e2a062090384a43f1b78e51169a21d379de145",
+      "afterSha256": "6c23401a5010c59d1d1a01dff6a48be1684b3ecd0f2f072652530507d962123a"
+    },
+    {
+      "entry": "assets/fsrpg/fsvoxel/models/legacy_rapier_fp.fsvoxel",
+      "relativePath": "models/legacy_rapier_fp.fsvoxel",
+      "beforeSha256": "f19261c98806e513120359e29b4a50dba5c3dc28d6cf7650e4da0d09afa3c5b5",
+      "afterSha256": "227b5cfdf5e709eed25db0e2b88c557feccd2bb97c6dc39e7794716ba1f5de07"
+    }
+  ]
+}

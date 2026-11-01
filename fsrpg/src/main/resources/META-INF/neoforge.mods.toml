@@ -1,0 +1,34 @@
+modLoader="javafml"
+loaderVersion="[4,)"
+license="All Rights Reserved"
+[[mixins]]
+config="fsrpg.client.mixins.json"
+[[mixins]]
+config="fsrpg.archery.mixins.json"
+[[mixins]]
+config="fsrpg.progression.mixins.json"
+[[mixins]]
+config="fsrpg.creature.mixins.json"
+[[mods]]
+modId="fsrpg"
+version="${mod_version}"
+displayName="FS RPG Adventure"
+description='''Configurable quests and server-authoritative action combat using FSVOXEL. Includes an in-game skill timing editor.'''
+[[dependencies.fsrpg]]
+modId="neoforge"
+type="required"
+versionRange="[21.11.45,21.12)"
+ordering="NONE"
+side="BOTH"
+[[dependencies.fsrpg]]
+modId="minecraft"
+type="required"
+versionRange="[1.21.11]"
+ordering="NONE"
+side="BOTH"
+[[dependencies.fsrpg]]
+modId="fsvoxel"
+type="required"
+versionRange="[0.6.0,0.7)"
+ordering="AFTER"
+side="CLIENT"

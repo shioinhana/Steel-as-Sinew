@@ -1,0 +1,93 @@
+{
+  "maxStamina": 50,
+  "maxSpirit": 100,
+  "staminaRegenPerSecond": 5.0,
+  "spiritRegenPerSecond": 1.0,
+  "resourceRegenDelayTicks": 20,
+  "spearSwipeKnockbackMultiplier": 0.5,
+  "burstDash": {
+    "distance": 3.0,
+    "durationTicks": 10,
+    "staminaCost": 5.0,
+    "cooldownTicks": 10,
+    "runSpeed": 5.6,
+    "inputLeaseTicks": 12,
+    "initialSpeed": 27.0
+  },
+  "staminaCombatRules": {
+    "combatTicks": 60,
+    "regenMultiplier": 0.5,
+    "missCostMultiplier": 0.5
+  },
+  "drawTicks": 8,
+  "sheathTicks": 8,
+  "guardArcDegrees": 120,
+  "guardDamageMultiplier": 0.25,
+  "guardStaminaCost": 10.0,
+  "perfectGuardTicks": 7,
+  "perfectGuardStaminaCost": 10.0,
+  "parryStunTicks": 4,
+  "guardBreakStunTicks": 10,
+  "hitStunTicks": 2,
+  "clashFacingArcDegrees": 120,
+  "weaponClash": {
+    "contactWindowTicks": 3,
+    "damageTolerance": 3.0
+  },
+  "dodgeDurationTicks": 12,
+  "dodgeInvulnerabilityStartTicks": 0,
+  "dodgeInvulnerabilityTicks": 6,
+  "dodgeCooldownTicks": 20,
+  "dodgeStaminaCost": 6.0,
+  "dodgeDistance": 3.0,
+  "dodgeCancelsRecovery": true,
+  "allowAirDodge": false,
+  "rapierTargetLock": {
+    "enabled": true,
+    "range": 10,
+    "allowPassive": true,
+    "requireLineOfSight": true
+  },
+  "staminaLevelScaling": {
+    "regenSqrtCoefficient": 1.0,
+    "regenLogCoefficient": 1.0,
+    "maxPowerCoefficient": 1.0,
+    "maxPowerExponent": 0.8,
+    "maxLogCoefficient": 3.0
+  },
+  "perfectGuardCounter": {
+    "windowTicks": 4,
+    "damageMultiplier": 1.5
+  },
+  "swordCombat": {
+    "enabled": true,
+    "parryWindupTicks": 2,
+    "parryActiveTicks": 5,
+    "parryRecoveryTicks": 9,
+    "parryCooldownTicks": 20,
+    "parryStaminaCost": 8,
+    "parryStunTicks": 16,
+    "returnWindowTicks": 24,
+    "chargedDamageMultiplier": 2,
+    "chargeSuperArmor": true,
+    "steeringFraction": 0.2,
+    "moveSpeedMultiplier": 0.25,
+    "heavyMobTypes": [
+      "minecraft:vindicator",
+      "minecraft:piglin_brute",
+      "minecraft:iron_golem",
+      "minecraft:ravager"
+    ],
+    "motionDistances": {
+      "sword_left": 0.45,
+      "rapier_downcut": 0.32,
+      "rapier_crosscut": 0.4,
+      "rapier_light_thrust": 0.25,
+      "rapier_lunge_finish": 0.85,
+      "sword_thrust": 0.65,
+      "rapier_riposte": 0.35,
+      "rapier_reprise": 0.4,
+      "sword_parry_return": 0.55
+    }
+  }
+}

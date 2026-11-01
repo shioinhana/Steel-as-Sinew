@@ -1,0 +1,657 @@
+[
+  {
+    "id": "fsrpg:guild_supplies",
+    "label": "公会物资募集",
+    "description": "准备橡木20个与粗铁10个；按背包现有数量实时核对，不消耗物资。",
+    "objectives": [
+      {
+        "id": "wood",
+        "type": "COLLECT",
+        "target": "minecraft:oak_log",
+        "count": 20,
+        "inventory": true
+      },
+      {
+        "id": "iron",
+        "type": "COLLECT",
+        "target": "minecraft:raw_iron",
+        "count": 10,
+        "inventory": true
+      }
+    ],
+    "rewards": {
+      "currency": [
+        {
+          "id": "fsrpg:silver_coin",
+          "count": 5
+        }
+      ],
+      "xp": 20,
+      "reputation": 10
+    },
+    "repeatable": true,
+    "autoAccept": false,
+    "rules": {
+      "difficulty": "D",
+      "minimumRank": "D",
+      "allowReacceptAfterAbandon": true,
+      "completionCooldownSeconds": 300,
+      "abandonCooldownSeconds": 30
+    }
+  },
+  {
+    "id": "fsrpg:guild_zombies",
+    "label": "清理僵尸",
+    "description": "讨伐十只1级及以上僵尸，为公会清理野外威胁。",
+    "objectives": [
+      {
+        "id": "zombie",
+        "type": "KILL",
+        "target": "minecraft:zombie",
+        "count": 10,
+        "criteria": {
+          "minLevel": 1
+        }
+      }
+    ],
+    "rewards": {
+      "currency": [
+        {
+          "id": "fsrpg:silver_coin",
+          "count": 5
+        }
+      ],
+      "xp": 20,
+      "reputation": 10
+    },
+    "repeatable": true,
+    "autoAccept": false,
+    "rules": {
+      "difficulty": "D",
+      "minimumRank": "D",
+      "allowReacceptAfterAbandon": true,
+      "completionCooldownSeconds": 300
+    }
+  },
+  {
+    "id": "fsrpg:guild_elite",
+    "label": "精英讨伐委托",
+    "description": "讨伐一只5级及以上的精英僵尸，普通僵尸不计入本任务。",
+    "objectives": [
+      {
+        "id": "elite",
+        "type": "KILL",
+        "target": "minecraft:zombie",
+        "count": 1,
+        "criteria": {
+          "minLevel": 5,
+          "elite": true,
+          "requiredTag": "fsrpg_elite"
+        }
+      }
+    ],
+    "rewards": {
+      "currency": [
+        {
+          "id": "fsrpg:gold_coin",
+          "count": 2
+        }
+      ],
+      "items": [
+        {
+          "id": "minecraft:diamond",
+          "count": 1
+        }
+      ],
+      "xp": 80,
+      "reputation": 10
+    },
+    "repeatable": true,
+    "autoAccept": false,
+    "rules": {
+      "difficulty": "D",
+      "minimumRank": "D",
+      "allowReacceptAfterAbandon": true
+    }
+  },
+  {
+    "id": "fsrpg:guild_boss",
+    "label": "凋灵讨伐",
+    "description": "击杀主世界出生点附近的凋灵。服务器管理员可配置实际BOSS地点与范围。",
+    "objectives": [
+      {
+        "id": "wither",
+        "type": "KILL",
+        "target": "minecraft:wither",
+        "count": 1,
+        "criteria": {
+          "boss": true
+        },
+        "location": {
+          "dimension": "minecraft:overworld",
+          "x": 0,
+          "y": 64,
+          "z": 0,
+          "radius": 512
+        }
+      }
+    ],
+    "rewards": {
+      "currency": [
+        {
+          "id": "fsrpg:gold_coin",
+          "count": 10
+        }
+      ],
+      "xp": 500,
+      "reputation": 10
+    },
+    "repeatable": true,
+    "autoAccept": false,
+    "rules": {
+      "difficulty": "D",
+      "minimumRank": "D",
+      "allowReacceptAfterAbandon": true
+    }
+  },
+  {
+    "id": "fsrpg:guild_chain",
+    "label": "补给与巡猎连环委托",
+    "description": "先准备补给并领取第一阶段奖励，再讨伐骷髅。阶段与最终奖励分开领取。",
+    "objectives": [
+      {
+        "id": "food",
+        "type": "COLLECT",
+        "target": "minecraft:bread",
+        "count": 4,
+        "inventory": true,
+        "stage": 0
+      },
+      {
+        "id": "skeleton",
+        "type": "KILL",
+        "target": "minecraft:skeleton",
+        "count": 3,
+        "stage": 1
+      }
+    ],
+    "rewards": {
+      "currency": [
+        {
+          "id": "fsrpg:gold_coin",
+          "count": 1
+        }
+      ],
+      "choices": [
+        {
+          "id": "minecraft:iron_ingot",
+          "count": 4
+        },
+        {
+          "id": "minecraft:arrow",
+          "count": 24
+        }
+      ],
+      "xp": 60,
+      "reputation": 10
+    },
+    "repeatable": true,
+    "autoAccept": false,
+    "rules": {
+      "difficulty": "D",
+      "minimumRank": "D",
+      "allowReacceptAfterAbandon": true,
+      "stages": [
+        {
+          "id": "supply",
+          "label": "第一阶段 准备补给",
+          "rewards": {
+            "currency": [
+              {
+                "id": "fsrpg:silver_coin",
+                "count": 3
+              }
+            ]
+          }
+        },
+        {
+          "id": "hunt",
+          "label": "第二阶段 巡逻狩猎",
+          "rewards": {
+            "items": [
+              {
+                "id": "minecraft:bread",
+                "count": 3
+              }
+            ]
+          }
+        }
+      ]
+    }
+  },
+  {
+    "id": "fsrpg:guild_lottery",
+    "label": "巡猎随机奖",
+    "description": "讨伐三只蜘蛛；领奖只抽取一次，权重3比1。",
+    "objectives": [
+      {
+        "id": "spider",
+        "type": "KILL",
+        "target": "minecraft:spider",
+        "count": 3
+      }
+    ],
+    "rewards": {
+      "currency": [
+        {
+          "id": "fsrpg:silver_coin",
+          "count": 3
+        }
+      ],
+      "randomPool": [
+        {
+          "item": {
+            "id": "minecraft:iron_ingot",
+            "count": 3
+          },
+          "weight": 3
+        },
+        {
+          "item": {
+            "id": "minecraft:diamond",
+            "count": 1
+          },
+          "weight": 1
+        }
+      ],
+      "randomRolls": 1,
+      "reputation": 10
+    },
+    "repeatable": true,
+    "autoAccept": false,
+    "rules": {
+      "difficulty": "D",
+      "minimumRank": "D",
+      "allowReacceptAfterAbandon": true,
+      "completionCooldownSeconds": 600
+    }
+  },
+  {
+    "id": "fsrpg:guild_bounty_normal",
+    "label": "普通玩家悬赏令",
+    "description": "击败一名被悬赏的其他玩家；怪物不计入此悬赏。",
+    "objectives": [
+      {
+        "id": "player",
+        "type": "PLAYER_KILL",
+        "target": "minecraft:player",
+        "count": 1
+      }
+    ],
+    "rewards": {
+      "currency": [
+        {
+          "id": "fsrpg:gold_coin",
+          "count": 1
+        }
+      ],
+      "reputation": 10
+    },
+    "repeatable": true,
+    "autoAccept": false,
+    "rules": {
+      "difficulty": "C",
+      "minimumRank": "D",
+      "allowReacceptAfterAbandon": true,
+      "bountyTier": "NORMAL",
+      "completionCooldownSeconds": 86400
+    }
+  },
+  {
+    "id": "fsrpg:guild_bounty_high",
+    "label": "高阶玩家悬赏令",
+    "description": "击败一名被悬赏的其他玩家；怪物不计入此悬赏。",
+    "objectives": [
+      {
+        "id": "player",
+        "type": "PLAYER_KILL",
+        "target": "minecraft:player",
+        "count": 1
+      }
+    ],
+    "rewards": {
+      "currency": [
+        {
+          "id": "fsrpg:gold_coin",
+          "count": 5
+        }
+      ],
+      "reputation": 10
+    },
+    "repeatable": true,
+    "autoAccept": false,
+    "rules": {
+      "difficulty": "C",
+      "minimumRank": "B",
+      "allowReacceptAfterAbandon": true,
+      "bountyTier": "HIGH",
+      "completionCooldownSeconds": 86400
+    }
+  },
+  {
+    "id": "fsrpg:guild_bounty_s",
+    "label": "S级玩家悬赏令",
+    "description": "击败一名被悬赏的其他玩家；怪物不计入此悬赏。",
+    "objectives": [
+      {
+        "id": "player",
+        "type": "PLAYER_KILL",
+        "target": "minecraft:player",
+        "count": 1
+      }
+    ],
+    "rewards": {
+      "currency": [
+        {
+          "id": "fsrpg:gold_coin",
+          "count": 20
+        }
+      ],
+      "reputation": 10
+    },
+    "repeatable": true,
+    "autoAccept": false,
+    "rules": {
+      "difficulty": "C",
+      "minimumRank": "S",
+      "allowReacceptAfterAbandon": true,
+      "bountyTier": "S",
+      "completionCooldownSeconds": 86400
+    }
+  },
+  {
+    "id": "fsrpg:guild_daily_logs",
+    "label": "每日委托 林业补给",
+    "description": "完成今日公会委托。每日零点刷新，未完成的旧日委托失效。",
+    "objectives": [
+      {
+        "id": "logs",
+        "type": "COLLECT",
+        "target": "minecraft:oak_log",
+        "count": 8,
+        "inventory": true
+      }
+    ],
+    "rewards": {
+      "currency": [
+        {
+          "id": "fsrpg:silver_coin",
+          "count": 5
+        }
+      ],
+      "xp": 20,
+      "reputation": 10
+    },
+    "repeatable": true,
+    "autoAccept": false,
+    "rules": {
+      "difficulty": "D",
+      "minimumRank": "D",
+      "allowReacceptAfterAbandon": true,
+      "daily": true
+    }
+  },
+  {
+    "id": "fsrpg:guild_daily_stone",
+    "label": "每日委托 石材补给",
+    "description": "完成今日公会委托。每日零点刷新，未完成的旧日委托失效。",
+    "objectives": [
+      {
+        "id": "stone",
+        "type": "COLLECT",
+        "target": "minecraft:cobblestone",
+        "count": 16,
+        "inventory": true
+      }
+    ],
+    "rewards": {
+      "currency": [
+        {
+          "id": "fsrpg:silver_coin",
+          "count": 5
+        }
+      ],
+      "xp": 20,
+      "reputation": 10
+    },
+    "repeatable": true,
+    "autoAccept": false,
+    "rules": {
+      "difficulty": "D",
+      "minimumRank": "D",
+      "allowReacceptAfterAbandon": true,
+      "daily": true
+    }
+  },
+  {
+    "id": "fsrpg:guild_daily_zombie",
+    "label": "每日委托 僵尸巡猎",
+    "description": "完成今日公会委托。每日零点刷新，未完成的旧日委托失效。",
+    "objectives": [
+      {
+        "id": "zombie",
+        "type": "KILL",
+        "target": "minecraft:zombie",
+        "count": 2
+      }
+    ],
+    "rewards": {
+      "currency": [
+        {
+          "id": "fsrpg:silver_coin",
+          "count": 5
+        }
+      ],
+      "xp": 20,
+      "reputation": 10
+    },
+    "repeatable": true,
+    "autoAccept": false,
+    "rules": {
+      "difficulty": "D",
+      "minimumRank": "D",
+      "allowReacceptAfterAbandon": true,
+      "daily": true
+    }
+  },
+  {
+    "id": "fsrpg:guild_daily_skeleton",
+    "label": "每日委托 骷髅巡猎",
+    "description": "完成今日公会委托。每日零点刷新，未完成的旧日委托失效。",
+    "objectives": [
+      {
+        "id": "skeleton",
+        "type": "KILL",
+        "target": "minecraft:skeleton",
+        "count": 2
+      }
+    ],
+    "rewards": {
+      "currency": [
+        {
+          "id": "fsrpg:silver_coin",
+          "count": 5
+        }
+      ],
+      "xp": 20,
+      "reputation": 10
+    },
+    "repeatable": true,
+    "autoAccept": false,
+    "rules": {
+      "difficulty": "D",
+      "minimumRank": "D",
+      "allowReacceptAfterAbandon": true,
+      "daily": true
+    }
+  },
+  {
+    "id": "fsrpg:guild_daily_spider",
+    "label": "每日委托 蜘蛛巡猎",
+    "description": "完成今日公会委托。每日零点刷新，未完成的旧日委托失效。",
+    "objectives": [
+      {
+        "id": "spider",
+        "type": "KILL",
+        "target": "minecraft:spider",
+        "count": 2
+      }
+    ],
+    "rewards": {
+      "currency": [
+        {
+          "id": "fsrpg:silver_coin",
+          "count": 5
+        }
+      ],
+      "xp": 20,
+      "reputation": 10
+    },
+    "repeatable": true,
+    "autoAccept": false,
+    "rules": {
+      "difficulty": "D",
+      "minimumRank": "D",
+      "allowReacceptAfterAbandon": true,
+      "daily": true
+    }
+  },
+  {
+    "id": "fsrpg:guild_exam_c",
+    "label": "C级冒险者晋升考试",
+    "description": "先完成晋升任务条件，到公会接待员身边申请；考试完成后回到接待员身边领取奖励并晋升。",
+    "objectives": [
+      {
+        "id": "exam_target",
+        "type": "KILL",
+        "target": "minecraft:zombie",
+        "count": 3
+      }
+    ],
+    "rewards": {
+      "currency": [
+        {
+          "id": "fsrpg:gold_coin",
+          "count": 2
+        }
+      ],
+      "xp": 100,
+      "reputation": 10
+    },
+    "repeatable": false,
+    "autoAccept": false,
+    "rules": {
+      "difficulty": "C",
+      "minimumRank": "D",
+      "allowReacceptAfterAbandon": true,
+      "examRank": "C",
+      "timeLimitSeconds": 3600
+    }
+  },
+  {
+    "id": "fsrpg:guild_exam_b",
+    "label": "B级冒险者晋升考试",
+    "description": "先完成晋升任务条件，到公会接待员身边申请；考试完成后回到接待员身边领取奖励并晋升。",
+    "objectives": [
+      {
+        "id": "exam_target",
+        "type": "KILL",
+        "target": "minecraft:skeleton",
+        "count": 5
+      }
+    ],
+    "rewards": {
+      "currency": [
+        {
+          "id": "fsrpg:gold_coin",
+          "count": 2
+        }
+      ],
+      "xp": 100,
+      "reputation": 10
+    },
+    "repeatable": false,
+    "autoAccept": false,
+    "rules": {
+      "difficulty": "B",
+      "minimumRank": "C",
+      "allowReacceptAfterAbandon": true,
+      "examRank": "B",
+      "timeLimitSeconds": 3600
+    }
+  },
+  {
+    "id": "fsrpg:guild_exam_a",
+    "label": "A级冒险者晋升考试",
+    "description": "先完成晋升任务条件，到公会接待员身边申请；考试完成后回到接待员身边领取奖励并晋升。",
+    "objectives": [
+      {
+        "id": "exam_target",
+        "type": "KILL",
+        "target": "minecraft:blaze",
+        "count": 5
+      }
+    ],
+    "rewards": {
+      "currency": [
+        {
+          "id": "fsrpg:gold_coin",
+          "count": 2
+        }
+      ],
+      "xp": 100,
+      "reputation": 10
+    },
+    "repeatable": false,
+    "autoAccept": false,
+    "rules": {
+      "difficulty": "A",
+      "minimumRank": "B",
+      "allowReacceptAfterAbandon": true,
+      "examRank": "A",
+      "timeLimitSeconds": 3600
+    }
+  },
+  {
+    "id": "fsrpg:guild_exam_s",
+    "label": "S级冒险者晋升考试",
+    "description": "先完成晋升任务条件，到公会接待员身边申请；考试完成后回到接待员身边领取奖励并晋升。",
+    "objectives": [
+      {
+        "id": "exam_target",
+        "type": "KILL",
+        "target": "minecraft:wither",
+        "count": 1
+      }
+    ],
+    "rewards": {
+      "currency": [
+        {
+          "id": "fsrpg:gold_coin",
+          "count": 2
+        }
+      ],
+      "xp": 100,
+      "reputation": 10
+    },
+    "repeatable": false,
+    "autoAccept": false,
+    "rules": {
+      "difficulty": "S",
+      "minimumRank": "A",
+      "allowReacceptAfterAbandon": true,
+      "examRank": "S",
+      "timeLimitSeconds": 3600
+    }
+  }
+]

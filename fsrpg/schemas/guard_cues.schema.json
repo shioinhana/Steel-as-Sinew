@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "FSRPG guard cue timing",
+  "description": "默认按怪物真实动画前摇x计算：闪光在floor(x/5)；完美格挡输入窗口为闭区间[ceil(3x/5),floor(4x/5)]，只接受窗口内的新按C，接触时刻x不再接受新按；近战相杀窗口独立为[ceil(3x/5),x]，仍包含真实接触。短前摇1至2tick的输入窗口按量化自然为空，不会延长到接触。20TPS下闪光向下、窗口起点向上、关闭点向下量化。前摇保持素材接触时序；固定tick键仅在显式fixed_ticks模式使用。",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["enabled","flashLeadTicks","inputWindowTicks","flashDurationMillis","guardCancelsActive"],
+  "properties": {
+    "enabled": {"type":"boolean","default":true},
+    "flashLeadTicks": {"type":"integer","minimum":1,"maximum":60,"default":7},
+    "inputWindowTicks": {"type":"integer","minimum":1,"maximum":60,"default":7,"description":"不得超过flashLeadTicks，边界由服务端进一步验证；只在fixed_ticks模式表示输入窗口"},
+    "flashDurationMillis": {"type":"integer","minimum":16,"maximum":500,"default":120,"description":"只控制单次闪光视觉，不能延长判定窗口"},
+    "guardCancelsActive": {"type":"boolean","default":true,"description":"首次在窗口内新按C允许中断当前攻击；成功后持键自动重开，同一次按住最多3次完美格挡，保留已消耗资源与冷却"},
+    "timingMode": {"type":"string","enum":["windup_fraction","fixed_ticks"],"default":"windup_fraction","description":"旧文件缺此字段也按比例时序；fixed_ticks显式保留固定tick模式"},
+    "flashAtFraction": {"type":"number","minimum":0,"exclusiveMaximum":1,"default":0.2,"description":"闪光出现在floor(flashAtFraction*x)，默认即floor(x/5)"},
+    "windowOpenFraction": {"type":"number","minimum":0,"maximum":1,"default":0.6,"description":"完美格挡输入窗口起点，按ceil向上取tick；不得早于flashAtFraction"},
+    "windowCloseFraction": {"type":"number","minimum":0,"maximum":1,"default":0.8,"description":"完美格挡输入窗口关闭点，按floor向下取tick，窗口为闭区间[ceil(windowOpenFraction*x),floor(windowCloseFraction*x)]；默认0.8即floor(4x/5)，不得小于windowOpenFraction。旧文件省略此字段时按0.8解析；旧版显式写1的接触端点值会一次性迁移为0.8并备份原文件。近战相杀窗口不受此值影响，仍为[ceil(3x/5),x]。"}
+  }
+}

@@ -1,0 +1,118 @@
+{
+  "format": "fsrpg.rapier-fencing.baseline.v1",
+  "version": "0.8.4",
+  "skills": [
+    {
+      "id": "sword_left",
+      "label": "西洋剑 · 旧版第1刀",
+      "weapon": "sword",
+      "input": "LEFT",
+      "windupTicks": 3,
+      "activeTicks": 4,
+      "recoveryTicks": 1,
+      "cooldownTicks": 0,
+      "staminaCost": 5,
+      "spiritCost": 0,
+      "damage": 6,
+      "reach": 4,
+      "arcDegrees": 70,
+      "knockback": 0,
+      "blockable": true,
+      "parryable": true,
+      "clashable": true,
+      "model": "legacy_rapier.fsvoxel",
+      "action": "legacy_rapier_attack1_upper"
+    },
+    {
+      "id": "rapier_downcut",
+      "label": "西洋剑 · 旧版第2刀",
+      "weapon": "sword",
+      "input": "LEFT",
+      "windupTicks": 3,
+      "activeTicks": 4,
+      "recoveryTicks": 1,
+      "cooldownTicks": 0,
+      "staminaCost": 5,
+      "spiritCost": 0,
+      "damage": 6,
+      "reach": 4,
+      "arcDegrees": 70,
+      "knockback": 0,
+      "blockable": true,
+      "parryable": true,
+      "clashable": true,
+      "model": "legacy_rapier.fsvoxel",
+      "action": "legacy_rapier_attack2_upper"
+    },
+    {
+      "id": "rapier_crosscut",
+      "label": "西洋剑 · 旧版第3刀",
+      "weapon": "sword",
+      "input": "LEFT",
+      "windupTicks": 3,
+      "activeTicks": 4,
+      "recoveryTicks": 1,
+      "cooldownTicks": 0,
+      "staminaCost": 5,
+      "spiritCost": 0,
+      "damage": 7,
+      "reach": 4,
+      "arcDegrees": 70,
+      "knockback": 0,
+      "blockable": true,
+      "parryable": true,
+      "clashable": true,
+      "model": "legacy_rapier.fsvoxel",
+      "action": "legacy_rapier_attack3_upper"
+    },
+    {
+      "id": "rapier_light_thrust",
+      "label": "西洋剑 · 旧版第4刀",
+      "weapon": "sword",
+      "input": "LEFT",
+      "windupTicks": 4,
+      "activeTicks": 5,
+      "recoveryTicks": 1,
+      "cooldownTicks": 0,
+      "staminaCost": 5,
+      "spiritCost": 0,
+      "damage": 9,
+      "reach": 4,
+      "arcDegrees": 70,
+      "knockback": 0,
+      "blockable": true,
+      "parryable": true,
+      "clashable": true,
+      "model": "legacy_rapier.fsvoxel",
+      "action": "legacy_rapier_attack4_upper"
+    }
+  ],
+  "leftCombo": [
+    {
+      "skillId": "sword_left"
+    },
+    {
+      "skillId": "rapier_downcut"
+    },
+    {
+      "skillId": "rapier_crosscut"
+    },
+    {
+      "skillId": "rapier_light_thrust"
+    }
+  ],
+  "rootSkills": [
+    "sword_left",
+    "rapier_downcut",
+    "rapier_crosscut",
+    "rapier_light_thrust",
+    "rapier_wrist_rise",
+    "sword_right",
+    "rapier_reprise"
+  ],
+  "rootDescription": "学会旧版单剑四连斩。左键依次四刀，右键突刺随修行解锁。已有冒险存档保留基础招式。",
+  "models": {
+    "models/legacy_rapier.fsvoxel": "6c23401a5010c59d1d1a01dff6a48be1684b3ecd0f2f072652530507d962123a",
+    "models/legacy_rapier_fp.fsvoxel": "227b5cfdf5e709eed25db0e2b88c557feccd2bb97c6dc39e7794716ba1f5de07"
+  }
+}

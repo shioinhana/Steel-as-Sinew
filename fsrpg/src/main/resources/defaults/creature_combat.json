@@ -1,0 +1,214 @@
+{
+  "schemaVersion": 1,
+  "attacks": [
+    {
+      "entityType": "minecraft:zombie",
+      "variant": "default",
+      "model": "zombie",
+      "clip": "attack",
+      "contactSeconds": 0.29167,
+      "durationSeconds": 1.375,
+      "windupTicks": 6,
+      "recoveryTicks": 22,
+      "evidence": "Curve inference, not an author hit marker: right_arm.rotation X 19.8969 at 0.16667 -> 111.114 at 0.29167; forward strike endpoint; body then pitches into follow-through"
+    },
+    {
+      "entityType": "minecraft:zombie_villager",
+      "variant": "default",
+      "model": "zombie_villager",
+      "clip": "attack",
+      "contactSeconds": 0.29167,
+      "durationSeconds": 1.375,
+      "windupTicks": 6,
+      "recoveryTicks": 22,
+      "evidence": "Curve inference, not an author hit marker: same supplied zombie-family right_arm strike endpoint at 0.29167"
+    },
+    {
+      "entityType": "minecraft:husk",
+      "variant": "default",
+      "model": "husk",
+      "clip": "attack",
+      "contactSeconds": 0.29167,
+      "durationSeconds": 1.375,
+      "windupTicks": 6,
+      "recoveryTicks": 22,
+      "evidence": "Curve inference, not an author hit marker: same supplied zombie-family right_arm strike endpoint at 0.29167"
+    },
+    {
+      "entityType": "minecraft:drowned",
+      "variant": "default",
+      "model": "drowned_inner",
+      "clip": "attack",
+      "contactSeconds": 0.79167,
+      "durationSeconds": 1.66667,
+      "windupTicks": 16,
+      "recoveryTicks": 18,
+      "evidence": "Curve inference, not an author hit marker: right_arm X 0 at 0.66667 -> 74.0948 at 0.79167, right_forearm 52.5 -> 20; torso reverses to striking follow-through; outer layer shares times"
+    },
+    {
+      "entityType": "minecraft:creaking",
+      "variant": "default",
+      "model": "creaking",
+      "clip": "attack",
+      "contactSeconds": 0.29167,
+      "durationSeconds": 0.875,
+      "windupTicks": 6,
+      "recoveryTicks": 12,
+      "evidence": "Curve inference, not an author hit marker: right_arm X 175 at 0.25 -> 57.5 at 0.29167; body X 9.9716 -> -37.5284; fast downward strike endpoint"
+    },
+    {
+      "entityType": "minecraft:enderman",
+      "variant": "default",
+      "model": "enderman",
+      "clip": "attack",
+      "contactSeconds": 0.375,
+      "durationSeconds": 1.375,
+      "windupTicks": 8,
+      "recoveryTicks": 20,
+      "evidence": "Curve inference, not an author hit marker: right_arm X -24.4659 at 0.29167 -> 118.0341 at 0.375; body yaw -45 -> 60; fast swat endpoint"
+    },
+    {
+      "entityType": "minecraft:iron_golem",
+      "variant": "default",
+      "model": "iron_golem",
+      "clip": "attack",
+      "contactSeconds": 0.45833,
+      "durationSeconds": 1.54167,
+      "windupTicks": 10,
+      "recoveryTicks": 21,
+      "evidence": "Curve inference, not an author hit marker: right_arm X160 held through 0.375 ->95 at 0.45833; body2 X -15 -> -82.5; double-arm slam endpoint"
+    },
+    {
+      "entityType": "minecraft:piglin",
+      "variant": "default",
+      "model": "piglin",
+      "clip": "attack_sword",
+      "contactSeconds": 0.375,
+      "durationSeconds": 1,
+      "windupTicks": 8,
+      "recoveryTicks": 12,
+      "evidence": "Curve inference, not an author hit marker: attack_sword right_arm X -62.5 at 0.16667 ->85.9008 at 0.375; torso yaw releases -27.38 ->64.3992 at 0.33333; weapon-arm strike endpoint"
+    },
+    {
+      "entityType": "minecraft:piglin",
+      "variant": "spear",
+      "model": "piglin",
+      "clip": "attack_spear",
+      "contactSeconds": 0.20833,
+      "durationSeconds": 0.70833,
+      "windupTicks": 5,
+      "recoveryTicks": 10,
+      "evidence": "Curve inference, not an author hit marker: attack_spear right_arm advances at 0.08333 and reaches X64.3496 at 0.20833; body position reaches [1,-0.4,-0.04]; end of forward thrust before recovery"
+    },
+    {
+      "entityType": "minecraft:piglin_brute",
+      "variant": "default",
+      "model": "piglin_brute",
+      "clip": "attack_axe",
+      "contactSeconds": 0.66667,
+      "durationSeconds": 1.25,
+      "windupTicks": 14,
+      "recoveryTicks": 11,
+      "evidence": "Curve inference, not an author hit marker: attack_axe right_arm [-32.8926,-41.8761,139.6022] at0.625 ->[101.743,-31.36,23.9115] at0.66667; torso uncoils into axe downstroke"
+    },
+    {
+      "entityType": "minecraft:vindicator",
+      "variant": "default",
+      "model": "vindicator",
+      "clip": "attack_axe",
+      "contactSeconds": 0.66667,
+      "durationSeconds": 1.25,
+      "windupTicks": 14,
+      "recoveryTicks": 11,
+      "evidence": "Curve inference, not an author hit marker: attack_axe shares brute downstroke keys at0.625/0.66667; torso releases at0.66667"
+    },
+    {
+      "entityType": "minecraft:wither_skeleton",
+      "variant": "default",
+      "model": "wither_skeleton",
+      "clip": "attack",
+      "contactSeconds": 0.54167,
+      "durationSeconds": 1.25,
+      "windupTicks": 11,
+      "recoveryTicks": 14,
+      "evidence": "Curve inference, not an author hit marker: right_arm yaw -49.4564 at0.45833 ->34.2936 at0.54167; torso yaw -44.7488 ->18.35; sword cuts across front then holds follow-through"
+    },
+    {
+      "entityType": "minecraft:spider",
+      "variant": "default",
+      "model": "spider",
+      "clip": "attack",
+      "contactSeconds": 0.25,
+      "durationSeconds": 0.58333,
+      "windupTicks": 5,
+      "recoveryTicks": 7,
+      "evidence": "Curve inference, not an author hit marker: head.position Z +4.0738 at0.125 (draw back) -> -0.2823 at0.25; body.position Z+0.9921 ->-1.0063; bite/lunge snap endpoint"
+    },
+    {
+      "entityType": "minecraft:cave_spider",
+      "variant": "default",
+      "model": "cave_spider",
+      "clip": "attack",
+      "contactSeconds": 0.41667,
+      "durationSeconds": 0.75,
+      "windupTicks": 9,
+      "recoveryTicks": 6,
+      "evidence": "Curve inference, not an author hit marker: body lunges Z-2 from0.29167 and reaches Y12.7 at0.41667; head X25 at0.29167 ->-7.5 at0.41667, bite release before recovery"
+    },
+    {
+      "entityType": "minecraft:ravager",
+      "variant": "default",
+      "model": "ravager",
+      "clip": "attack",
+      "contactSeconds": 0.5,
+      "durationSeconds": 1.25,
+      "windupTicks": 10,
+      "recoveryTicks": 15,
+      "evidence": "Curve inference, not an author hit marker: head X -72.5 at0.41667 ->5 at0.5 with body returning from drawn-back Z+2.8; fast horn/headbutt release endpoint; roar excluded"
+    },
+    {
+      "entityType": "minecraft:vex",
+      "variant": "default",
+      "model": "vex",
+      "clip": "attack",
+      "contactSeconds": 0.5,
+      "durationSeconds": 0.91667,
+      "windupTicks": 10,
+      "recoveryTicks": 9,
+      "evidence": "Curve inference, not an author hit marker: right_arm X118.9202 at0.41667 ->63.9202 at0.5 then held to0.625; sword downstroke endpoint"
+    },
+    {
+      "entityType": "minecraft:warden",
+      "variant": "default",
+      "model": "warden",
+      "clip": "attack",
+      "contactSeconds": 0.66667,
+      "durationSeconds": 1.125,
+      "windupTicks": 14,
+      "recoveryTicks": 9,
+      "evidence": "Curve inference, not an author hit marker: torso X-32.5 and up_torso X-40 held to0.58333 ->27.5/25 at0.66667; both arms surge forward, melee slam only; sonic boom excluded"
+    },
+    {
+      "entityType": "minecraft:zoglin",
+      "variant": "default",
+      "model": "zoglin",
+      "clip": "attack",
+      "contactSeconds": 0.33333,
+      "durationSeconds": 0.75,
+      "windupTicks": 7,
+      "recoveryTicks": 8,
+      "evidence": "Curve inference, not an author hit marker: head X-32.5 at0.25 ->46.565 at0.33333; upper body -15 ->3.33 and body completes thrust; horn strike endpoint"
+    },
+    {
+      "entityType": "minecraft:zombified_piglin",
+      "variant": "default",
+      "model": "zombified_piglin",
+      "clip": "attack_sword",
+      "contactSeconds": 0.375,
+      "durationSeconds": 1,
+      "windupTicks": 8,
+      "recoveryTicks": 12,
+      "evidence": "Curve inference, not an author hit marker: attack_sword right_arm X -62.5 at0.16667 ->85.9008 at0.375, same supplied sword strike as piglin"
+    }
+  ]
+}

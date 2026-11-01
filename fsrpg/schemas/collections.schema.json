@@ -1,0 +1,60 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://fsrpg.local/schemas/collections.schema.json",
+  "title": "FSRPG 生物掉落物与作物收集",
+  "description": "config/fsrpg/collections.json。按玩家只提交每种一次。服务器还校验 ID 与生物/种子唯一、里程碑目标不超过目录数量、奖励相乘边界和注册表引用。玩家的完成与待领取选择保存在世界 data/fsrpg/collections.json。",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "firstHuntRequired", "mobRewardMultiplier", "cropSeedRequired", "cropMatureRequired", "seedChoiceCount", "seedChoiceBones", "mobs", "crops", "mobMilestones", "cropMilestone"],
+  "properties": {
+    "schemaVersion": {"const": 1},
+    "firstHuntRequired": {"type": "boolean", "description": "生物提交需先由服务端记录首次怪物击杀；作物始终开放。"},
+    "mobRewardMultiplier": {"type": "integer", "minimum": 1, "maximum": 64},
+    "cropSeedRequired": {"type": "integer", "minimum": 1, "maximum": 64},
+    "cropMatureRequired": {"type": "integer", "minimum": 1, "maximum": 4096},
+    "seedChoiceCount": {"type": "integer", "minimum": 1, "maximum": 4096},
+    "seedChoiceBones": {"type": "integer", "minimum": 1, "maximum": 4096},
+    "mobs": {"type": "array", "minItems": 1, "maxItems": 256, "items": {"$ref": "#/$defs/mob"}},
+    "crops": {"type": "array", "minItems": 2, "maxItems": 256, "items": {"$ref": "#/$defs/crop"}},
+    "mobMilestones": {"type": "array", "maxItems": 64, "items": {"$ref": "#/$defs/milestone"}},
+    "cropMilestone": {
+      "type": "object", "additionalProperties": false, "required": ["target", "seedCount"],
+      "properties": {"target": {"type": "integer", "minimum": 1, "maximum": 256}, "seedCount": {"type": "integer", "minimum": 1, "maximum": 4096}}
+    }
+  },
+  "$defs": {
+    "id": {"type": "string", "pattern": "^[a-z0-9_.:/-]{1,128}$"},
+    "resourceId": {"type": "string", "maxLength": 128, "pattern": "^[a-z0-9_.-]+:[a-z0-9_./-]+$"},
+    "itemId": {"allOf": [{"$ref": "#/$defs/resourceId"}, {"not": {"const": "minecraft:air"}}]},
+    "label": {"type": "string", "minLength": 1, "maxLength": 256, "pattern": "\\S"},
+    "item": {
+      "type": "object", "additionalProperties": false, "required": ["id", "count"],
+      "properties": {
+        "id": {"$ref": "#/$defs/itemId"},
+        "count": {"type": "integer", "minimum": 1, "maximum": 4096},
+        "potion": {"anyOf": [{"const": ""}, {"$ref": "#/$defs/resourceId"}], "description": "可选的药水组件；空串表示无组件。药箭按毒/迟缓/虚弱分别核对并保留效果。"}
+      },
+      "allOf": [{"if": {"required": ["potion"], "properties": {"potion": {"not": {"const": ""}}}}, "then": {"properties": {"id": {"const": "minecraft:tipped_arrow"}}}}]
+    },
+    "mob": {
+      "type": "object", "additionalProperties": false, "required": ["id", "entity", "label", "drops"],
+      "properties": {
+        "id": {"$ref": "#/$defs/id"}, "entity": {"$ref": "#/$defs/resourceId"}, "label": {"$ref": "#/$defs/label"},
+        "drops": {"type": "array", "minItems": 1, "maxItems": 64, "items": {"$ref": "#/$defs/item"}}
+      }
+    },
+    "crop": {
+      "type": "object", "additionalProperties": false, "required": ["id", "label", "seed", "mature"],
+      "properties": {
+        "id": {"$ref": "#/$defs/id"}, "label": {"$ref": "#/$defs/label"}, "seed": {"$ref": "#/$defs/itemId"}, "mature": {"$ref": "#/$defs/itemId"}
+      }
+    },
+    "milestone": {
+      "type": "object", "additionalProperties": false, "required": ["target", "rewards"],
+      "properties": {
+        "target": {"type": "integer", "minimum": 1, "maximum": 256},
+        "rewards": {"type": "array", "minItems": 1, "maxItems": 64, "items": {"$ref": "#/$defs/item"}}
+      }
+    }
+  }
+}

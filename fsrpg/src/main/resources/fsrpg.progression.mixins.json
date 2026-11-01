@@ -1,0 +1,1 @@
+{"required":true,"package":"org.fsrpg.mixin","compatibilityLevel":"JAVA_21","mixins":["LegacyFoodDataMixin","LegacyTrialSpawnerMixin","FootworkTravelMixin","FootworkJumpMixin"],"injectors":{"defaultRequire":1}}

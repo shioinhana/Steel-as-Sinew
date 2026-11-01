@@ -1,0 +1,14 @@
+{
+  "version": "0.11.0",
+  "description": "Optional documentation and inactive examples only; never overwrite or activate a player assignment.",
+  "files": [
+    {
+      "source": "config/fsrpg/avatars/README.md",
+      "destination": "fsrpg/avatars/README.md"
+    },
+    {
+      "source": "config/fsrpg/avatars/examples/player.bbmodel",
+      "destination": "fsrpg/avatars/examples/player.bbmodel"
+    }
+  ]
+}

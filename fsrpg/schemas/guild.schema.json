@@ -1,0 +1,66 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "FSRPG 公会任务全局设置",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "maxTracked",
+    "dailyCount",
+    "timezone"
+  ],
+  "properties": {
+    "maxTracked": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 16
+    },
+    "dailyCount": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 64
+    },
+    "timezone": {
+      "type": "string"
+    },
+    "promotions": {
+      "type": "array",
+      "maxItems": 4,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "rank",
+          "totalCompletions",
+          "examQuest"
+        ],
+        "properties": {
+          "rank": {
+            "enum": [
+              "C",
+              "B",
+              "A",
+              "S"
+            ]
+          },
+          "totalCompletions": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 1000000
+          },
+          "requiredQuests": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 1000000
+            }
+          },
+          "examQuest": {
+            "type": "string",
+            "pattern": "^[a-z0-9_.:/-]{1,128}$"
+          }
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,698 @@
+plugins {
+    id 'java-library'
+    id 'net.neoforged.moddev' version '2.0.144'
+}
+version = mod_version
+group = 'org.fsrpg'
+base { archivesName = 'fsrpg-neoforge' }
+java { toolchain.languageVersion = JavaLanguageVersion.of(21); withSourcesJar() }
+repositories { mavenCentral() }
+dependencies {
+    compileOnly files('libs/fsvoxel-renderer-neoforge-0.6.0.jar')
+    compileOnly files('libs/fsvoxel-engine-1.0.0.jar')
+    testImplementation files('libs/fsvoxel-renderer-neoforge-0.6.0.jar')
+    testImplementation files('libs/fsvoxel-engine-1.0.0.jar')
+    testImplementation 'com.google.code.gson:gson:2.13.2'
+    testImplementation 'org.joml:joml:1.10.8'
+    runtimeOnly files('libs/fsvoxel-renderer-neoforge-0.6.0.jar')
+}
+sourceSets { smoke {}; monitorAgent {} }
+dependencies { monitorAgentImplementation 'org.ow2.asm:asm-commons:9.9.1' }
+def monitorAgentJar = tasks.register('monitorAgentJar', Jar) {
+    archiveFileName = 'fsrpg-test-monitor.jar'
+    destinationDirectory = layout.buildDirectory.dir('dev-tools')
+    from sourceSets.monitorAgent.output
+    from { configurations.monitorAgentRuntimeClasspath.collect { zipTree(it) } }
+    exclude 'META-INF/*.SF', 'META-INF/*.RSA', 'META-INF/*.DSA', 'module-info.class'
+    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+    manifest { attributes 'Premain-Class': 'org.fsrpg.dev.MonitorAgent' }
+}
+sourceSets.smoke.compileClasspath += sourceSets.main.output + sourceSets.main.compileClasspath
+sourceSets.smoke.runtimeClasspath += sourceSets.main.output + sourceSets.main.runtimeClasspath
+if (project.hasProperty('rpgJarSmoke')) {
+    sourceSets { packagedSmoke {} }
+    if (project.hasProperty('smokeJar')) sourceSets.packagedSmoke.output.dir(file(project.property('smokeJar')))
+    else sourceSets.packagedSmoke.output.dir([builtBy: tasks.named('jar')], tasks.named('jar').flatMap { it.archiveFile })
+    sourceSets.packagedSmoke.output.dir([builtBy: tasks.named('compileSmokeJava')], tasks.named('compileSmokeJava').flatMap { it.destinationDirectory })
+    def looseMain = sourceSets.main.output.files
+    sourceSets.packagedSmoke.runtimeClasspath = sourceSets.packagedSmoke.output + sourceSets.main.runtimeClasspath.filter { file -> !looseMain.contains(file) }
+}
+neoForge {
+    version = neo_version
+    runs {
+        client {
+            client(); gameDirectory = file('run/client')
+            jvmArgument "-javaagent:${layout.buildDirectory.file('dev-tools/fsrpg-test-monitor.jar').get().asFile.absolutePath}"
+            if(project.hasProperty('spearProfile')) jvmArgument "-XX:StartFlightRecording=filename=${file('verification/spear-underarm-turn-20261014/solver-profile.jfr').absolutePath},settings=profile,dumponexit=true"
+            if (project.hasProperty('rpgJarSmoke')) sourceSet.set(sourceSets.packagedSmoke)
+            ['spearOrbit','rapierFencing','importedItems','importedItemHands','shoulderInteraction','cameraSchedule','avatar','fullBodySword','questSystem'].each { profile ->
+                if(project.hasProperty(profile+'Smoke')) {
+                    if(!project.hasProperty('smokeWorld'))throw new GradleException(profile+'Smoke requires a copied marked world')
+                    jvmArgument "-Dfsrpg.${profile}Smoke=true"
+                    jvmArgument "-Dfsrpg.${profile}World=${project.property('smokeWorld')}"
+                    jvmArgument "-Dfsrpg.smokeEvidence=${file(project.property('smokeEvidence')).absolutePath}"
+                }
+            }
+            if (project.hasProperty('cameraScheduleReload')) jvmArgument '-Dfsrpg.cameraScheduleReload=true'
+            if (project.hasProperty('weaponSmoke')) {
+                jvmArgument '-Dfsrpg.weaponSmoke=true'
+                jvmArgument "-Dfsrpg.smokeEvidence=${project.hasProperty('smokeEvidence') ? file(project.property('smokeEvidence')).absolutePath : '../../verification/weapons-r2'}"
+            }
+            if (project.hasProperty('poseSmoke')) { jvmArgument '-Dfsrpg.poseSmoke=true' }
+            if (project.hasProperty('hudSmoke')) {
+                if (!project.hasProperty('smokeWorld')) throw new GradleException('hudSmoke requires -PsmokeWorld naming a copied HUD test world')
+                jvmArgument '-Dfsrpg.hudSmoke=true'
+                jvmArgument "-Dfsrpg.hudWorld=${project.property('smokeWorld')}"
+                jvmArgument "-Dfsrpg.smokeEvidence=${project.hasProperty('smokeEvidence') ? file(project.property('smokeEvidence')).absolutePath : file('verification/hud-20261011/game').absolutePath}"
+            }
+            if (project.hasProperty('collectionSmoke')) {
+                if (!project.hasProperty('smokeWorld')) throw new GradleException('collectionSmoke requires a copied collection test world')
+                jvmArgument '-Dfsrpg.collectionSmoke=true'
+                jvmArgument "-Dfsrpg.collectionWorld=${project.property('smokeWorld')}"
+                jvmArgument "-Dfsrpg.smokeEvidence=${project.hasProperty('smokeEvidence') ? file(project.property('smokeEvidence')).absolutePath : file('verification/collections-20261011/game').absolutePath}"
+            }
+            if(project.hasProperty('legacySkillSmoke')) {
+                if(!project.hasProperty('smokeWorld'))throw new GradleException('legacySkillSmoke requires a copied test world');
+                jvmArgument '-Dfsrpg.legacySkillSmoke=true'
+                jvmArgument "-Dfsrpg.legacySkillWorld=${project.property('smokeWorld')}"
+                jvmArgument "-Dfsrpg.smokeEvidence=${project.hasProperty('smokeEvidence') ? file(project.property('smokeEvidence')).absolutePath : file('verification/legacy-skills-20261012-001758/game').absolutePath}"
+            }
+            if(project.hasProperty('skillTreeSmoke')) {
+                if(!project.hasProperty('smokeWorld'))throw new GradleException('skillTreeSmoke requires a copied test world');
+                jvmArgument '-Dfsrpg.skillTreeSmoke=true'
+                jvmArgument "-Dfsrpg.skillTreeWorld=${project.property('smokeWorld')}"
+                jvmArgument "-Dfsrpg.smokeEvidence=${project.hasProperty('smokeEvidence') ? file(project.property('smokeEvidence')).absolutePath : file('verification/skill-tree-20261022/game').absolutePath}"
+            }
+            if(project.hasProperty('cameraPerfSmoke')) {
+                if(!project.hasProperty('smokeWorld'))throw new GradleException('cameraPerfSmoke requires a copied test world');
+                jvmArgument '-Dfsrpg.cameraPerfSmoke=true'
+                jvmArgument "-Dfsrpg.cameraPerfWorld=${project.property('smokeWorld')}"
+                jvmArgument "-Dfsrpg.smokeEvidence=${project.hasProperty('smokeEvidence') ? file(project.property('smokeEvidence')).absolutePath : file('verification/camera-perf-20261022/game').absolutePath}"
+            }
+            if(project.hasProperty('spearGuardSmoke')) {
+                if(!project.hasProperty('smokeWorld'))throw new GradleException('spearGuardSmoke requires a copied test world');
+                jvmArgument '-Dfsrpg.spearGuardSmoke=true'
+                jvmArgument "-Dfsrpg.spearGuardWorld=${project.property('smokeWorld')}"
+                jvmArgument "-Dfsrpg.smokeEvidence=${project.hasProperty('smokeEvidence') ? file(project.property('smokeEvidence')).absolutePath : file('verification/spear-guard-20261022/game').absolutePath}"
+            }
+            if(project.hasProperty('perfJfr')) jvmArgument "-XX:StartFlightRecording=filename=${file(project.property('perfJfr')).absolutePath},settings=profile,dumponexit=true"
+            if(project.hasProperty('spearSolverSmoke')) {
+                if(!project.hasProperty('smokeWorld'))throw new GradleException('spearSolverSmoke requires a copied spear test world');
+                jvmArgument '-Dfsrpg.spearSolverSmoke=true'
+                jvmArgument "-Dfsrpg.spearSolverWorld=${project.property('smokeWorld')}"
+                jvmArgument "-Dfsrpg.smokeEvidence=${project.hasProperty('smokeEvidence') ? file(project.property('smokeEvidence')).absolutePath : file('verification/spear-solver-20261012/game').absolutePath}"
+            }
+            if(project.hasProperty('combatBalanceSmoke')) {
+                if(!project.hasProperty('smokeWorld'))throw new GradleException('combatBalanceSmoke requires a copied marked world')
+                jvmArgument '-Dfsrpg.combatBalanceSmoke=true'
+                jvmArgument "-Dfsrpg.combatBalanceWorld=${project.property('smokeWorld')}"
+                jvmArgument "-Dfsrpg.smokeEvidence=${file(project.property('smokeEvidence')).absolutePath}"
+            }
+            if(project.hasProperty('creatureCombatSmoke')) {
+                if(!project.hasProperty('smokeWorld'))throw new GradleException('creatureCombatSmoke requires a copied marked world')
+                jvmArgument '-Dfsrpg.creatureCombatSmoke=true'
+                jvmArgument "-Dfsrpg.creatureCombatWorld=${project.property('smokeWorld')}"
+                jvmArgument "-Dfsrpg.smokeEvidence=${file(project.property('smokeEvidence')).absolutePath}"
+            }
+            if(project.hasProperty('guardComboSmoke')) {
+                if(!project.hasProperty('smokeWorld'))throw new GradleException('guardComboSmoke requires a copied marked world')
+                jvmArgument '-Dfsrpg.guardComboSmoke=true'
+                jvmArgument "-Dfsrpg.guardComboWorld=${project.property('smokeWorld')}"
+                jvmArgument "-Dfsrpg.smokeEvidence=${file(project.property('smokeEvidence')).absolutePath}"
+            }
+            if(project.hasProperty('dualSourceSmoke')) {
+                if(!project.hasProperty('smokeWorld'))throw new GradleException('dualSourceSmoke requires a copied marked world')
+                jvmArgument '-Dfsrpg.dualSourceSmoke=true'
+                jvmArgument "-Dfsrpg.dualSourceWorld=${project.property('smokeWorld')}"
+                jvmArgument "-Dfsrpg.smokeEvidence=${file(project.property('smokeEvidence')).absolutePath}"
+            }
+            if(project.hasProperty('combatRevisionSmoke')) {
+                if(!project.hasProperty('smokeWorld'))throw new GradleException('combatRevisionSmoke requires a copied marked world')
+                jvmArgument '-Dfsrpg.combatRevisionSmoke=true'
+                jvmArgument "-Dfsrpg.combatRevisionWorld=${project.property('smokeWorld')}"
+                jvmArgument "-Dfsrpg.smokeEvidence=${file(project.property('smokeEvidence')).absolutePath}"
+            }
+            if(project.hasProperty('spearGestureSmoke')) {
+                if(!project.hasProperty('smokeWorld'))throw new GradleException('spearGestureSmoke requires a copied marked world')
+                jvmArgument '-Dfsrpg.spearGestureSmoke=true'
+                jvmArgument "-Dfsrpg.spearGestureWorld=${project.property('smokeWorld')}"
+                jvmArgument "-Dfsrpg.smokeEvidence=${file(project.property('smokeEvidence')).absolutePath}"
+            }
+            if(project.hasProperty('shoulderCombatSmoke')) {
+                if(!project.hasProperty('smokeWorld'))throw new GradleException('shoulderCombatSmoke requires a copied marked world')
+                jvmArgument '-Dfsrpg.shoulderCombatSmoke=true'
+                jvmArgument "-Dfsrpg.shoulderCombatWorld=${project.property('smokeWorld')}"
+                jvmArgument "-Dfsrpg.smokeEvidence=${file(project.property('smokeEvidence')).absolutePath}"
+            }
+            if(project.hasProperty('burstSwipeSmoke')) {
+                if(!project.hasProperty('smokeWorld'))throw new GradleException('burstSwipeSmoke requires a copied marked world')
+                jvmArgument '-Dfsrpg.burstSwipeSmoke=true'
+                jvmArgument "-Dfsrpg.burstSwipeWorld=${project.property('smokeWorld')}"
+                jvmArgument "-Dfsrpg.smokeEvidence=${file(project.property('smokeEvidence')).absolutePath}"
+            }
+            if(project.hasProperty('runAirSmoke')) {
+                if(!project.hasProperty('smokeWorld'))throw new GradleException('runAirSmoke requires a copied marked world')
+                jvmArgument '-Dfsrpg.runAirSmoke=true'
+                jvmArgument '-Xms2G'
+                jvmArgument '-Xmx4G'
+                jvmArgument "-Dfsrpg.runAirWorld=${project.property('smokeWorld')}"
+                jvmArgument "-Dfsrpg.smokeEvidence=${file(project.property('smokeEvidence')).absolutePath}"
+            }
+            if(project.hasProperty('weaponClashSmoke')) {
+                if(!project.hasProperty('smokeWorld'))throw new GradleException('weaponClashSmoke requires a copied marked world')
+                jvmArgument '-Dfsrpg.weaponClashSmoke=true'
+                jvmArgument "-Dfsrpg.weaponClashWorld=${project.property('smokeWorld')}"
+                jvmArgument "-Dfsrpg.smokeEvidence=${file(project.property('smokeEvidence')).absolutePath}"
+            }
+            if(project.hasProperty('spearShoulderSmoke')) {
+                if(!project.hasProperty('smokeWorld'))throw new GradleException('spearShoulderSmoke requires a copied marked world')
+                jvmArgument '-Dfsrpg.spearShoulderSmoke=true'
+                jvmArgument "-Dfsrpg.spearShoulderWorld=${project.property('smokeWorld')}"
+                jvmArgument "-Dfsrpg.smokeEvidence=${file(project.property('smokeEvidence')).absolutePath}"
+            }
+            if(project.hasProperty('defenseFlowSmoke')) {
+                if(!project.hasProperty('smokeWorld'))throw new GradleException('defenseFlowSmoke requires a copied marked world')
+                jvmArgument '-Dfsrpg.defenseFlowSmoke=true'
+                jvmArgument "-Dfsrpg.defenseFlowWorld=${project.property('smokeWorld')}"
+                jvmArgument "-Dfsrpg.smokeEvidence=${file(project.property('smokeEvidence')).absolutePath}"
+            }
+            if(project.hasProperty('rapierMotionSmoke')) {
+                if(!project.hasProperty('smokeWorld'))throw new GradleException('rapierMotionSmoke requires a copied marked world')
+                jvmArgument '-Dfsrpg.rapierMotionSmoke=true'
+                jvmArgument "-Dfsrpg.rapierMotionWorld=${project.property('smokeWorld')}"
+                jvmArgument "-Dfsrpg.smokeEvidence=${file(project.property('smokeEvidence')).absolutePath}"
+            }
+            if(project.hasProperty('inspectionCarrySmoke')) {
+                if(!project.hasProperty('smokeWorld'))throw new GradleException('inspectionCarrySmoke requires a copied marked world')
+                jvmArgument '-Dfsrpg.inspectionCarrySmoke=true'
+                jvmArgument "-Dfsrpg.inspectionCarryWorld=${project.property('smokeWorld')}"
+                jvmArgument "-Dfsrpg.smokeEvidence=${file(project.property('smokeEvidence')).absolutePath}"
+            }
+            if(project.hasProperty('groundImpulseSmoke')) {
+                if(!project.hasProperty('smokeWorld'))throw new GradleException('groundImpulseSmoke requires a copied marked world')
+                jvmArgument '-Dfsrpg.groundImpulseSmoke=true'
+                jvmArgument "-Dfsrpg.groundImpulseWorld=${project.property('smokeWorld')}"
+                jvmArgument "-Dfsrpg.smokeEvidence=${file(project.property('smokeEvidence')).absolutePath}"
+            }
+            if(project.hasProperty('whiteAdventurerSmoke')) {
+                if(!project.hasProperty('smokeWorld'))throw new GradleException('whiteAdventurerSmoke requires a copied marked world')
+                jvmArgument '-Dfsrpg.whiteAdventurerSmoke=true'
+                jvmArgument "-Dfsrpg.whiteAdventurerWorld=${project.property('smokeWorld')}"
+                jvmArgument "-Dfsrpg.smokeEvidence=${file(project.property('smokeEvidence')).absolutePath}"
+            }
+            if(project.hasProperty('spearPerformanceSmoke')) {
+                if(!project.hasProperty('smokeWorld'))throw new GradleException('spearPerformanceSmoke requires a copied marked test world')
+                jvmArgument '-Dfsrpg.spearPerformanceSmoke=true'
+                jvmArgument "-Dfsrpg.spearPerformanceWorld=${project.property('smokeWorld')}"
+                if(project.hasProperty('spearPerformanceUserSettings')) jvmArgument '-Dfsrpg.spearPerformanceUserSettings=true'
+                if(project.hasProperty('spearPerformanceQuick')) jvmArgument '-Dfsrpg.spearPerformanceQuick=true'
+                if(project.hasProperty('stressSeconds')) jvmArgument "-Dfsrpg.spearPerformanceStressSeconds=${project.property('stressSeconds')}"
+                if(project.hasProperty('spearPerformanceStressSeconds')) jvmArgument "-Dfsrpg.spearPerformanceStressSeconds=${project.property('spearPerformanceStressSeconds')}"
+                if(project.hasProperty('spearPerformanceExpectFastThrust')) jvmArgument '-Dfsrpg.spearPerformanceExpectFastThrust=true'
+                if(project.hasProperty('spearPerformanceRequireQuality')) jvmArgument '-Dfsrpg.spearPerformanceRequireQuality=true'
+                if(project.hasProperty('spearPerformanceVideo')) jvmArgument '-Dfsrpg.spearPerformanceVideo=true'
+                jvmArgument "-Dfsrpg.smokeEvidence=${file(project.property('smokeEvidence')).absolutePath}"
+                if(project.hasProperty('profileOutput')) jvmArgument "-XX:StartFlightRecording=filename=${file(project.property('profileOutput')).absolutePath},settings=profile,dumponexit=true"
+            }
+            if(project.hasProperty('rapierLockSmoke')) {
+                if(!project.hasProperty('smokeWorld'))throw new GradleException('rapierLockSmoke requires a copied marked test world')
+                jvmArgument '-Dfsrpg.rapierLockSmoke=true'
+                jvmArgument "-Dfsrpg.rapierLockWorld=${project.property('smokeWorld')}"
+                jvmArgument "-Dfsrpg.smokeEvidence=${file('verification/rapier-lock-20261016/game').absolutePath}"
+            }
+            if(project.hasProperty('artSmoke')) { jvmArgument '-Dfsrpg.artSmoke=true'; jvmArgument "-Dfsrpg.smokeEvidence=" + file('verification/five-packs-20261016/game').absolutePath }
+            if(project.hasProperty('actionLimitsSmoke')) {
+                if(!project.hasProperty('smokeWorld'))throw new GradleException('actionLimitsSmoke requires a copied spear test world');
+                jvmArgument '-Dfsrpg.actionLimitsSmoke=true'
+                jvmArgument "-Dfsrpg.actionLimitsWorld=${project.property('smokeWorld')}"
+                jvmArgument "-Dfsrpg.smokeEvidence=${project.hasProperty('smokeEvidence') ? file(project.property('smokeEvidence')).absolutePath : file('verification/action-limits-20261013/game').absolutePath}"
+            }
+            if (project.hasProperty('poseSamples')) {
+                if (!project.hasProperty('poseSmoke')) throw new GradleException('poseSamples requires -PposeSmoke')
+                jvmArgument "-Dfsrpg.poseSamples=${project.property('poseSamples')}"
+            }
+            if (project.hasProperty('smokeWorld')) { programArgument '--quickPlaySingleplayer'; programArgument project.property('smokeWorld').toString() }
+        }
+        server { server(); gameDirectory = file('run/server'); programArgument '--nogui' }
+    }
+    mods { fsrpg {
+        if (project.hasProperty('rpgJarSmoke')) sourceSet sourceSets.packagedSmoke
+        else { sourceSet sourceSets.main; if (project.hasProperty('questSystemSmoke') || project.hasProperty('fullBodySwordSmoke') || project.hasProperty('avatarSmoke') || project.hasProperty('cameraScheduleSmoke') || project.hasProperty('shoulderInteractionSmoke') || project.hasProperty('importedItemHandsSmoke') || project.hasProperty('importedItemsSmoke') || project.hasProperty('spearOrbitSmoke') || project.hasProperty('rapierFencingSmoke') || project.hasProperty('spearShoulderSmoke') || project.hasProperty('defenseFlowSmoke') || project.hasProperty('rapierMotionSmoke') || project.hasProperty('weaponClashSmoke') || project.hasProperty('runAirSmoke') || project.hasProperty('inspectionCarrySmoke') || project.hasProperty('groundImpulseSmoke') || project.hasProperty('burstSwipeSmoke') || project.hasProperty('shoulderCombatSmoke') || project.hasProperty('spearGestureSmoke') || project.hasProperty('combatRevisionSmoke') || project.hasProperty('dualSourceSmoke') || project.hasProperty('guardComboSmoke') || project.hasProperty('creatureCombatSmoke') || project.hasProperty('combatBalanceSmoke') || project.hasProperty('whiteAdventurerSmoke') || project.hasProperty('spearPerformanceSmoke') || project.hasProperty('rapierLockSmoke') || project.hasProperty('artSmoke') || project.hasProperty('rpgSmoke') || project.hasProperty('poseSmoke') || project.hasProperty('hudSmoke') || project.hasProperty('collectionSmoke') || project.hasProperty('legacySkillSmoke') || project.hasProperty('spearSolverSmoke') || project.hasProperty('actionLimitsSmoke')) sourceSet sourceSets.smoke }
+    } }
+}
+tasks.named('runClient') { dependsOn monitorAgentJar }
+if (project.hasProperty('rpgJarSmoke')) sourceSets.packagedSmoke.runtimeClasspath += files(configurations.named('devLaunchConfig'))
+tasks.withType(JavaCompile).configureEach { options.encoding = 'UTF-8' }
+tasks.named('processResources') {
+    inputs.property 'mod_version', project.version
+    filesMatching('META-INF/neoforge.mods.toml') { expand(mod_version: project.version) }
+}
+['weaponControlsTest':'org.fsrpg.combat.WeaponControlsTest', 'combatTest': 'org.fsrpg.combat.CombatTest', 'questTest': 'org.fsrpg.quest.QuestTest', 'configTest': 'org.fsrpg.config.ConfigTest', 'rapierTest': 'org.fsrpg.animation.RapierAssetTest', 'skinBindingTest': 'org.fsrpg.client.ArmDeformationTest', 'heldItemTest': 'org.fsrpg.client.HeldItemTransformTest', 'spearAimPoseTest': 'org.fsrpg.client.SpearAimPoseTest', 'poseLayersTest': 'org.fsrpg.client.PoseLayersTest', 'presentationMotionTest': 'org.fsrpg.client.PresentationMotionTest', 'legDeformationTest': 'org.fsrpg.client.LegDeformationTest', 'idleInspectionTest': 'org.fsrpg.client.IdleInspectionTest'].each { taskName, className ->
+    tasks.register(taskName, JavaExec) {
+        dependsOn testClasses
+        classpath = sourceSets.test.runtimeClasspath
+        mainClass = className
+        jvmArgs '-Dfile.encoding=UTF-8'
+    }
+}
+tasks.named('test') { enabled = false }
+tasks.register('weaponClashTest',JavaExec) {
+    dependsOn testClasses
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'org.fsrpg.combat.WeaponClashTest'
+    jvmArgs '-Dfile.encoding=UTF-8'
+}
+tasks.named('check') { dependsOn 'weaponClashTest' }
+
+tasks.register('spearCursorFieldTest', JavaExec) {
+    dependsOn testClasses
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'org.fsrpg.client.SpearCursorFieldTest'
+    jvmArgs '-Dfile.encoding=UTF-8'
+}
+
+tasks.register('swordMotionTest', JavaExec) {
+    dependsOn testClasses
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'org.fsrpg.client.SwordMotionTest'
+    jvmArgs '-Dfile.encoding=UTF-8'
+}
+
+tasks.register('poseSheetDump', JavaExec) {
+    dependsOn testClasses
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'org.fsrpg.client.PoseSheetDump'
+    jvmArgs '-Dfile.encoding=UTF-8'
+    args project.hasProperty('poseSheetOutput') ? project.property('poseSheetOutput').toString() : 'build/pose-sheet/poses.json'
+}
+
+tasks.register('dualClipAudit', JavaExec) {
+    dependsOn testClasses
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'org.fsrpg.client.DualClipAudit'
+    jvmArgs '-Dfile.encoding=UTF-8'
+    args project.hasProperty('auditFilter') ? project.property('auditFilter').toString() : 'attack'
+}
+
+tasks.register('spearStanceTest', JavaExec) {
+    dependsOn testClasses
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'org.fsrpg.client.SpearStanceTest'
+    jvmArgs '-Dfile.encoding=UTF-8'
+}
+tasks.named('check') { dependsOn 'spearStanceTest' }
+
+tasks.register('spearGripTest', JavaExec) {
+    dependsOn testClasses
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'org.fsrpg.client.SpearGripTest'
+    jvmArgs '-Dfile.encoding=UTF-8'
+}
+tasks.named('check') { dependsOn 'spearGripTest' }
+
+tasks.register('swordTimingTest', JavaExec) {
+    dependsOn testClasses
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'org.fsrpg.client.SwordTimingTest'
+    jvmArgs '-Dfile.encoding=UTF-8'
+}
+tasks.named('check') { dependsOn 'swordTimingTest' }
+
+tasks.register('spearForwardFieldPoseTest', JavaExec) {
+    dependsOn testClasses
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'org.fsrpg.client.SpearForwardFieldPoseTest'
+    jvmArgs '-Dfile.encoding=UTF-8'
+    args 'verification/action-limits-20261013/forward-field-poses.json'
+}
+
+tasks.register('spearUnderarmPoseTest', JavaExec) {
+    dependsOn testClasses
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'org.fsrpg.client.SpearForwardFieldPoseTest'
+    jvmArgs '-Dfile.encoding=UTF-8', '-Dfsrpg.underarmTest=true'
+    args 'verification/spear-underarm-turn-20261014/underarm-poses.json'
+}
+tasks.register('spearTurnTest', JavaExec) {
+    dependsOn testClasses
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'org.fsrpg.client.SpearTurnTest'
+    jvmArgs '-Dfile.encoding=UTF-8'
+}
+tasks.register('torsoConnectionTest',JavaExec) {
+    dependsOn testClasses
+    classpath=sourceSets.test.runtimeClasspath
+    mainClass='org.fsrpg.client.TorsoConnectionTest'
+}
+tasks.register('spearUnderarmCarryTest', JavaExec) {
+    dependsOn testClasses
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'org.fsrpg.client.SpearUnderarmCarryTest'
+}
+tasks.register('spearUnderarmMotionTest', JavaExec) {
+    dependsOn testClasses
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'org.fsrpg.client.SpearForwardFieldPoseTest'
+    jvmArgs '-Dfile.encoding=UTF-8', '-Dfsrpg.underarmTest=true', '-Dfsrpg.motionOnly=true'
+    args project.hasProperty('spearUnderarmMotionOutput') ? project.property('spearUnderarmMotionOutput').toString() : 'verification/spear-underarm-turn-20261014/underarm-motion.json'
+}
+tasks.register('spearUnderarmTrace', JavaExec) {
+    dependsOn testClasses
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'org.fsrpg.client.SpearForwardFieldPoseTest'
+    jvmArgs '-Dfile.encoding=UTF-8', '-Dfsrpg.underarmTest=true', '-Dfsrpg.motionOnly=true', '-Dfsrpg.tuckTrace=true'
+    args 'verification/spear-underarm-turn-20261014/trace-report.json'
+}
+
+tasks.register('staminaCostTest', JavaExec) {
+    dependsOn testClasses
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'org.fsrpg.config.StaminaCostTest'
+    jvmArgs '-Dfile.encoding=UTF-8'
+}
+tasks.named('check') { dependsOn 'staminaCostTest' }
+
+tasks.register('stageStaminaConfig', JavaExec) {
+    dependsOn testClasses
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'org.fsrpg.config.StageStaminaConfig'
+    jvmArgs '-Dfile.encoding=UTF-8'
+    doFirst {
+        if (!project.hasProperty('staminaStageDirectory') || !project.hasProperty('staminaStageReport'))
+            throw new GradleException('stageStaminaConfig requires -PstaminaStageDirectory and -PstaminaStageReport')
+        args file(project.property('staminaStageDirectory')).absolutePath, file(project.property('staminaStageReport')).absolutePath
+    }
+}
+
+tasks.register('spearSafetyTest', JavaExec) {
+    dependsOn testClasses
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'org.fsrpg.client.SpearSafetyTest'
+    jvmArgs '-Dfile.encoding=UTF-8'
+    args project.hasProperty('spearSafetyOutput') ? project.property('spearSafetyOutput').toString() : 'verification/spear-solver-20261012/diagnostics.json'
+}
+tasks.register('spearPitchContinuityTest', JavaExec) {
+    dependsOn testClasses
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'org.fsrpg.client.SpearPitchContinuityTest'
+    jvmArgs '-Dfile.encoding=UTF-8'
+    args project.hasProperty('spearPitchOutput') ? project.property('spearPitchOutput').toString() : 'verification/spear-solver-20261012/pitch-continuity.json'
+}
+tasks.register('spearMovementContinuityTest', JavaExec) {
+    dependsOn testClasses
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'org.fsrpg.client.SpearMovementContinuityTest'
+    jvmArgs '-Dfile.encoding=UTF-8'
+    args project.hasProperty('spearMovementOutput') ? project.property('spearMovementOutput').toString() : 'verification/spear-blend-20261012/movement-continuity.json'
+}
+
+tasks.register('weaponAssetTest', JavaExec) {
+    dependsOn testClasses
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'org.fsrpg.animation.WeaponAssetTest'
+}
+tasks.named('check') { dependsOn 'weaponAssetTest' }
+
+tasks.register('hudPresentationTest', JavaExec) {
+    dependsOn testClasses
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'org.fsrpg.client.HudPresentationTest'
+}
+tasks.named('check') { dependsOn 'hudPresentationTest' }
+['collectionQuestTest':'org.fsrpg.quest.CollectionQuestTest', 'weaponDrawRulesTest':'org.fsrpg.combat.WeaponDrawRulesTest'].each { taskName, className ->
+    tasks.register(taskName, JavaExec) { dependsOn testClasses; classpath = sourceSets.test.runtimeClasspath; mainClass = className; jvmArgs '-Dfile.encoding=UTF-8' }
+    tasks.named('check') { dependsOn taskName }
+}
+tasks.named('check') { dependsOn 'weaponControlsTest', 'combatTest', 'questTest', 'configTest', 'rapierTest', 'skinBindingTest', 'heldItemTest', 'spearAimPoseTest', 'poseLayersTest', 'presentationMotionTest', 'legDeformationTest', 'idleInspectionTest' }
+['archeryTest':'org.fsrpg.archery.ArcheryTest','progressionTest':'org.fsrpg.progression.ProgressionTest','legacyMeleeTest':'org.fsrpg.combat.LegacyMeleeTest','legacyAssetTest':'org.fsrpg.animation.LegacyAssetTest'].each { taskName,className ->
+    tasks.register(taskName,JavaExec){dependsOn testClasses;classpath=sourceSets.test.runtimeClasspath;mainClass=className;jvmArgs '-Dfile.encoding=UTF-8'}
+    tasks.named('check'){dependsOn taskName}
+}
+
+tasks.register('creatureArtTest', JavaExec) { dependsOn testClasses; classpath = sourceSets.test.runtimeClasspath; mainClass = 'org.fsrpg.art.CreatureArtTest' }
+tasks.named('check') { dependsOn 'creatureArtTest' }
+
+['rapierTargetingTest':'org.fsrpg.combat.RapierTargetingTest','orbitMovementTest':'org.fsrpg.client.OrbitMovementTest'].each { taskName,className ->
+    tasks.register(taskName,JavaExec){dependsOn testClasses;classpath=sourceSets.test.runtimeClasspath;mainClass=className;jvmArgs '-Dfile.encoding=UTF-8'}
+    tasks.named('check'){dependsOn taskName}
+}
+
+tasks.named('check') { dependsOn 'swordMotionTest', 'torsoConnectionTest', 'spearTurnTest' }
+
+tasks.register('stageRapierConfig',JavaExec) {
+    dependsOn testClasses;classpath=sourceSets.test.runtimeClasspath;mainClass='org.fsrpg.config.StageRapierConfig'
+    doFirst {args file(project.property('rapierStageDirectory')).absolutePath,file(project.property('rapierStageReport')).absolutePath}
+}
+
+
+tasks.register('staminaRegenTest', JavaExec) {
+    dependsOn testClasses; classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'org.fsrpg.config.StaminaRegenTest'
+    jvmArgs '-Dfile.encoding=UTF-8'
+}
+tasks.named('check') { dependsOn 'staminaRegenTest' }
+tasks.register('stageStaminaRegenConfig', JavaExec) {
+    dependsOn testClasses; classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'org.fsrpg.config.StageStaminaRegenConfig'
+    jvmArgs '-Dfile.encoding=UTF-8'
+    doFirst {
+        if (!project.hasProperty('staminaRegenStageDirectory') || !project.hasProperty('staminaRegenStageReport'))
+            throw new GradleException('stageStaminaRegenConfig requires a staged directory and output report')
+        args file(project.property('staminaRegenStageDirectory')).absolutePath, file(project.property('staminaRegenStageReport')).absolutePath
+    }
+}
+tasks.register('spearPerformanceBenchmark', JavaExec) {
+    dependsOn testClasses; classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'org.fsrpg.client.SpearPerformanceBenchmark'
+    jvmArgs '-Dfile.encoding=UTF-8'
+    args project.hasProperty('benchmarkReport') ? project.property('benchmarkReport').toString() : 'verification/spear-performance-20261016/micro/current.json'
+}
+
+tasks.register('spearCollisionTest', JavaExec) {
+    dependsOn testClasses; classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'org.fsrpg.client.SpearCollisionTest'
+}
+tasks.named('check') { dependsOn 'spearCollisionTest' }
+
+tasks.register('spearRankingBoundsTest', JavaExec) {
+    dependsOn testClasses; classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'org.fsrpg.client.SpearRankingBoundsTest'
+}
+tasks.named('check') { dependsOn 'spearRankingBoundsTest' }
+
+
+tasks.register('spearThrustTimingTest', JavaExec) {
+    dependsOn testClasses; classpath=sourceSets.test.runtimeClasspath
+    mainClass='org.fsrpg.config.SpearThrustTimingTest'
+}
+tasks.named('check') { dependsOn 'spearThrustTimingTest' }
+tasks.register('weaponStaminaBalanceTest', JavaExec) {
+    dependsOn testClasses; classpath=sourceSets.test.runtimeClasspath
+    mainClass='org.fsrpg.config.WeaponStaminaBalanceTest'
+}
+tasks.named('check') { dependsOn 'weaponStaminaBalanceTest' }
+
+tasks.register('perfectGuardCounterTest', JavaExec) {
+    dependsOn testClasses; classpath=sourceSets.test.runtimeClasspath
+    mainClass='org.fsrpg.combat.PerfectGuardCounterTest'
+}
+tasks.named('check') { dependsOn 'perfectGuardCounterTest' }
+tasks.register('spearRealtimeTest', JavaExec) {
+    dependsOn testClasses; classpath=sourceSets.test.runtimeClasspath
+    mainClass='org.fsrpg.client.SpearRealtimeTest'
+    args 'verification/spear-realtime-20261016/quality-build.json'
+}
+tasks.named('check') { dependsOn 'spearRealtimeTest' }
+
+tasks.register('spearCircleBandsTest', JavaExec) {
+    dependsOn testClasses; classpath=sourceSets.test.runtimeClasspath
+    mainClass='org.fsrpg.client.SpearCircleBandsTest'
+}
+tasks.named('check') { dependsOn 'spearCircleBandsTest' }
+
+tasks.register('perfectGuardMigrationTest', JavaExec) {
+    dependsOn testClasses; classpath=sourceSets.test.runtimeClasspath
+    mainClass='org.fsrpg.config.PerfectGuardMigrationTest'
+}
+tasks.named('check') { dependsOn 'perfectGuardMigrationTest' }
+tasks.register('stage073Config', JavaExec) {
+    dependsOn testClasses; classpath=sourceSets.test.runtimeClasspath
+    mainClass='org.fsrpg.config.Stage073Config'
+    doFirst {args file(project.property('releaseStageDirectory')).absolutePath,file(project.property('releaseStageReport')).absolutePath}
+}
+
+['staminaLevelTest':'org.fsrpg.combat.StaminaLevelTest',
+ 'staminaLevelMigrationTest':'org.fsrpg.config.StaminaLevelMigrationTest',
+ 'creatureAttackTimelineTest':'org.fsrpg.creature.CreatureAttackTimelineTest',
+ 'creatureCombatCatalogTest':'org.fsrpg.creature.CreatureCombatCatalogTest',
+ 'creatureAnimationClockTest':'org.fsrpg.creature.CreatureAnimationClockTest'].each { taskName, className ->
+    tasks.register(taskName, JavaExec) {
+        dependsOn testClasses; classpath=sourceSets.test.runtimeClasspath; mainClass=className
+        jvmArgs '-Dfile.encoding=UTF-8'
+    }
+    tasks.named('check') { dependsOn taskName }
+}
+
+tasks.register('stage074Config', JavaExec) {
+    dependsOn testClasses; classpath=sourceSets.test.runtimeClasspath
+    mainClass='org.fsrpg.config.Stage074Config'
+    doFirst { args file(project.property('releaseStageDirectory')).absolutePath,file(project.property('releaseStageReport')).absolutePath }
+}
+
+['comboFlowTest':'org.fsrpg.combat.ComboFlowTest',
+ 'guardKeyIntentTest':'org.fsrpg.client.GuardKeyIntentTest',
+ 'guardCueClockTest':'org.fsrpg.creature.GuardCueClockTest',
+ 'guardCueWindowTest':'org.fsrpg.creature.GuardCueWindowTest',
+ 'telegraphedGuardTest':'org.fsrpg.combat.TelegraphedGuardTest',
+ 'guardCueMigrationTest':'org.fsrpg.config.GuardCueMigrationTest'].each { taskName, className ->
+    tasks.register(taskName, JavaExec) {
+        dependsOn testClasses; classpath=sourceSets.test.runtimeClasspath; mainClass=className
+        jvmArgs '-Dfile.encoding=UTF-8'
+    }
+    tasks.named('check') { dependsOn taskName }
+}
+
+tasks.register('stage075Config', JavaExec) {
+    dependsOn testClasses; classpath=sourceSets.test.runtimeClasspath; mainClass='org.fsrpg.config.Stage075Config'
+    doFirst {args file(project.property('releaseStageDirectory')).absolutePath,file(project.property('releaseStageReport')).absolutePath}
+}
+
+['attackStaminaTest':'org.fsrpg.combat.AttackStaminaTest',
+ 'staminaCombatMigrationTest':'org.fsrpg.config.StaminaCombatMigrationTest',
+ 'spearHoldStateTest':'org.fsrpg.combat.SpearHoldStateTest',
+ 'sweptSpearContactTest':'org.fsrpg.combat.SweptSpearContactTest',
+ 'legacyLoopTest':'org.fsrpg.client.LegacyLoopTest'].each { taskName,className ->
+    tasks.register(taskName,JavaExec){dependsOn testClasses;classpath=sourceSets.test.runtimeClasspath;mainClass=className;jvmArgs '-Dfile.encoding=UTF-8'}
+    tasks.named('check'){dependsOn taskName}
+}
+tasks.register('stage077Config',JavaExec) {
+    dependsOn testClasses;classpath=sourceSets.test.runtimeClasspath;mainClass='org.fsrpg.config.Stage077Config'
+    doFirst {args file(project.property('releaseStageDirectory')).absolutePath,file(project.property('releaseStageReport')).absolutePath}
+}
+
+['airPoseTest':'org.fsrpg.client.AirPoseTest',
+ 'airPoseJoinTest':'org.fsrpg.client.AirPoseJoinTest',
+ 'playerShoulderFitTest':'org.fsrpg.client.PlayerShoulderFitTest',
+ 'shoulderCameraMotionTest':'org.fsrpg.client.ShoulderCameraMotionTest',
+ 'spearCursorSteeringTest':'org.fsrpg.client.SpearCursorSteeringTest',
+ 'rapierFencingTest':'org.fsrpg.client.RapierFencingTest',
+ 'rapierFlowMotionTest':'org.fsrpg.client.RapierFlowMotionTest',
+ 'rapierBranchFlowTest':'org.fsrpg.combat.RapierBranchFlowTest',
+ 'rapierRenewalMigrationTest':'org.fsrpg.config.RapierRenewalMigrationTest',
+ 'rapierFencingMigrationTest':'org.fsrpg.config.RapierFencingMigrationTest',
+ 'guardHurtMotionTest':'org.fsrpg.client.GuardHurtMotionTest',
+ 'defenseFlowMigrationTest':'org.fsrpg.config.DefenseFlowMigrationTest',
+ 'rapierMotionTest':'org.fsrpg.client.RapierMotionTest',
+ 'shiftBurstIntentTest':'org.fsrpg.client.ShiftBurstIntentTest',
+ 'burstDashTest':'org.fsrpg.combat.BurstDashTest',
+ 'burstDashMigrationTest':'org.fsrpg.config.BurstDashMigrationTest',
+ 'spearSwipeTest':'org.fsrpg.combat.SpearSwipeTest'].each { taskName,className ->
+    tasks.register(taskName,JavaExec){dependsOn testClasses;classpath=sourceSets.test.runtimeClasspath;mainClass=className;jvmArgs '-Dfile.encoding=UTF-8'}
+    tasks.named('check'){dependsOn taskName}
+}
+tasks.register('stage078Config',JavaExec) {
+    dependsOn testClasses;classpath=sourceSets.test.runtimeClasspath;mainClass='org.fsrpg.config.Stage078Config'
+    doFirst {args file(project.property('releaseStageDirectory')).absolutePath,file(project.property('releaseStageReport')).absolutePath}
+}
+
+['inspectionScheduleTest':'org.fsrpg.client.InspectionScheduleTest',
+ 'legacyWaistFitTest':'org.fsrpg.client.LegacyWaistFitTest',
+ 'inspectionSupportTest':'org.fsrpg.client.InspectionSupportTest',
+ 'weaponInspectionsTest':'org.fsrpg.client.WeaponInspectionsTest',
+ 'groundImpulseReceiptTest':'org.fsrpg.client.GroundImpulseReceiptTest',
+ 'groundImpulseMigrationTest':'org.fsrpg.config.GroundImpulseMigrationTest'].each { taskName,className ->
+    tasks.register(taskName,JavaExec){dependsOn testClasses;classpath=sourceSets.test.runtimeClasspath;mainClass=className;jvmArgs '-Dfile.encoding=UTF-8'}
+    tasks.named('check'){dependsOn taskName}
+}
+tasks.register('stage079Config',JavaExec) {
+    dependsOn testClasses;classpath=sourceSets.test.runtimeClasspath;mainClass='org.fsrpg.config.Stage079Config'
+    doFirst {args file(project.property('releaseStageDirectory')).absolutePath,file(project.property('releaseStageReport')).absolutePath}
+}
+
+tasks.register('airInertiaTest',JavaExec){dependsOn testClasses;classpath=sourceSets.test.runtimeClasspath;mainClass='org.fsrpg.client.AirInertiaTest';jvmArgs '-Dfile.encoding=UTF-8'}
+tasks.named('check'){dependsOn 'airInertiaTest'}
+tasks.register('stage084Config',JavaExec) {
+    dependsOn testClasses;classpath=sourceSets.test.runtimeClasspath;mainClass='org.fsrpg.config.Stage084Config'
+    doFirst {args file(project.property('releaseStageDirectory')).absolutePath,file(project.property('releaseStageReport')).absolutePath}
+}
+tasks.register('stage085Config',JavaExec) {
+    dependsOn testClasses;classpath=sourceSets.test.runtimeClasspath;mainClass='org.fsrpg.config.Stage085Config'
+    doFirst {args file(project.property('releaseStageDirectory')).absolutePath,file(project.property('releaseStageReport')).absolutePath}
+}
+
+// Generic runner for parallel 0.9.0 branch work. Run one pure-Java test class without editing this file:
+//   .\gradlew.bat rpgTest -PrpgTestClass=org.fsrpg.movement.FootworkTest --offline
+// Permanent task + check wiring is added by the Lead at release.
+tasks.register('rpgTest', JavaExec) {
+    dependsOn testClasses
+    classpath = sourceSets.test.runtimeClasspath
+    if (!project.hasProperty('rpgTestClass')) throw new GradleException('rpgTest requires -PrpgTestClass=<fully.qualified.TestClass>')
+    mainClass = project.property('rpgTestClass').toString()
+    jvmArgs '-Dfile.encoding=UTF-8'
+    if (project.hasProperty('rpgTestArgs')) args project.property('rpgTestArgs').toString().split(' ')
+}
+tasks.register('stage090Config', JavaExec) {
+    dependsOn testClasses;classpath=sourceSets.test.runtimeClasspath;mainClass='org.fsrpg.config.Stage090Config'
+    doFirst {args file(project.property('releaseStageDirectory')).absolutePath,file(project.property('releaseStageReport')).absolutePath}
+}
+tasks.register('stage0100Config', JavaExec) {
+    dependsOn testClasses;classpath=sourceSets.test.runtimeClasspath;mainClass='org.fsrpg.config.Stage0100Config'
+    doFirst {args file(project.property('releaseStageDirectory')).absolutePath,file(project.property('releaseStageReport')).absolutePath}
+}
+
+['avatarSkinTest':'org.fsrpg.avatar.AvatarSkinTest',
+ 'avatarCatalogTest':'org.fsrpg.avatar.AvatarCatalogTest',
+ 'blockbenchAvatarTest':'org.fsrpg.avatar.BlockbenchAvatarTest',
+ 'bedrockAvatarTest':'org.fsrpg.avatar.BedrockAvatarTest',
+ 'avatarPoseTest':'org.fsrpg.avatar.AvatarPoseTest'].each { taskName, className ->
+    tasks.register(taskName, JavaExec) { dependsOn testClasses; classpath=sourceSets.test.runtimeClasspath; mainClass=className; jvmArgs '-Dfile.encoding=UTF-8' }
+    tasks.named('check') { dependsOn taskName }
+}
+['footworkTest':'org.fsrpg.movement.FootworkTest',
+ 'footworkProgressionTest':'org.fsrpg.progression.FootworkProgressionTest',
+ 'footworkSkillMigrationTest':'org.fsrpg.config.FootworkSkillMigrationTest',
+ 'rapierTechniquesMigrationTest':'org.fsrpg.config.RapierTechniquesMigrationTest',
+ 'skillTreeLayoutTest':'org.fsrpg.client.SkillTreeLayoutTest',
+ 'cameraClipSmootherTest':'org.fsrpg.client.CameraClipSmootherTest',
+ 'shoulderViewRayTest':'org.fsrpg.client.ShoulderViewRayTest',
+ 'cameraAdjustmentIntentTest':'org.fsrpg.client.CameraAdjustmentIntentTest',
+ 'asyncConfigSaveTest':'org.fsrpg.client.AsyncConfigSaveTest',
+ 'importedItemMotionTest':'org.fsrpg.client.ImportedItemMotionTest'].each { taskName, className ->
+    tasks.register(taskName, JavaExec) { dependsOn testClasses; classpath = sourceSets.test.runtimeClasspath; mainClass = className; jvmArgs '-Dfile.encoding=UTF-8' }
+    tasks.named('check') { dependsOn taskName }
+}
+
+tasks.register('swordMotionReceiptTest',JavaExec){dependsOn testClasses;classpath=sourceSets.test.runtimeClasspath;mainClass='org.fsrpg.client.SwordMotionReceiptTest';jvmArgs '-Dfile.encoding=UTF-8'}
+tasks.named('check'){dependsOn 'swordMotionReceiptTest'}
+
+['swordCombatTest':'org.fsrpg.combat.SwordCombatTest',
+ 'swordTravelPresentationTest':'org.fsrpg.client.SwordTravelPresentationTest',
+ 'swordTravelTimelineTest':'org.fsrpg.client.SwordTravelTimelineTest',
+ 'fullBodySwordSupportTest':'org.fsrpg.client.FullBodySwordSupportTest',
+ 'swordCombatMigrationTest':'org.fsrpg.config.SwordCombatMigrationTest'].each { taskName,className ->
+    tasks.register(taskName,JavaExec){dependsOn testClasses;classpath=sourceSets.test.runtimeClasspath;mainClass=className;jvmArgs '-Dfile.encoding=UTF-8'}
+    tasks.named('check'){dependsOn taskName}
+}
+
+tasks.register('stage0120Config', JavaExec) {
+    dependsOn testClasses, jar
+    mainClass='org.fsrpg.config.Stage0120Config'
+    classpath=files(tasks.named('jar').flatMap { it.archiveFile }) + sourceSets.test.output + configurations.testRuntimeClasspath
+    jvmArgs '-Dfile.encoding=UTF-8'
+    doFirst { args file(project.property('releaseStageDirectory')).absolutePath,file(project.property('releaseStageReport')).absolutePath }
+}
+['questSystemTest':'org.fsrpg.quest.QuestSystemTest', 'questJournalModelTest':'org.fsrpg.client.QuestJournalModelTest'].each { taskName,className ->
+    tasks.register(taskName,JavaExec){dependsOn testClasses;classpath=sourceSets.test.runtimeClasspath;mainClass=className;jvmArgs '-Dfile.encoding=UTF-8'}
+    tasks.named('check'){dependsOn taskName}
+}
+tasks.register('stage0130Config',JavaExec) {
+    dependsOn testClasses,jar
+    mainClass='org.fsrpg.config.Stage0130Config'
+    classpath=files(tasks.named('jar').flatMap { it.archiveFile }) + sourceSets.test.output + configurations.testRuntimeClasspath
+    jvmArgs '-Dfile.encoding=UTF-8'
+    doFirst { args file(project.property('releaseStageDirectory')).absolutePath,file(project.property('releaseStageReport')).absolutePath }
+}
+tasks.register('questConfigMigrationTest',JavaExec){dependsOn testClasses;classpath=sourceSets.test.runtimeClasspath;mainClass='org.fsrpg.config.QuestConfigMigrationTest';jvmArgs '-Dfile.encoding=UTF-8'}
+tasks.named('check'){dependsOn 'questConfigMigrationTest'}
+tasks.register('questSnapshotProjectionTest',JavaExec){dependsOn testClasses;classpath=sourceSets.test.runtimeClasspath;mainClass='org.fsrpg.quest.QuestSnapshotProjectionTest';jvmArgs '-Dfile.encoding=UTF-8'}
+tasks.named('check'){dependsOn 'questSnapshotProjectionTest'}

@@ -1,0 +1,5 @@
+package org.fsrpg.combat;
+
+public enum CombatPhase {
+    SHEATHED, DRAWING, SHEATHING, READY, WINDUP, ACTIVE, RECOVERY, DODGING, GUARDING, PARRYING, STUNNED
+}

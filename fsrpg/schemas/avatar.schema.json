@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "FSRPG 客户端外置玩家外观 avatar.json",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "type": {"enum": ["skin", "blockbench", "bbmodel", "bedrock"]},
+    "model": {"type": "string", "minLength": 1},
+    "texture": {"type": "string", "minLength": 1},
+    "slim": {"type": "boolean"},
+    "geometry": {"type": "string", "minLength": 1},
+    "skin": {"type": "string", "minLength": 1, "description": "skins.json localization_name"}
+  }
+}

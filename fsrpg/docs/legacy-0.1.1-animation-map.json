@@ -1,0 +1,2650 @@
+{
+  "format": "fsrpg.legacy-motion-import.v1",
+  "sourceVersion": "0.1.1",
+  "samplingHz": 60,
+  "adaptiveSampling": {
+    "rotationErrorDegrees": 0.12,
+    "positionErrorCm": 0.02,
+    "scaleError": 0.001
+  },
+  "scalePolicy": {
+    "hiddenEpsilon": 1e-06,
+    "zero": "positive epsilon",
+    "negativeInterpolation": "clamp only nonnegative authored scale tracks",
+    "negativeAuthored": "reject; require explicit mirrored node"
+  },
+  "coordinates": "Bedrock Rz*Ry*Rx(-X,-Y,+Z) -> 180Y basis -> FS XYZ, 6.25cm/unit; hierarchy/locators retained",
+  "meshPolicy": "TP uses the real player skin/armor; FP retains skin cubes; no weapon cubes are imported",
+  "models": [
+    {
+      "model": "legacy_rapier.fsvoxel",
+      "kind": "rapier",
+      "perspective": "third_person",
+      "geometry": "C:\\Users\\34003\\Desktop\\actioncombat_legacy_20260923\\src\\main\\resources\\assets\\actioncombat\\geckolib\\models\\ysm_player.geo.json",
+      "animation": "C:\\Users\\34003\\Desktop\\actioncombat_legacy_20260923\\src\\main\\resources\\assets\\actioncombat\\geckolib\\animations\\ysm_player.animation.json",
+      "sourceSha256": {
+        "ysm_player.geo.json": "b611585a9b3e9d149c942e3017784fcf2eba5b38c48516f85b62a9fe3cbf741a",
+        "ysm_player.animation.json": "95a9797c6fa11c960d4b55909a8e08ec4c10122b7ccc9c9a5513c9d5c10a00ae"
+      },
+      "boneMap": {
+        "Root": "root",
+        "Hip": "hip",
+        "Body": "body",
+        "Head": "head",
+        "RightArm": "right_arm",
+        "RightForeArm": "right_forearm",
+        "RightHand": "right_hand",
+        "RightHandLocator": "right_item",
+        "LeftArm": "left_arm",
+        "LeftForeArm": "left_forearm",
+        "LeftHand": "left_hand",
+        "LeftHandLocator": "left_item",
+        "RightLeg": "right_leg",
+        "RightForeLeg": "right_foreleg",
+        "RightFoot": "right_foot",
+        "LeftLeg": "left_leg",
+        "LeftForeLeg": "left_foreleg",
+        "LeftFoot": "left_foot"
+      },
+      "scaleNormalization": [],
+      "actions": [
+        {
+          "action": "legacy_rapier_aiming",
+          "sourceClip": "aiming",
+          "duration": 0.3,
+          "layer": "full",
+          "alias": false
+        },
+        {
+          "action": "legacy_rapier_aiming_upper",
+          "sourceClip": "aiming_upper",
+          "duration": 0.05,
+          "layer": "upper",
+          "alias": false
+        },
+        {
+          "action": "legacy_rapier_attack1",
+          "sourceClip": "attack1",
+          "duration": 0.4,
+          "layer": "full",
+          "alias": false
+        },
+        {
+          "action": "legacy_rapier_attack1_upper",
+          "sourceClip": "attack1_upper",
+          "duration": 0.4,
+          "layer": "upper",
+          "alias": false
+        },
+        {
+          "action": "legacy_rapier_attack2",
+          "sourceClip": "attack2",
+          "duration": 0.4,
+          "layer": "full",
+          "alias": false
+        },
+        {
+          "action": "legacy_rapier_attack2_upper",
+          "sourceClip": "attack2_upper",
+          "duration": 0.4,
+          "layer": "upper",
+          "alias": false
+        },
+        {
+          "action": "legacy_rapier_attack3",
+          "sourceClip": "attack3",
+          "duration": 0.4,
+          "layer": "full",
+          "alias": false
+        },
+        {
+          "action": "legacy_rapier_attack3_upper",
+          "sourceClip": "attack3_upper",
+          "duration": 0.4,
+          "layer": "upper",
+          "alias": false
+        },
+        {
+          "action": "legacy_rapier_attack4",
+          "sourceClip": "attack4",
+          "duration": 0.4,
+          "layer": "full",
+          "alias": false
+        },
+        {
+          "action": "legacy_rapier_attack4_upper",
+          "sourceClip": "attack4_upper",
+          "duration": 0.4,
+          "layer": "upper",
+          "alias": false
+        },
+        {
+          "action": "legacy_rapier_attack_dual",
+          "sourceClip": "attack_dual",
+          "duration": 0.4,
+          "layer": "full",
+          "alias": false
+        },
+        {
+          "action": "legacy_rapier_attack_dual_upper",
+          "sourceClip": "attack_dual_upper",
+          "duration": 0.4,
+          "layer": "upper",
+          "alias": false
+        },
+        {
+          "action": "legacy_rapier_crouch_idle",
+          "sourceClip": "crouch_idle",
+          "duration": 1.6,
+          "layer": "full",
+          "alias": false
+        },
+        {
+          "action": "legacy_rapier_crouch_walk",
+          "sourceClip": "crouch_walk",
+          "duration": 1.15,
+          "layer": "full",
+          "alias": false
+        },
+        {
+          "action": "legacy_rapier_crouch_walk_back",
+          "sourceClip": "crouch_walk_back",
+          "duration": 1.15,
+          "layer": "full",
+          "alias": false
+        },
+        {
+          "action": "legacy_rapier_crouch_walk_left",
+          "sourceClip": "crouch_walk_left",
+          "duration": 1.15,
+          "layer": "full",
+          "alias": false
+        },
+        {
+          "action": "legacy_rapier_crouch_walk_right",
+          "sourceClip": "crouch_walk_right",
+          "duration": 1.15,
+          "layer": "full",
+          "alias": false
+        },
+        {
+          "action": "legacy_rapier_defend",
+          "sourceClip": "defend",
+          "duration": 0.22,
+          "layer": "full",
+          "alias": false
+        },
+        {
+          "action": "legacy_rapier_defend_end",
+          "sourceClip": "defend_end",
+          "duration": 0.22,
+          "layer": "full",
+          "alias": false
+        },
+        {
+          "action": "legacy_rapier_defend_upper",
+          "sourceClip": "defend_upper",
+          "duration": 0.22,
+          "layer": "upper",
+          "alias": false
+        },
+        {
+          "action": "legacy_rapier_draw",
+          "sourceClip": "draw",
+          "duration": 0.7333,
+          "layer": "full",
+          "alias": false
+        },
+        {
+          "action": "legacy_rapier_fall",
+          "sourceClip": "fall",
+          "duration": 0.9,
+          "layer": "full",
+          "alias": false
+        },
+        {
+          "action": "legacy_rapier_hurt",
+          "sourceClip": "hurt",
+          "duration": 0.35,
+          "layer": "full",
+          "alias": false
+        },
+        {
+          "action": "legacy_rapier_hurt_upper",
+          "sourceClip": "hurt_upper",
+          "duration": 0.35,
+          "layer": "upper",
+          "alias": false
+        },
+        {
+          "action": "legacy_rapier_idle_upper",
+          "sourceClip": "idle_upper",
+          "duration": 3.2,
+          "layer": "upper",
+          "alias": false
+        },
+        {
+          "action": "legacy_rapier_inspect",
+          "sourceClip": "inspect",
+          "duration": 1.6,
+          "layer": "full",
+          "alias": false
+        },
+        {
+          "action": "legacy_rapier_jump",
+          "sourceClip": "jump",
+          "duration": 0.72,
+          "layer": "full",
+          "alias": false
+        },
+        {
+          "action": "legacy_rapier_jump_start",
+          "sourceClip": "jump_start",
+          "duration": 0.28,
+          "layer": "full",
+          "alias": false
+        },
+        {
+          "action": "legacy_rapier_put_away",
+          "sourceClip": "put_away",
+          "duration": 1.1,
+          "layer": "full",
+          "alias": false
+        },
+        {
+          "action": "legacy_rapier_rapier_dodge_back",
+          "sourceClip": "rapier_dodge_back",
+          "duration": 0.34,
+          "layer": "full",
+          "alias": false
+        },
+        {
+          "action": "legacy_rapier_rapier_dodge_back_left",
+          "sourceClip": "rapier_dodge_back_left",
+          "duration": 0.34,
+          "layer": "full",
+          "alias": false
+        },
+        {
+          "action": "legacy_rapier_rapier_dodge_back_right",
+          "sourceClip": "rapier_dodge_back_right",
+          "duration": 0.34,
+          "layer": "full",
+          "alias": false
+        },
+        {
+          "action": "legacy_rapier_rapier_dodge_forward",
+          "sourceClip": "rapier_dodge_forward",
+          "duration": 0.34,
+          "layer": "full",
+          "alias": false
+        },
+        {
+          "action": "legacy_rapier_rapier_dodge_forward_left",
+          "sourceClip": "rapier_dodge_forward_left",
+          "duration": 0.34,
+          "layer": "full",
+          "alias": false
+        },
+        {
+          "action": "legacy_rapier_rapier_dodge_forward_right",
+          "sourceClip": "rapier_dodge_forward_right",
+          "duration": 0.34,
+          "layer": "full",
+          "alias": false
+        },
+        {
+          "action": "legacy_rapier_rapier_dodge_left",
+          "sourceClip": "rapier_dodge_left",
+          "duration": 0.34,
+          "layer": "full",
+          "alias": false
+        },
+        {
+          "action": "legacy_rapier_rapier_dodge_right",
+          "sourceClip": "rapier_dodge_right",
+          "duration": 0.34,
+          "layer": "full",
+          "alias": false
+        },
+        {
+          "action": "legacy_rapier_rapier_thrust_hit",
+          "sourceClip": "rapier_thrust_hit",
+          "duration": 0.5,
+          "layer": "full",
+          "alias": false
+        },
+        {
+          "action": "legacy_rapier_rapier_thrust_hit_upper",
+          "sourceClip": "rapier_thrust_hit_upper",
+          "duration": 0.5,
+          "layer": "upper",
+          "alias": false
+        },
+        {
+          "action": "legacy_rapier_rapier_thrust_miss",
+          "sourceClip": "rapier_thrust_miss",
+          "duration": 0.5,
+          "layer": "full",
+          "alias": false
+        },
+        {
+          "action": "legacy_rapier_rapier_thrust_miss_upper",
+          "sourceClip": "rapier_thrust_miss_upper",
+          "duration": 0.5,
+          "layer": "upper",
+          "alias": false
+        },
+        {
+          "action": "legacy_rapier_run_end",
+          "sourceClip": "run_end",
+          "duration": 0.4333,
+          "layer": "full",
+          "alias": false
+        },
+        {
+          "action": "legacy_rapier_run_hold",
+          "sourceClip": "run_hold",
+          "duration": 0.5,
+          "layer": "full",
+          "alias": false
+        },
+        {
+          "action": "legacy_rapier_run_hold_back",
+          "sourceClip": "run_hold_back",
+          "duration": 0.64,
+          "layer": "full",
+          "alias": false
+        },
+        {
+          "action": "legacy_rapier_run_hold_left",
+          "sourceClip": "run_hold_left",
+          "duration": 0.58,
+          "layer": "full",
+          "alias": false
+        },
+        {
+          "action": "legacy_rapier_run_hold_right",
+          "sourceClip": "run_hold_right",
+          "duration": 0.58,
+          "layer": "full",
+          "alias": false
+        },
+        {
+          "action": "legacy_rapier_run_start",
+          "sourceClip": "run_start",
+          "duration": 0.2667,
+          "layer": "full",
+          "alias": false
+        },
+        {
+          "action": "legacy_rapier_static_idle",
+          "sourceClip": "static_idle",
+          "duration": 3.2,
+          "layer": "full",
+          "alias": false
+        },
+        {
+          "action": "legacy_rapier_walk_end",
+          "sourceClip": "walk_end",
+          "duration": 0.8233,
+          "layer": "full",
+          "alias": false
+        },
+        {
+          "action": "legacy_rapier_walk_hold",
+          "sourceClip": "walk_hold",
+          "duration": 0.95,
+          "layer": "full",
+          "alias": false
+        },
+        {
+          "action": "legacy_rapier_walk_hold_back",
+          "sourceClip": "walk_hold_back",
+          "duration": 1.05,
+          "layer": "full",
+          "alias": false
+        },
+        {
+          "action": "legacy_rapier_walk_hold_left",
+          "sourceClip": "walk_hold_left",
+          "duration": 0.95,
+          "layer": "full",
+          "alias": false
+        },
+        {
+          "action": "legacy_rapier_walk_hold_right",
+          "sourceClip": "walk_hold_right",
+          "duration": 0.95,
+          "layer": "full",
+          "alias": false
+        },
+        {
+          "action": "legacy_rapier_walk_start",
+          "sourceClip": "walk_start",
+          "duration": 0.5067,
+          "layer": "full",
+          "alias": false
+        },
+        {
+          "action": "rapier_attack1",
+          "sourceClip": "attack1_upper",
+          "duration": 0.4,
+          "layer": "upper",
+          "alias": true
+        },
+        {
+          "action": "rapier_attack2",
+          "sourceClip": "attack2_upper",
+          "duration": 0.4,
+          "layer": "upper",
+          "alias": true
+        },
+        {
+          "action": "rapier_attack3",
+          "sourceClip": "attack3_upper",
+          "duration": 0.4,
+          "layer": "upper",
+          "alias": true
+        },
+        {
+          "action": "rapier_attack4",
+          "sourceClip": "attack4_upper",
+          "duration": 0.4,
+          "layer": "upper",
+          "alias": true
+        },
+        {
+          "action": "rapier_charge",
+          "sourceClip": "rapier_thrust_miss_upper",
+          "duration": 0.5,
+          "layer": "upper",
+          "alias": true
+        },
+        {
+          "action": "rapier_counter",
+          "sourceClip": "attack_dual_upper",
+          "duration": 0.4,
+          "layer": "upper",
+          "alias": true
+        },
+        {
+          "action": "rapier_dodge_back",
+          "sourceClip": "rapier_dodge_back",
+          "duration": 0.34,
+          "layer": "full",
+          "alias": true
+        },
+        {
+          "action": "rapier_dodge_back_left",
+          "sourceClip": "rapier_dodge_back_left",
+          "duration": 0.34,
+          "layer": "full",
+          "alias": true
+        },
+        {
+          "action": "rapier_dodge_back_right",
+          "sourceClip": "rapier_dodge_back_right",
+          "duration": 0.34,
+          "layer": "full",
+          "alias": true
+        },
+        {
+          "action": "rapier_dodge_forward",
+          "sourceClip": "rapier_dodge_forward",
+          "duration": 0.34,
+          "layer": "full",
+          "alias": true
+        },
+        {
+          "action": "rapier_dodge_forward_left",
+          "sourceClip": "rapier_dodge_forward_left",
+          "duration": 0.34,
+          "layer": "full",
+          "alias": true
+        },
+        {
+          "action": "rapier_dodge_forward_right",
+          "sourceClip": "rapier_dodge_forward_right",
+          "duration": 0.34,
+          "layer": "full",
+          "alias": true
+        },
+        {
+          "action": "rapier_dodge_left",
+          "sourceClip": "rapier_dodge_left",
+          "duration": 0.34,
+          "layer": "full",
+          "alias": true
+        },
+        {
+          "action": "rapier_dodge_right",
+          "sourceClip": "rapier_dodge_right",
+          "duration": 0.34,
+          "layer": "full",
+          "alias": true
+        },
+        {
+          "action": "rapier_draw",
+          "sourceClip": "draw",
+          "duration": 0.7333,
+          "layer": "full",
+          "alias": true
+        },
+        {
+          "action": "rapier_full_charge",
+          "sourceClip": "rapier_thrust_miss_upper",
+          "duration": 0.5,
+          "layer": "upper",
+          "alias": true
+        },
+        {
+          "action": "rapier_guard",
+          "sourceClip": "defend",
+          "duration": 0.22,
+          "layer": "full",
+          "alias": true
+        },
+        {
+          "action": "rapier_guard_heavy",
+          "sourceClip": "defend",
+          "duration": 0.22,
+          "layer": "full",
+          "alias": true
+        },
+        {
+          "action": "rapier_idle",
+          "sourceClip": "static_idle",
+          "duration": 3.2,
+          "layer": "full",
+          "alias": true
+        },
+        {
+          "action": "rapier_run",
+          "sourceClip": "run_hold",
+          "duration": 0.5,
+          "layer": "full",
+          "alias": true
+        },
+        {
+          "action": "rapier_stance",
+          "sourceClip": "static_idle",
+          "duration": 3.2,
+          "layer": "full",
+          "alias": true
+        },
+        {
+          "action": "rapier_thrust_hit",
+          "sourceClip": "rapier_thrust_hit_upper",
+          "duration": 0.5,
+          "layer": "upper",
+          "alias": true
+        },
+        {
+          "action": "rapier_thrust_miss",
+          "sourceClip": "rapier_thrust_miss_upper",
+          "duration": 0.5,
+          "layer": "upper",
+          "alias": true
+        }
+      ],
+      "outputSha256": "9c0a0f4cd41a1795e988d00de0e2a062090384a43f1b78e51169a21d379de145"
+    },
+    {
+      "model": "legacy_rapier_fp.fsvoxel",
+      "kind": "rapier",
+      "perspective": "first_person",
+      "geometry": "C:\\Users\\34003\\Desktop\\actioncombat_legacy_20260923\\src\\main\\resources\\assets\\actioncombat\\geckolib\\models\\fp_singlesword.geo.json",
+      "animation": "C:\\Users\\34003\\Desktop\\actioncombat_legacy_20260923\\src\\main\\resources\\assets\\actioncombat\\geckolib\\animations\\fp_singlesword.animation.json",
+      "sourceSha256": {
+        "fp_singlesword.geo.json": "658df3093eb460bc5ef16f2c522b639c3dc931380a24bd800f35e68faf1f6160",
+        "fp_singlesword.animation.json": "6acd3e820950420f35b32f3a8589079526f853cc270bd5e37acbcbf087c8f2b5"
+      },
+      "boneMap": {
+        "root": "root",
+        "knife_R": "camera_root",
+        "left": "left_arm",
+        "lefthand_pos": "lefthand_pos",
+        "dissipate_view_452": "dissipate_view_452",
+        "right": "right_arm",
+        "righthand_pos": "righthand_pos",
+        "dissipate_view_0": "dissipate_view_0",
+        "elucidator": "right_item",
+        "fp_forearm_r": "right_forearm"
+      },
+      "scaleNormalization": [],
+      "actions": [
+        {
+          "action": "legacy_rapier_aiming",
+          "sourceClip": "aiming",
+          "duration": 0.3,
+          "layer": "full",
+          "alias": false
+        },
+        {
+          "action": "legacy_rapier_attack1",
+          "sourceClip": "attack1",
+          "duration": 0.4,
+          "layer": "full",
+          "alias": false
+        },
+        {
+          "action": "legacy_rapier_attack2",
+          "sourceClip": "attack2",
+          "duration": 0.4,
+          "layer": "full",
+          "alias": false
+        },
+        {
+          "action": "legacy_rapier_attack3",
+          "sourceClip": "attack3",
+          "duration": 0.4,
+          "layer": "full",
+          "alias": false
+        },
+        {
+          "action": "legacy_rapier_attack4",
+          "sourceClip": "attack4",
+          "duration": 0.4,
+          "layer": "full",
+          "alias": false
+        },
+        {
+          "action": "legacy_rapier_attack_dual",
+          "sourceClip": "attack_dual",
+          "duration": 0.4,
+          "layer": "full",
+          "alias": false
+        },
+        {
+          "action": "legacy_rapier_defend",
+          "sourceClip": "defend",
+          "duration": 0.22,
+          "layer": "full",
+          "alias": false
+        },
+        {
+          "action": "legacy_rapier_defend_1",
+          "sourceClip": "defend_1",
+          "duration": 0.22,
+          "layer": "full",
+          "alias": false
+        },
+        {
+          "action": "legacy_rapier_draw",
+          "sourceClip": "draw",
+          "duration": 0.7333,
+          "layer": "full",
+          "alias": false
+        },
+        {
+          "action": "legacy_rapier_inspect",
+          "sourceClip": "inspect",
+          "duration": 1.6,
+          "layer": "full",
+          "alias": false
+        },
+        {
+          "action": "legacy_rapier_put_away",
+          "sourceClip": "put_away",
+          "duration": 1.1,
+          "layer": "full",
+          "alias": false
+        },
+        {
+          "action": "legacy_rapier_rapier_dodge_back",
+          "sourceClip": "rapier_dodge_back",
+          "duration": 0.34,
+          "layer": "full",
+          "alias": false
+        },
+        {
+          "action": "legacy_rapier_rapier_dodge_back_left",
+          "sourceClip": "rapier_dodge_back_left",
+          "duration": 0.34,
+          "layer": "full",
+          "alias": false
+        },
+        {
+          "action": "legacy_rapier_rapier_dodge_back_right",
+          "sourceClip": "rapier_dodge_back_right",
+          "duration": 0.34,
+          "layer": "full",
+          "alias": false
+        },
+        {
+          "action": "legacy_rapier_rapier_dodge_forward",
+          "sourceClip": "rapier_dodge_forward",
+          "duration": 0.34,
+          "layer": "full",
+          "alias": false
+        },
+        {
+          "action": "legacy_rapier_rapier_dodge_forward_left",
+          "sourceClip": "rapier_dodge_forward_left",
+          "duration": 0.34,
+          "layer": "full",
+          "alias": false
+        },
+        {
+          "action": "legacy_rapier_rapier_dodge_forward_right",
+          "sourceClip": "rapier_dodge_forward_right",
+          "duration": 0.34,
+          "layer": "full",
+          "alias": false
+        },
+        {
+          "action": "legacy_rapier_rapier_dodge_left",
+          "sourceClip": "rapier_dodge_left",
+          "duration": 0.34,
+          "layer": "full",
+          "alias": false
+        },
+        {
+          "action": "legacy_rapier_rapier_dodge_right",
+          "sourceClip": "rapier_dodge_right",
+          "duration": 0.34,
+          "layer": "full",
+          "alias": false
+        },
+        {
+          "action": "legacy_rapier_rapier_thrust_hit",
+          "sourceClip": "rapier_thrust_hit",
+          "duration": 0.5,
+          "layer": "full",
+          "alias": false
+        },
+        {
+          "action": "legacy_rapier_rapier_thrust_miss",
+          "sourceClip": "rapier_thrust_miss",
+          "duration": 0.5,
+          "layer": "full",
+          "alias": false
+        },
+        {
+          "action": "legacy_rapier_run_end",
+          "sourceClip": "run_end",
+          "duration": 0.6667,
+          "layer": "full",
+          "alias": false
+        },
+        {
+          "action": "legacy_rapier_run_hold",
+          "sourceClip": "run_hold",
+          "duration": 0.6667,
+          "layer": "full",
+          "alias": false
+        },
+        {
+          "action": "legacy_rapier_run_start",
+          "sourceClip": "run_start",
+          "duration": 0.6667,
+          "layer": "full",
+          "alias": false
+        },
+        {
+          "action": "legacy_rapier_static_idle",
+          "sourceClip": "static_idle",
+          "duration": 3.2,
+          "layer": "full",
+          "alias": false
+        },
+        {
+          "action": "legacy_rapier_static_pose",
+          "sourceClip": "static_pose",
+          "duration": 0.0333,
+          "layer": "full",
+          "alias": false
+        },
+        {
+          "action": "legacy_rapier_walk_end",
+          "sourceClip": "walk_end",
+          "duration": 1.2667,
+          "layer": "full",
+          "alias": false
+        },
+        {
+          "action": "legacy_rapier_walk_hold",
+          "sourceClip": "walk_hold",
+          "duration": 1.2667,
+          "layer": "full",
+          "alias": false
+        },
+        {
+          "action": "legacy_rapier_walk_start",
+          "sourceClip": "walk_start",
+          "duration": 1.2667,
+          "layer": "full",
+          "alias": false
+        },
+        {
+          "action": "legacy_rapier_aiming_upper",
+          "sourceClip": "aiming",
+          "duration": 0.3,
+          "layer": "full",
+          "alias": true
+        },
+        {
+          "action": "legacy_rapier_attack1_upper",
+          "sourceClip": "attack1",
+          "duration": 0.4,
+          "layer": "full",
+          "alias": true
+        },
+        {
+          "action": "legacy_rapier_attack2_upper",
+          "sourceClip": "attack2",
+          "duration": 0.4,
+          "layer": "full",
+          "alias": true
+        },
+        {
+          "action": "legacy_rapier_attack3_upper",
+          "sourceClip": "attack3",
+          "duration": 0.4,
+          "layer": "full",
+          "alias": true
+        },
+        {
+          "action": "legacy_rapier_attack4_upper",
+          "sourceClip": "attack4",
+          "duration": 0.4,
+          "layer": "full",
+          "alias": true
+        },
+        {
+          "action": "legacy_rapier_attack_dual_upper",
+          "sourceClip": "attack_dual",
+          "duration": 0.4,
+          "layer": "full",
+          "alias": true
+        },
+        {
+          "action": "legacy_rapier_defend_upper",
+          "sourceClip": "defend",
+          "duration": 0.22,
+          "layer": "full",
+          "alias": true
+        },
+        {
+          "action": "legacy_rapier_rapier_thrust_hit_upper",
+          "sourceClip": "rapier_thrust_hit",
+          "duration": 0.5,
+          "layer": "full",
+          "alias": true
+        },
+        {
+          "action": "legacy_rapier_rapier_thrust_miss_upper",
+          "sourceClip": "rapier_thrust_miss",
+          "duration": 0.5,
+          "layer": "full",
+          "alias": true
+        },
+        {
+          "action": "rapier_attack1",
+          "sourceClip": "attack1",
+          "duration": 0.4,
+          "layer": "full",
+          "alias": true
+        },
+        {
+          "action": "rapier_attack2",
+          "sourceClip": "attack2",
+          "duration": 0.4,
+          "layer": "full",
+          "alias": true
+        },
+        {
+          "action": "rapier_attack3",
+          "sourceClip": "attack3",
+          "duration": 0.4,
+          "layer": "full",
+          "alias": true
+        },
+        {
+          "action": "rapier_attack4",
+          "sourceClip": "attack4",
+          "duration": 0.4,
+          "layer": "full",
+          "alias": true
+        },
+        {
+          "action": "rapier_charge",
+          "sourceClip": "rapier_thrust_miss",
+          "duration": 0.5,
+          "layer": "full",
+          "alias": true
+        },
+        {
+          "action": "rapier_counter",
+          "sourceClip": "attack_dual",
+          "duration": 0.4,
+          "layer": "full",
+          "alias": true
+        },
+        {
+          "action": "rapier_dodge_back",
+          "sourceClip": "rapier_dodge_back",
+          "duration": 0.34,
+          "layer": "full",
+          "alias": true
+        },
+        {
+          "action": "rapier_dodge_back_left",
+          "sourceClip": "rapier_dodge_back_left",
+          "duration": 0.34,
+          "layer": "full",
+          "alias": true
+        },
+        {
+          "action": "rapier_dodge_back_right",
+          "sourceClip": "rapier_dodge_back_right",
+          "duration": 0.34,
+          "layer": "full",
+          "alias": true
+        },
+        {
+          "action": "rapier_dodge_forward",
+          "sourceClip": "rapier_dodge_forward",
+          "duration": 0.34,
+          "layer": "full",
+          "alias": true
+        },
+        {
+          "action": "rapier_dodge_forward_left",
+          "sourceClip": "rapier_dodge_forward_left",
+          "duration": 0.34,
+          "layer": "full",
+          "alias": true
+        },
+        {
+          "action": "rapier_dodge_forward_right",
+          "sourceClip": "rapier_dodge_forward_right",
+          "duration": 0.34,
+          "layer": "full",
+          "alias": true
+        },
+        {
+          "action": "rapier_dodge_left",
+          "sourceClip": "rapier_dodge_left",
+          "duration": 0.34,
+          "layer": "full",
+          "alias": true
+        },
+        {
+          "action": "rapier_dodge_right",
+          "sourceClip": "rapier_dodge_right",
+          "duration": 0.34,
+          "layer": "full",
+          "alias": true
+        },
+        {
+          "action": "rapier_draw",
+          "sourceClip": "draw",
+          "duration": 0.7333,
+          "layer": "full",
+          "alias": true
+        },
+        {
+          "action": "rapier_full_charge",
+          "sourceClip": "rapier_thrust_miss",
+          "duration": 0.5,
+          "layer": "full",
+          "alias": true
+        },
+        {
+          "action": "rapier_guard",
+          "sourceClip": "defend_1",
+          "duration": 0.22,
+          "layer": "full",
+          "alias": true
+        },
+        {
+          "action": "rapier_guard_heavy",
+          "sourceClip": "defend_1",
+          "duration": 0.22,
+          "layer": "full",
+          "alias": true
+        },
+        {
+          "action": "rapier_idle",
+          "sourceClip": "static_idle",
+          "duration": 3.2,
+          "layer": "full",
+          "alias": true
+        },
+        {
+          "action": "rapier_run",
+          "sourceClip": "run_hold",
+          "duration": 0.6667,
+          "layer": "full",
+          "alias": true
+        },
+        {
+          "action": "rapier_stance",
+          "sourceClip": "static_idle",
+          "duration": 3.2,
+          "layer": "full",
+          "alias": true
+        },
+        {
+          "action": "rapier_thrust_hit",
+          "sourceClip": "rapier_thrust_hit",
+          "duration": 0.5,
+          "layer": "full",
+          "alias": true
+        },
+        {
+          "action": "rapier_thrust_miss",
+          "sourceClip": "rapier_thrust_miss",
+          "duration": 0.5,
+          "layer": "full",
+          "alias": true
+        }
+      ],
+      "outputSha256": "f19261c98806e513120359e29b4a50dba5c3dc28d6cf7650e4da0d09afa3c5b5"
+    },
+    {
+      "model": "legacy_dual_blade.fsvoxel",
+      "kind": "dual_blade",
+      "perspective": "third_person",
+      "geometry": "C:\\Users\\34003\\Desktop\\actioncombat_legacy_20260923\\src\\main\\resources\\assets\\actioncombat\\geckolib\\models\\ysm_player_dual.geo.json",
+      "animation": "C:\\Users\\34003\\Desktop\\actioncombat_legacy_20260923\\src\\main\\resources\\assets\\actioncombat\\geckolib\\animations\\ysm_player_dual.animation.json",
+      "sourceSha256": {
+        "ysm_player_dual.geo.json": "ac14ff1902a17e525b0c5c6593cab57156417a93585140d098b0a388ff846c73",
+        "ysm_player_dual.animation.json": "486ee521f93e0499a89a2b44257bdb4631e0f38a1a24099cac4a4d8516425e53"
+      },
+      "boneMap": {
+        "Root": "root",
+        "Hip": "hip",
+        "Body": "body",
+        "Head": "head",
+        "RightArm": "right_arm",
+        "RightForeArm": "right_forearm",
+        "RightHand": "right_hand",
+        "RightHandLocator": "right_item",
+        "LeftArm": "left_arm",
+        "LeftForeArm": "left_forearm",
+        "LeftHand": "left_hand",
+        "LeftHandLocator": "left_item",
+        "RightLeg": "right_leg",
+        "RightForeLeg": "right_foreleg",
+        "RightFoot": "right_foot",
+        "LeftLeg": "left_leg",
+        "LeftForeLeg": "left_foreleg",
+        "LeftFoot": "left_foot"
+      },
+      "scaleNormalization": [
+        {
+          "sourceClip": "draw",
+          "sourceBone": "LeftHandLocator",
+          "targetBone": "left_item",
+          "authoredMinimum": 0.0,
+          "sampledMinimum": -0.08148148148148149,
+          "zeroSamples": 2,
+          "negativeOvershootSamples": 17,
+          "normalizedSamples": 19,
+          "epsilon": 1e-06,
+          "semantics": "hidden locator; nonnegative authored keys, Catmull-Rom undershoot"
+        },
+        {
+          "sourceClip": "draw",
+          "sourceBone": "RightHandLocator",
+          "targetBone": "right_item",
+          "authoredMinimum": 0.0,
+          "sampledMinimum": -0.08148148148148149,
+          "zeroSamples": 2,
+          "negativeOvershootSamples": 17,
+          "normalizedSamples": 19,
+          "epsilon": 1e-06,
+          "semantics": "hidden locator; nonnegative authored keys, Catmull-Rom undershoot"
+        },
+        {
+          "sourceClip": "put_away",
+          "sourceBone": "LeftHandLocator",
+          "targetBone": "left_item",
+          "authoredMinimum": 0.0,
+          "sampledMinimum": -0.08148148148148147,
+          "zeroSamples": 2,
+          "negativeOvershootSamples": 17,
+          "normalizedSamples": 19,
+          "epsilon": 1e-06,
+          "semantics": "hidden locator; nonnegative authored keys, Catmull-Rom undershoot"
+        },
+        {
+          "sourceClip": "put_away",
+          "sourceBone": "RightHandLocator",
+          "targetBone": "right_item",
+          "authoredMinimum": 0.0,
+          "sampledMinimum": -0.08148148148148147,
+          "zeroSamples": 2,
+          "negativeOvershootSamples": 17,
+          "normalizedSamples": 19,
+          "epsilon": 1e-06,
+          "semantics": "hidden locator; nonnegative authored keys, Catmull-Rom undershoot"
+        }
+      ],
+      "actions": [
+        {
+          "action": "legacy_dual_blade_aiming",
+          "sourceClip": "aiming",
+          "duration": 0.2667,
+          "layer": "full",
+          "alias": false
+        },
+        {
+          "action": "legacy_dual_blade_aiming_upper",
+          "sourceClip": "aiming_upper",
+          "duration": 0.2667,
+          "layer": "upper",
+          "alias": false
+        },
+        {
+          "action": "legacy_dual_blade_attack2",
+          "sourceClip": "attack2",
+          "duration": 0.4,
+          "layer": "full",
+          "alias": false
+        },
+        {
+          "action": "legacy_dual_blade_attack2_upper",
+          "sourceClip": "attack2_upper",
+          "duration": 0.4,
+          "layer": "upper",
+          "alias": false
+        },
+        {
+          "action": "legacy_dual_blade_attack3",
+          "sourceClip": "attack3",
+          "duration": 0.4,
+          "layer": "full",
+          "alias": false
+        },
+        {
+          "action": "legacy_dual_blade_attack3_upper",
+          "sourceClip": "attack3_upper",
+          "duration": 0.4,
+          "layer": "upper",
+          "alias": false
+        },
+        {
+          "action": "legacy_dual_blade_attack4",
+          "sourceClip": "attack4",
+          "duration": 0.4,
+          "layer": "full",
+          "alias": false
+        },
+        {
+          "action": "legacy_dual_blade_attack4_upper",
+          "sourceClip": "attack4_upper",
+          "duration": 0.4,
+          "layer": "upper",
+          "alias": false
+        },
+        {
+          "action": "legacy_dual_blade_attack_1",
+          "sourceClip": "attack_1",
+          "duration": 0.4,
+          "layer": "full",
+          "alias": false
+        },
+        {
+          "action": "legacy_dual_blade_attack_1_upper",
+          "sourceClip": "attack_1_upper",
+          "duration": 0.4,
+          "layer": "upper",
+          "alias": false
+        },
+        {
+          "action": "legacy_dual_blade_attack_dual",
+          "sourceClip": "attack_dual",
+          "duration": 0.4,
+          "layer": "full",
+          "alias": false
+        },
+        {
+          "action": "legacy_dual_blade_attack_dual_upper",
+          "sourceClip": "attack_dual_upper",
+          "duration": 0.4,
+          "layer": "upper",
+          "alias": false
+        },
+        {
+          "action": "legacy_dual_blade_crouch_idle",
+          "sourceClip": "crouch_idle",
+          "duration": 1.6,
+          "layer": "full",
+          "alias": false
+        },
+        {
+          "action": "legacy_dual_blade_crouch_walk",
+          "sourceClip": "crouch_walk",
+          "duration": 1.15,
+          "layer": "full",
+          "alias": false
+        },
+        {
+          "action": "legacy_dual_blade_crouch_walk_back",
+          "sourceClip": "crouch_walk_back",
+          "duration": 1.15,
+          "layer": "full",
+          "alias": false
+        },
+        {
+          "action": "legacy_dual_blade_crouch_walk_left",
+          "sourceClip": "crouch_walk_left",
+          "duration": 1.15,
+          "layer": "full",
+          "alias": false
+        },
+        {
+          "action": "legacy_dual_blade_crouch_walk_right",
+          "sourceClip": "crouch_walk_right",
+          "duration": 1.15,
+          "layer": "full",
+          "alias": false
+        },
+        {
+          "action": "legacy_dual_blade_defence_1",
+          "sourceClip": "defence_1",
+          "duration": 1.0,
+          "layer": "full",
+          "alias": false
+        },
+        {
+          "action": "legacy_dual_blade_defence_2",
+          "sourceClip": "defence_2",
+          "duration": 1.0,
+          "layer": "full",
+          "alias": false
+        },
+        {
+          "action": "legacy_dual_blade_defence_3",
+          "sourceClip": "defence_3",
+          "duration": 1.0,
+          "layer": "full",
+          "alias": false
+        },
+        {
+          "action": "legacy_dual_blade_defence_4",
+          "sourceClip": "defence_4",
+          "duration": 1.0,
+          "layer": "full",
+          "alias": false
+        },
+        {
+          "action": "legacy_dual_blade_defend_end",
+          "sourceClip": "defend_end",
+          "duration": 0.22,
+          "layer": "full",
+          "alias": false
+        },
+        {
+          "action": "legacy_dual_blade_defend_upper",
+          "sourceClip": "defend_upper",
+          "duration": 1.0,
+          "layer": "upper",
+          "alias": false
+        },
+        {
+          "action": "legacy_dual_blade_draw",
+          "sourceClip": "draw",
+          "duration": 0.8,
+          "layer": "full",
+          "alias": false
+        },
+        {
+          "action": "legacy_dual_blade_fall",
+          "sourceClip": "fall",
+          "duration": 0.9,
+          "layer": "full",
+          "alias": false
+        },
+        {
+          "action": "legacy_dual_blade_guard_bash",
+          "sourceClip": "guard_bash",
+          "duration": 0.25,
+          "layer": "full",
+          "alias": false
+        },
+        {
+          "action": "legacy_dual_blade_guard_bash_upper",
+          "sourceClip": "guard_bash_upper",
+          "duration": 0.25,
+          "layer": "upper",
+          "alias": false
+        },
+        {
+          "action": "legacy_dual_blade_hurt",
+          "sourceClip": "hurt",
+          "duration": 0.35,
+          "layer": "full",
+          "alias": false
+        },
+        {
+          "action": "legacy_dual_blade_hurt_upper",
+          "sourceClip": "hurt_upper",
+          "duration": 0.35,
+          "layer": "upper",
+          "alias": false
+        },
+        {
+          "action": "legacy_dual_blade_idle_upper",
+          "sourceClip": "idle_upper",
+          "duration": 2.0,
+          "layer": "upper",
+          "alias": false
+        },
+        {
+          "action": "legacy_dual_blade_inspect",
+          "sourceClip": "inspect",
+          "duration": 4.4667,
+          "layer": "full",
+          "alias": false
+        },
+        {
+          "action": "legacy_dual_blade_jump",
+          "sourceClip": "jump",
+          "duration": 0.72,
+          "layer": "full",
+          "alias": false
+        },
+        {
+          "action": "legacy_dual_blade_jump_start",
+          "sourceClip": "jump_start",
+          "duration": 0.28,
+          "layer": "full",
+          "alias": false
+        },
+        {
+          "action": "legacy_dual_blade_put_away",
+          "sourceClip": "put_away",
+          "duration": 0.8,
+          "layer": "full",
+          "alias": false
+        },
+        {
+          "action": "legacy_dual_blade_run_end",
+          "sourceClip": "run_end",
+          "duration": 0.4333,
+          "layer": "full",
+          "alias": false
+        },
+        {
+          "action": "legacy_dual_blade_run_hold",
+          "sourceClip": "run_hold",
+          "duration": 0.5,
+          "layer": "full",
+          "alias": false
+        },
+        {
+          "action": "legacy_dual_blade_run_hold_back",
+          "sourceClip": "run_hold_back",
+          "duration": 0.64,
+          "layer": "full",
+          "alias": false
+        },
+        {
+          "action": "legacy_dual_blade_run_hold_left",
+          "sourceClip": "run_hold_left",
+          "duration": 0.58,
+          "layer": "full",
+          "alias": false
+        },
+        {
+          "action": "legacy_dual_blade_run_hold_right",
+          "sourceClip": "run_hold_right",
+          "duration": 0.58,
+          "layer": "full",
+          "alias": false
+        },
+        {
+          "action": "legacy_dual_blade_run_start",
+          "sourceClip": "run_start",
+          "duration": 0.2667,
+          "layer": "full",
+          "alias": false
+        },
+        {
+          "action": "legacy_dual_blade_static_idle",
+          "sourceClip": "static_idle",
+          "duration": 2.0,
+          "layer": "full",
+          "alias": false
+        },
+        {
+          "action": "legacy_dual_blade_walk_end",
+          "sourceClip": "walk_end",
+          "duration": 0.8233,
+          "layer": "full",
+          "alias": false
+        },
+        {
+          "action": "legacy_dual_blade_walk_hold",
+          "sourceClip": "walk_hold",
+          "duration": 0.95,
+          "layer": "full",
+          "alias": false
+        },
+        {
+          "action": "legacy_dual_blade_walk_hold_back",
+          "sourceClip": "walk_hold_back",
+          "duration": 1.05,
+          "layer": "full",
+          "alias": false
+        },
+        {
+          "action": "legacy_dual_blade_walk_hold_left",
+          "sourceClip": "walk_hold_left",
+          "duration": 0.95,
+          "layer": "full",
+          "alias": false
+        },
+        {
+          "action": "legacy_dual_blade_walk_hold_right",
+          "sourceClip": "walk_hold_right",
+          "duration": 0.95,
+          "layer": "full",
+          "alias": false
+        },
+        {
+          "action": "legacy_dual_blade_walk_start",
+          "sourceClip": "walk_start",
+          "duration": 0.5067,
+          "layer": "full",
+          "alias": false
+        },
+        {
+          "action": "dual_bash",
+          "sourceClip": "guard_bash_upper",
+          "duration": 0.25,
+          "layer": "upper",
+          "alias": true
+        },
+        {
+          "action": "dual_counter",
+          "sourceClip": "attack_dual_upper",
+          "duration": 0.4,
+          "layer": "upper",
+          "alias": true
+        },
+        {
+          "action": "dual_draw",
+          "sourceClip": "draw",
+          "duration": 0.8,
+          "layer": "full",
+          "alias": true
+        },
+        {
+          "action": "dual_guard",
+          "sourceClip": "defend_upper",
+          "duration": 1.0,
+          "layer": "upper",
+          "alias": true
+        },
+        {
+          "action": "dual_idle_00",
+          "sourceClip": "static_idle",
+          "duration": 2.0,
+          "layer": "full",
+          "alias": true
+        },
+        {
+          "action": "dual_idle_01",
+          "sourceClip": "static_idle",
+          "duration": 2.0,
+          "layer": "full",
+          "alias": true
+        },
+        {
+          "action": "dual_idle_02",
+          "sourceClip": "static_idle",
+          "duration": 2.0,
+          "layer": "full",
+          "alias": true
+        },
+        {
+          "action": "dual_idle_10",
+          "sourceClip": "static_idle",
+          "duration": 2.0,
+          "layer": "full",
+          "alias": true
+        },
+        {
+          "action": "dual_idle_11",
+          "sourceClip": "static_idle",
+          "duration": 2.0,
+          "layer": "full",
+          "alias": true
+        },
+        {
+          "action": "dual_idle_12",
+          "sourceClip": "static_idle",
+          "duration": 2.0,
+          "layer": "full",
+          "alias": true
+        },
+        {
+          "action": "dual_idle_20",
+          "sourceClip": "static_idle",
+          "duration": 2.0,
+          "layer": "full",
+          "alias": true
+        },
+        {
+          "action": "dual_idle_21",
+          "sourceClip": "static_idle",
+          "duration": 2.0,
+          "layer": "full",
+          "alias": true
+        },
+        {
+          "action": "dual_idle_22",
+          "sourceClip": "static_idle",
+          "duration": 2.0,
+          "layer": "full",
+          "alias": true
+        },
+        {
+          "action": "dual_left_1",
+          "sourceClip": "attack_1_upper",
+          "duration": 0.4,
+          "layer": "upper",
+          "alias": true
+        },
+        {
+          "action": "dual_left_2",
+          "sourceClip": "attack2_upper",
+          "duration": 0.4,
+          "layer": "upper",
+          "alias": true
+        },
+        {
+          "action": "dual_right_1",
+          "sourceClip": "attack4_upper",
+          "duration": 0.4,
+          "layer": "upper",
+          "alias": true
+        },
+        {
+          "action": "dual_right_2",
+          "sourceClip": "attack3_upper",
+          "duration": 0.4,
+          "layer": "upper",
+          "alias": true
+        },
+        {
+          "action": "dual_run",
+          "sourceClip": "run_hold",
+          "duration": 0.5,
+          "layer": "full",
+          "alias": true
+        },
+        {
+          "action": "dual_stance",
+          "sourceClip": "static_idle",
+          "duration": 2.0,
+          "layer": "full",
+          "alias": true
+        }
+      ],
+      "outputSha256": "7e4accde21d0d4b8a9249501e3df7a10b8a6e5c6e22bfb254ee5b1ec7017a2b0"
+    },
+    {
+      "model": "legacy_dual_blade_fp.fsvoxel",
+      "kind": "dual_blade",
+      "perspective": "first_person",
+      "geometry": "C:\\Users\\34003\\Desktop\\actioncombat_legacy_20260923\\src\\main\\resources\\assets\\actioncombat\\geckolib\\models\\fp_doublesword.geo.json",
+      "animation": "C:\\Users\\34003\\Desktop\\actioncombat_legacy_20260923\\src\\main\\resources\\assets\\actioncombat\\geckolib\\animations\\fp_doublesword.animation.json",
+      "sourceSha256": {
+        "fp_doublesword.geo.json": "a550477a98b667e4ee1aa3a9f362efc96d8543b1083ebd54c88adc48b3fbee68",
+        "fp_doublesword.animation.json": "0ea049eba66113ac0472c11305ff8656d88ec137db3e4b1ad1bd874c646144b9"
+      },
+      "boneMap": {
+        "root": "root",
+        "lower_body": "hip",
+        "upper_body": "body",
+        "right_arm": "right_arm",
+        "right_sleve_bottom": "right_forearm",
+        "hand_r": "right_hand",
+        "right_arm_item": "right_item",
+        "left_arm": "left_arm",
+        "left_arm_bottom": "left_forearm",
+        "hand_l": "left_hand",
+        "left_arm_item": "left_item"
+      },
+      "scaleNormalization": [],
+      "actions": [
+        {
+          "action": "legacy_dual_blade_aiming",
+          "sourceClip": "aiming",
+          "duration": 0.2667,
+          "layer": "full",
+          "alias": false
+        },
+        {
+          "action": "legacy_dual_blade_aiming_upper",
+          "sourceClip": "aiming_upper",
+          "duration": 0.2667,
+          "layer": "upper",
+          "alias": false
+        },
+        {
+          "action": "legacy_dual_blade_attack1",
+          "sourceClip": "attack1",
+          "duration": 0.4,
+          "layer": "full",
+          "alias": false
+        },
+        {
+          "action": "legacy_dual_blade_attack1_upper",
+          "sourceClip": "attack1_upper",
+          "duration": 0.4,
+          "layer": "upper",
+          "alias": false
+        },
+        {
+          "action": "legacy_dual_blade_attack2",
+          "sourceClip": "attack2",
+          "duration": 0.4,
+          "layer": "full",
+          "alias": false
+        },
+        {
+          "action": "legacy_dual_blade_attack2_upper",
+          "sourceClip": "attack2_upper",
+          "duration": 0.4,
+          "layer": "upper",
+          "alias": false
+        },
+        {
+          "action": "legacy_dual_blade_attack3",
+          "sourceClip": "attack3",
+          "duration": 0.4,
+          "layer": "full",
+          "alias": false
+        },
+        {
+          "action": "legacy_dual_blade_attack3_upper",
+          "sourceClip": "attack3_upper",
+          "duration": 0.4,
+          "layer": "upper",
+          "alias": false
+        },
+        {
+          "action": "legacy_dual_blade_attack4",
+          "sourceClip": "attack4",
+          "duration": 0.4,
+          "layer": "full",
+          "alias": false
+        },
+        {
+          "action": "legacy_dual_blade_attack4_upper",
+          "sourceClip": "attack4_upper",
+          "duration": 0.4,
+          "layer": "upper",
+          "alias": false
+        },
+        {
+          "action": "legacy_dual_blade_attack_dual",
+          "sourceClip": "attack_dual",
+          "duration": 0.4,
+          "layer": "full",
+          "alias": false
+        },
+        {
+          "action": "legacy_dual_blade_attack_dual_upper",
+          "sourceClip": "attack_dual_upper",
+          "duration": 0.4,
+          "layer": "upper",
+          "alias": false
+        },
+        {
+          "action": "legacy_dual_blade_crouch_idle",
+          "sourceClip": "crouch_idle",
+          "duration": 1.6,
+          "layer": "full",
+          "alias": false
+        },
+        {
+          "action": "legacy_dual_blade_crouch_walk",
+          "sourceClip": "crouch_walk",
+          "duration": 1.15,
+          "layer": "full",
+          "alias": false
+        },
+        {
+          "action": "legacy_dual_blade_crouch_walk_back",
+          "sourceClip": "crouch_walk_back",
+          "duration": 1.15,
+          "layer": "full",
+          "alias": false
+        },
+        {
+          "action": "legacy_dual_blade_crouch_walk_left",
+          "sourceClip": "crouch_walk_left",
+          "duration": 1.15,
+          "layer": "full",
+          "alias": false
+        },
+        {
+          "action": "legacy_dual_blade_crouch_walk_right",
+          "sourceClip": "crouch_walk_right",
+          "duration": 1.15,
+          "layer": "full",
+          "alias": false
+        },
+        {
+          "action": "legacy_dual_blade_defence_1",
+          "sourceClip": "defence_1",
+          "duration": 1.0,
+          "layer": "full",
+          "alias": false
+        },
+        {
+          "action": "legacy_dual_blade_defence_2",
+          "sourceClip": "defence_2",
+          "duration": 1.0,
+          "layer": "full",
+          "alias": false
+        },
+        {
+          "action": "legacy_dual_blade_defence_3",
+          "sourceClip": "defence_3",
+          "duration": 1.0,
+          "layer": "full",
+          "alias": false
+        },
+        {
+          "action": "legacy_dual_blade_defence_4",
+          "sourceClip": "defence_4",
+          "duration": 1.0,
+          "layer": "full",
+          "alias": false
+        },
+        {
+          "action": "legacy_dual_blade_defend_1",
+          "sourceClip": "defend_1",
+          "duration": 1.0,
+          "layer": "full",
+          "alias": false
+        },
+        {
+          "action": "legacy_dual_blade_defend_end",
+          "sourceClip": "defend_end",
+          "duration": 0.22,
+          "layer": "full",
+          "alias": false
+        },
+        {
+          "action": "legacy_dual_blade_defend_upper",
+          "sourceClip": "defend_upper",
+          "duration": 1.0,
+          "layer": "upper",
+          "alias": false
+        },
+        {
+          "action": "legacy_dual_blade_draw",
+          "sourceClip": "draw",
+          "duration": 0.8,
+          "layer": "full",
+          "alias": false
+        },
+        {
+          "action": "legacy_dual_blade_fall",
+          "sourceClip": "fall",
+          "duration": 0.9,
+          "layer": "full",
+          "alias": false
+        },
+        {
+          "action": "legacy_dual_blade_guard_bash",
+          "sourceClip": "guard_bash",
+          "duration": 0.25,
+          "layer": "full",
+          "alias": false
+        },
+        {
+          "action": "legacy_dual_blade_guard_bash_upper",
+          "sourceClip": "guard_bash_upper",
+          "duration": 0.25,
+          "layer": "upper",
+          "alias": false
+        },
+        {
+          "action": "legacy_dual_blade_hurt",
+          "sourceClip": "hurt",
+          "duration": 0.35,
+          "layer": "full",
+          "alias": false
+        },
+        {
+          "action": "legacy_dual_blade_hurt_upper",
+          "sourceClip": "hurt_upper",
+          "duration": 0.35,
+          "layer": "upper",
+          "alias": false
+        },
+        {
+          "action": "legacy_dual_blade_idle_upper",
+          "sourceClip": "idle_upper",
+          "duration": 2.0,
+          "layer": "upper",
+          "alias": false
+        },
+        {
+          "action": "legacy_dual_blade_inspect",
+          "sourceClip": "inspect",
+          "duration": 4.4667,
+          "layer": "full",
+          "alias": false
+        },
+        {
+          "action": "legacy_dual_blade_jump",
+          "sourceClip": "jump",
+          "duration": 0.72,
+          "layer": "full",
+          "alias": false
+        },
+        {
+          "action": "legacy_dual_blade_jump_start",
+          "sourceClip": "jump_start",
+          "duration": 0.28,
+          "layer": "full",
+          "alias": false
+        },
+        {
+          "action": "legacy_dual_blade_put_away",
+          "sourceClip": "put_away",
+          "duration": 0.8,
+          "layer": "full",
+          "alias": false
+        },
+        {
+          "action": "legacy_dual_blade_run_end",
+          "sourceClip": "run_end",
+          "duration": 0.4333,
+          "layer": "full",
+          "alias": false
+        },
+        {
+          "action": "legacy_dual_blade_run_hold",
+          "sourceClip": "run_hold",
+          "duration": 0.5,
+          "layer": "full",
+          "alias": false
+        },
+        {
+          "action": "legacy_dual_blade_run_hold_back",
+          "sourceClip": "run_hold_back",
+          "duration": 0.64,
+          "layer": "full",
+          "alias": false
+        },
+        {
+          "action": "legacy_dual_blade_run_hold_left",
+          "sourceClip": "run_hold_left",
+          "duration": 0.58,
+          "layer": "full",
+          "alias": false
+        },
+        {
+          "action": "legacy_dual_blade_run_hold_right",
+          "sourceClip": "run_hold_right",
+          "duration": 0.58,
+          "layer": "full",
+          "alias": false
+        },
+        {
+          "action": "legacy_dual_blade_run_start",
+          "sourceClip": "run_start",
+          "duration": 0.2667,
+          "layer": "full",
+          "alias": false
+        },
+        {
+          "action": "legacy_dual_blade_static_idle",
+          "sourceClip": "static_idle",
+          "duration": 3.2,
+          "layer": "full",
+          "alias": false
+        },
+        {
+          "action": "legacy_dual_blade_static_pose",
+          "sourceClip": "static_pose",
+          "duration": 2.0,
+          "layer": "full",
+          "alias": false
+        },
+        {
+          "action": "legacy_dual_blade_walk_end",
+          "sourceClip": "walk_end",
+          "duration": 0.8233,
+          "layer": "full",
+          "alias": false
+        },
+        {
+          "action": "legacy_dual_blade_walk_hold",
+          "sourceClip": "walk_hold",
+          "duration": 0.95,
+          "layer": "full",
+          "alias": false
+        },
+        {
+          "action": "legacy_dual_blade_walk_hold_back",
+          "sourceClip": "walk_hold_back",
+          "duration": 1.05,
+          "layer": "full",
+          "alias": false
+        },
+        {
+          "action": "legacy_dual_blade_walk_hold_left",
+          "sourceClip": "walk_hold_left",
+          "duration": 0.95,
+          "layer": "full",
+          "alias": false
+        },
+        {
+          "action": "legacy_dual_blade_walk_hold_right",
+          "sourceClip": "walk_hold_right",
+          "duration": 0.95,
+          "layer": "full",
+          "alias": false
+        },
+        {
+          "action": "legacy_dual_blade_walk_start",
+          "sourceClip": "walk_start",
+          "duration": 0.5067,
+          "layer": "full",
+          "alias": false
+        },
+        {
+          "action": "dual_bash",
+          "sourceClip": "guard_bash",
+          "duration": 0.25,
+          "layer": "full",
+          "alias": true
+        },
+        {
+          "action": "dual_counter",
+          "sourceClip": "attack_dual",
+          "duration": 0.4,
+          "layer": "full",
+          "alias": true
+        },
+        {
+          "action": "dual_draw",
+          "sourceClip": "draw",
+          "duration": 0.8,
+          "layer": "full",
+          "alias": true
+        },
+        {
+          "action": "dual_guard",
+          "sourceClip": "defend_1",
+          "duration": 1.0,
+          "layer": "full",
+          "alias": true
+        },
+        {
+          "action": "dual_idle_00",
+          "sourceClip": "static_idle",
+          "duration": 3.2,
+          "layer": "full",
+          "alias": true
+        },
+        {
+          "action": "dual_idle_01",
+          "sourceClip": "static_idle",
+          "duration": 3.2,
+          "layer": "full",
+          "alias": true
+        },
+        {
+          "action": "dual_idle_02",
+          "sourceClip": "static_idle",
+          "duration": 3.2,
+          "layer": "full",
+          "alias": true
+        },
+        {
+          "action": "dual_idle_10",
+          "sourceClip": "static_idle",
+          "duration": 3.2,
+          "layer": "full",
+          "alias": true
+        },
+        {
+          "action": "dual_idle_11",
+          "sourceClip": "static_idle",
+          "duration": 3.2,
+          "layer": "full",
+          "alias": true
+        },
+        {
+          "action": "dual_idle_12",
+          "sourceClip": "static_idle",
+          "duration": 3.2,
+          "layer": "full",
+          "alias": true
+        },
+        {
+          "action": "dual_idle_20",
+          "sourceClip": "static_idle",
+          "duration": 3.2,
+          "layer": "full",
+          "alias": true
+        },
+        {
+          "action": "dual_idle_21",
+          "sourceClip": "static_idle",
+          "duration": 3.2,
+          "layer": "full",
+          "alias": true
+        },
+        {
+          "action": "dual_idle_22",
+          "sourceClip": "static_idle",
+          "duration": 3.2,
+          "layer": "full",
+          "alias": true
+        },
+        {
+          "action": "dual_left_1",
+          "sourceClip": "attack1_upper",
+          "duration": 0.4,
+          "layer": "upper",
+          "alias": true
+        },
+        {
+          "action": "dual_left_2",
+          "sourceClip": "attack2",
+          "duration": 0.4,
+          "layer": "full",
+          "alias": true
+        },
+        {
+          "action": "dual_right_1",
+          "sourceClip": "attack4",
+          "duration": 0.4,
+          "layer": "full",
+          "alias": true
+        },
+        {
+          "action": "dual_right_2",
+          "sourceClip": "attack3",
+          "duration": 0.4,
+          "layer": "full",
+          "alias": true
+        },
+        {
+          "action": "dual_run",
+          "sourceClip": "run_hold",
+          "duration": 0.5,
+          "layer": "full",
+          "alias": true
+        },
+        {
+          "action": "dual_stance",
+          "sourceClip": "static_idle",
+          "duration": 3.2,
+          "layer": "full",
+          "alias": true
+        },
+        {
+          "action": "legacy_dual_blade_attack_1",
+          "sourceClip": "attack1",
+          "duration": 0.4,
+          "layer": "full",
+          "alias": true
+        },
+        {
+          "action": "legacy_dual_blade_attack_1_upper",
+          "sourceClip": "attack1_upper",
+          "duration": 0.4,
+          "layer": "upper",
+          "alias": true
+        }
+      ],
+      "outputSha256": "ad74c113e8da9b741553690d4eb09218c723ed58ef3489892c69d58e88549f76"
+    },
+    {
+      "model": "legacy_bow.fsvoxel",
+      "kind": "bow",
+      "perspective": "third_person",
+      "geometry": "C:\\Users\\34003\\Desktop\\actioncombat_legacy_20260923\\src\\main\\resources\\assets\\actioncombat\\geckolib\\models\\ysm_player.geo.json",
+      "animation": "C:\\Users\\34003\\Desktop\\actioncombat_legacy_20260923\\src\\main\\resources\\assets\\actioncombat\\geckolib\\animations\\ysm_player.animation.json",
+      "sourceSha256": {
+        "ysm_player.geo.json": "b611585a9b3e9d149c942e3017784fcf2eba5b38c48516f85b62a9fe3cbf741a",
+        "ysm_player.animation.json": "95a9797c6fa11c960d4b55909a8e08ec4c10122b7ccc9c9a5513c9d5c10a00ae"
+      },
+      "boneMap": {
+        "Root": "root",
+        "Hip": "hip",
+        "Body": "body",
+        "Head": "head",
+        "RightArm": "right_arm",
+        "RightForeArm": "right_forearm",
+        "RightHand": "right_hand",
+        "RightHandLocator": "right_item",
+        "LeftArm": "left_arm",
+        "LeftForeArm": "left_forearm",
+        "LeftHand": "left_hand",
+        "LeftHandLocator": "left_item",
+        "RightLeg": "right_leg",
+        "RightForeLeg": "right_foreleg",
+        "RightFoot": "right_foot",
+        "LeftLeg": "left_leg",
+        "LeftForeLeg": "left_foreleg",
+        "LeftFoot": "left_foot"
+      },
+      "scaleNormalization": [],
+      "actions": [
+        {
+          "action": "legacy_bow_aiming_upper",
+          "sourceClip": "aiming_upper",
+          "duration": 0.05,
+          "layer": "upper",
+          "alias": false
+        },
+        {
+          "action": "legacy_bow_bow_bash_upper",
+          "sourceClip": "bow_bash_upper",
+          "duration": 0.35,
+          "layer": "upper",
+          "alias": false
+        },
+        {
+          "action": "legacy_bow_bow_rapid_draw_upper",
+          "sourceClip": "bow_rapid_draw_upper",
+          "duration": 0.5,
+          "layer": "upper",
+          "alias": false
+        },
+        {
+          "action": "legacy_bow_bow_rapid_idle_upper",
+          "sourceClip": "bow_rapid_idle_upper",
+          "duration": 1.8,
+          "layer": "upper",
+          "alias": false
+        },
+        {
+          "action": "legacy_bow_bow_rapid_release_upper",
+          "sourceClip": "bow_rapid_release_upper",
+          "duration": 0.3,
+          "layer": "upper",
+          "alias": false
+        },
+        {
+          "action": "legacy_bow_bow_snipe_draw_upper",
+          "sourceClip": "bow_snipe_draw_upper",
+          "duration": 0.55,
+          "layer": "upper",
+          "alias": false
+        },
+        {
+          "action": "legacy_bow_bow_snipe_idle_upper",
+          "sourceClip": "bow_snipe_idle_upper",
+          "duration": 2.0,
+          "layer": "upper",
+          "alias": false
+        },
+        {
+          "action": "legacy_bow_bow_snipe_release_upper",
+          "sourceClip": "bow_snipe_release_upper",
+          "duration": 0.3,
+          "layer": "upper",
+          "alias": false
+        },
+        {
+          "action": "legacy_bow_crouch_idle",
+          "sourceClip": "crouch_idle",
+          "duration": 1.6,
+          "layer": "full",
+          "alias": false
+        },
+        {
+          "action": "legacy_bow_crouch_walk",
+          "sourceClip": "crouch_walk",
+          "duration": 1.15,
+          "layer": "full",
+          "alias": false
+        },
+        {
+          "action": "legacy_bow_crouch_walk_back",
+          "sourceClip": "crouch_walk_back",
+          "duration": 1.15,
+          "layer": "full",
+          "alias": false
+        },
+        {
+          "action": "legacy_bow_crouch_walk_left",
+          "sourceClip": "crouch_walk_left",
+          "duration": 1.15,
+          "layer": "full",
+          "alias": false
+        },
+        {
+          "action": "legacy_bow_crouch_walk_right",
+          "sourceClip": "crouch_walk_right",
+          "duration": 1.15,
+          "layer": "full",
+          "alias": false
+        },
+        {
+          "action": "legacy_bow_defend_end",
+          "sourceClip": "defend_end",
+          "duration": 0.22,
+          "layer": "full",
+          "alias": false
+        },
+        {
+          "action": "legacy_bow_defend_upper",
+          "sourceClip": "defend_upper",
+          "duration": 0.22,
+          "layer": "upper",
+          "alias": false
+        },
+        {
+          "action": "legacy_bow_draw",
+          "sourceClip": "draw",
+          "duration": 0.7333,
+          "layer": "full",
+          "alias": false
+        },
+        {
+          "action": "legacy_bow_draw_bow",
+          "sourceClip": "draw_bow",
+          "duration": 0.7,
+          "layer": "full",
+          "alias": false
+        },
+        {
+          "action": "legacy_bow_fall",
+          "sourceClip": "fall",
+          "duration": 0.9,
+          "layer": "full",
+          "alias": false
+        },
+        {
+          "action": "legacy_bow_hurt",
+          "sourceClip": "hurt",
+          "duration": 0.35,
+          "layer": "full",
+          "alias": false
+        },
+        {
+          "action": "legacy_bow_hurt_upper",
+          "sourceClip": "hurt_upper",
+          "duration": 0.35,
+          "layer": "upper",
+          "alias": false
+        },
+        {
+          "action": "legacy_bow_idle_upper",
+          "sourceClip": "idle_upper",
+          "duration": 3.2,
+          "layer": "upper",
+          "alias": false
+        },
+        {
+          "action": "legacy_bow_inspect",
+          "sourceClip": "inspect",
+          "duration": 1.6,
+          "layer": "full",
+          "alias": false
+        },
+        {
+          "action": "legacy_bow_jump",
+          "sourceClip": "jump",
+          "duration": 0.72,
+          "layer": "full",
+          "alias": false
+        },
+        {
+          "action": "legacy_bow_jump_start",
+          "sourceClip": "jump_start",
+          "duration": 0.28,
+          "layer": "full",
+          "alias": false
+        },
+        {
+          "action": "legacy_bow_put_away",
+          "sourceClip": "put_away",
+          "duration": 1.1,
+          "layer": "full",
+          "alias": false
+        },
+        {
+          "action": "legacy_bow_put_away_bow",
+          "sourceClip": "put_away_bow",
+          "duration": 0.5,
+          "layer": "full",
+          "alias": false
+        },
+        {
+          "action": "legacy_bow_run_end",
+          "sourceClip": "run_end",
+          "duration": 0.4333,
+          "layer": "full",
+          "alias": false
+        },
+        {
+          "action": "legacy_bow_run_hold",
+          "sourceClip": "run_hold",
+          "duration": 0.5,
+          "layer": "full",
+          "alias": false
+        },
+        {
+          "action": "legacy_bow_run_hold_back",
+          "sourceClip": "run_hold_back",
+          "duration": 0.64,
+          "layer": "full",
+          "alias": false
+        },
+        {
+          "action": "legacy_bow_run_hold_left",
+          "sourceClip": "run_hold_left",
+          "duration": 0.58,
+          "layer": "full",
+          "alias": false
+        },
+        {
+          "action": "legacy_bow_run_hold_right",
+          "sourceClip": "run_hold_right",
+          "duration": 0.58,
+          "layer": "full",
+          "alias": false
+        },
+        {
+          "action": "legacy_bow_run_start",
+          "sourceClip": "run_start",
+          "duration": 0.2667,
+          "layer": "full",
+          "alias": false
+        },
+        {
+          "action": "legacy_bow_static_idle",
+          "sourceClip": "static_idle",
+          "duration": 3.2,
+          "layer": "full",
+          "alias": false
+        },
+        {
+          "action": "legacy_bow_walk_end",
+          "sourceClip": "walk_end",
+          "duration": 0.8233,
+          "layer": "full",
+          "alias": false
+        },
+        {
+          "action": "legacy_bow_walk_hold",
+          "sourceClip": "walk_hold",
+          "duration": 0.95,
+          "layer": "full",
+          "alias": false
+        },
+        {
+          "action": "legacy_bow_walk_hold_back",
+          "sourceClip": "walk_hold_back",
+          "duration": 1.05,
+          "layer": "full",
+          "alias": false
+        },
+        {
+          "action": "legacy_bow_walk_hold_left",
+          "sourceClip": "walk_hold_left",
+          "duration": 0.95,
+          "layer": "full",
+          "alias": false
+        },
+        {
+          "action": "legacy_bow_walk_hold_right",
+          "sourceClip": "walk_hold_right",
+          "duration": 0.95,
+          "layer": "full",
+          "alias": false
+        },
+        {
+          "action": "legacy_bow_walk_start",
+          "sourceClip": "walk_start",
+          "duration": 0.5067,
+          "layer": "full",
+          "alias": false
+        },
+        {
+          "action": "bow_bash",
+          "sourceClip": "bow_bash_upper",
+          "duration": 0.35,
+          "layer": "upper",
+          "alias": true
+        },
+        {
+          "action": "bow_draw",
+          "sourceClip": "draw_bow",
+          "duration": 0.7,
+          "layer": "full",
+          "alias": true
+        },
+        {
+          "action": "bow_put_away",
+          "sourceClip": "put_away_bow",
+          "duration": 0.5,
+          "layer": "full",
+          "alias": true
+        },
+        {
+          "action": "bow_rapid_charge",
+          "sourceClip": "bow_rapid_draw_upper",
+          "duration": 0.5,
+          "layer": "upper",
+          "alias": true
+        },
+        {
+          "action": "bow_rapid_idle",
+          "sourceClip": "bow_rapid_idle_upper",
+          "duration": 1.8,
+          "layer": "upper",
+          "alias": true
+        },
+        {
+          "action": "bow_rapid_release",
+          "sourceClip": "bow_rapid_release_upper",
+          "duration": 0.3,
+          "layer": "upper",
+          "alias": true
+        },
+        {
+          "action": "bow_snipe_charge",
+          "sourceClip": "bow_snipe_draw_upper",
+          "duration": 0.55,
+          "layer": "upper",
+          "alias": true
+        },
+        {
+          "action": "bow_snipe_idle",
+          "sourceClip": "bow_snipe_idle_upper",
+          "duration": 2.0,
+          "layer": "upper",
+          "alias": true
+        },
+        {
+          "action": "bow_snipe_release",
+          "sourceClip": "bow_snipe_release_upper",
+          "duration": 0.3,
+          "layer": "upper",
+          "alias": true
+        }
+      ],
+      "outputSha256": "12c7135b4c08e4a9db474621748a5dfbb7e641434b1050d5a49355bf38c4b844"
+    },
+    {
+      "model": "legacy_bow_fp.fsvoxel",
+      "kind": "bow",
+      "perspective": "first_person",
+      "geometry": "C:\\Users\\34003\\Desktop\\actioncombat_legacy_20260923\\src\\main\\resources\\assets\\actioncombat\\geckolib\\models\\fp_singlesword.geo.json",
+      "animation": "C:\\Users\\34003\\Desktop\\actioncombat_legacy_20260923\\src\\main\\resources\\assets\\actioncombat\\geckolib\\animations\\fp_singlesword.animation.json",
+      "sourceSha256": {
+        "fp_singlesword.geo.json": "658df3093eb460bc5ef16f2c522b639c3dc931380a24bd800f35e68faf1f6160",
+        "fp_singlesword.animation.json": "6acd3e820950420f35b32f3a8589079526f853cc270bd5e37acbcbf087c8f2b5"
+      },
+      "boneMap": {
+        "root": "root",
+        "knife_R": "camera_root",
+        "left": "left_arm",
+        "lefthand_pos": "lefthand_pos",
+        "dissipate_view_452": "dissipate_view_452",
+        "right": "right_arm",
+        "righthand_pos": "righthand_pos",
+        "dissipate_view_0": "dissipate_view_0",
+        "elucidator": "right_item",
+        "fp_forearm_r": "right_forearm"
+      },
+      "scaleNormalization": [],
+      "actions": [
+        {
+          "action": "legacy_bow_draw",
+          "sourceClip": "draw",
+          "duration": 0.7333,
+          "layer": "full",
+          "alias": false
+        },
+        {
+          "action": "legacy_bow_fp_bow_bash",
+          "sourceClip": "fp_bow_bash",
+          "duration": 0.35,
+          "layer": "full",
+          "alias": false
+        },
+        {
+          "action": "legacy_bow_fp_bow_rapid_bash",
+          "sourceClip": "fp_bow_rapid_bash",
+          "duration": 0.35,
+          "layer": "full",
+          "alias": false
+        },
+        {
+          "action": "legacy_bow_fp_bow_rapid_draw",
+          "sourceClip": "fp_bow_rapid_draw",
+          "duration": 0.5,
+          "layer": "full",
+          "alias": false
+        },
+        {
+          "action": "legacy_bow_fp_bow_rapid_idle",
+          "sourceClip": "fp_bow_rapid_idle",
+          "duration": 1.6,
+          "layer": "full",
+          "alias": false
+        },
+        {
+          "action": "legacy_bow_fp_bow_rapid_release",
+          "sourceClip": "fp_bow_rapid_release",
+          "duration": 0.3,
+          "layer": "full",
+          "alias": false
+        },
+        {
+          "action": "legacy_bow_fp_bow_snipe_bash",
+          "sourceClip": "fp_bow_snipe_bash",
+          "duration": 0.35,
+          "layer": "full",
+          "alias": false
+        },
+        {
+          "action": "legacy_bow_fp_bow_snipe_draw",
+          "sourceClip": "fp_bow_snipe_draw",
+          "duration": 0.55,
+          "layer": "full",
+          "alias": false
+        },
+        {
+          "action": "legacy_bow_fp_bow_snipe_idle",
+          "sourceClip": "fp_bow_snipe_idle",
+          "duration": 2.0,
+          "layer": "full",
+          "alias": false
+        },
+        {
+          "action": "legacy_bow_fp_bow_snipe_release",
+          "sourceClip": "fp_bow_snipe_release",
+          "duration": 0.3,
+          "layer": "full",
+          "alias": false
+        },
+        {
+          "action": "legacy_bow_put_away",
+          "sourceClip": "put_away",
+          "duration": 1.1,
+          "layer": "full",
+          "alias": false
+        },
+        {
+          "action": "bow_bash",
+          "sourceClip": "fp_bow_bash",
+          "duration": 0.35,
+          "layer": "full",
+          "alias": true
+        },
+        {
+          "action": "bow_draw",
+          "sourceClip": "draw",
+          "duration": 0.7333,
+          "layer": "full",
+          "alias": true
+        },
+        {
+          "action": "bow_put_away",
+          "sourceClip": "put_away",
+          "duration": 1.1,
+          "layer": "full",
+          "alias": true
+        },
+        {
+          "action": "bow_rapid_charge",
+          "sourceClip": "fp_bow_rapid_draw",
+          "duration": 0.5,
+          "layer": "full",
+          "alias": true
+        },
+        {
+          "action": "bow_rapid_idle",
+          "sourceClip": "fp_bow_rapid_idle",
+          "duration": 1.6,
+          "layer": "full",
+          "alias": true
+        },
+        {
+          "action": "bow_rapid_release",
+          "sourceClip": "fp_bow_rapid_release",
+          "duration": 0.3,
+          "layer": "full",
+          "alias": true
+        },
+        {
+          "action": "bow_snipe_charge",
+          "sourceClip": "fp_bow_snipe_draw",
+          "duration": 0.55,
+          "layer": "full",
+          "alias": true
+        },
+        {
+          "action": "bow_snipe_idle",
+          "sourceClip": "fp_bow_snipe_idle",
+          "duration": 2.0,
+          "layer": "full",
+          "alias": true
+        },
+        {
+          "action": "bow_snipe_release",
+          "sourceClip": "fp_bow_snipe_release",
+          "duration": 0.3,
+          "layer": "full",
+          "alias": true
+        }
+      ],
+      "outputSha256": "49dc688c8890cd671b38f1d97609ea0ae75cdfb5df16cb2edbc275ec0b8cc8a9"
+    }
+  ]
+}

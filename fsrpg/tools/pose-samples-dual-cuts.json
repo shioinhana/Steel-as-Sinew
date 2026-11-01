@@ -1,0 +1,54 @@
+{
+  "poses": [
+    {
+      "label": "dual_ll-prepare",
+      "action": "dual_ll",
+      "seconds": 0.23
+    },
+    {
+      "label": "dual_ll-mid",
+      "action": "dual_ll",
+      "seconds": 0.4
+    },
+    {
+      "label": "dual_ll-follow",
+      "action": "dual_ll",
+      "seconds": 0.57
+    },
+    {
+      "label": "dual_ll-recovery",
+      "action": "dual_ll",
+      "seconds": 0.8
+    },
+    {
+      "label": "dual_rr-prepare",
+      "action": "dual_rr",
+      "seconds": 0.23
+    },
+    {
+      "label": "dual_rr-mid",
+      "action": "dual_rr",
+      "seconds": 0.4
+    },
+    {
+      "label": "dual_rr-follow",
+      "action": "dual_rr",
+      "seconds": 0.57
+    },
+    {
+      "label": "dual_rr-recovery",
+      "action": "dual_rr",
+      "seconds": 0.8
+    }
+  ],
+  "profiles": [
+    0,
+    1,
+    2,
+    3
+  ],
+  "views": [
+    "back",
+    "oblique"
+  ]
+}

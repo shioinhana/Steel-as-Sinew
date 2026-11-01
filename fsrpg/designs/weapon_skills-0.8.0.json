@@ -1,0 +1,1414 @@
+{
+  "$schema": "./weapon_skill_proposals.schema.json",
+  "schemaVersion": 1,
+  "status": "DESIGN_PROPOSAL_NOT_IMPLEMENTED",
+  "runtimeEnabled": false,
+  "targetVersionProposal": "0.8.0",
+  "reviewDate": "2026-10-21",
+  "units": {
+    "time": "tick; 20 tick = 1 s",
+    "distance": "Minecraft 格",
+    "horizontalSpeed": "格/秒；服务器一次赋值时除以20",
+    "verticalVelocity": "格/tick",
+    "damage": "相应基础动作 D 的倍数，不是最终血量百分比",
+    "resource": "体力/灵力点；均为完整施放提案费用"
+  },
+  "sharedRules": {
+    "implementationBoundary": {
+      "runtimeEnabled": false,
+      "runtimeDirectoriesTouched": [],
+      "warning": "设计提案，未接入运行时。不是 skills.json / skill_trees.json；倍率、多接触、位移与状态字段不能直接被现有加载器读取。0.8.0 仅为提案归档名，不代表已发布版本。"
+    },
+    "controls": {
+      "proposal": "每武器 4 选 2 装配；未来在 P 页面新增装配页签。新增技能槽 A / B 两个可改绑动作，默认均不绑定，不在 GUI 内直接施放。",
+      "defaultBindings": {
+        "skillSlotA": null,
+        "skillSlotB": null
+      },
+      "preservedBindings": [
+        "R",
+        "C",
+        "Shift",
+        "Shift+C",
+        "Alt",
+        "H",
+        "Z",
+        "V",
+        "P",
+        "J",
+        "K",
+        "F8",
+        "LMB",
+        "RMB"
+      ],
+      "priority": "C 精准格挡/既有左键反击优先；同 tick 槽 A/B 同按只按 A 接受，另一个不排队、不扣费。Z 仍是现有特殊技能。",
+      "queue": "每次按下只产生一次意图；普通攻击允许宽松缓存一刀。技能从 READY 或自己的后摇发起，不建立严格连击、节拍或按键窗口。"
+    },
+    "knownRuntime": {
+      "versionRead": "0.7.9",
+      "networkProtocolRead": 10,
+      "baselineStamina": 50,
+      "idleRegenAtLevel0PerSecond": 5,
+      "combatRegenAtLevel0PerSecond": 2.5,
+      "combatTicks": 60,
+      "groundShiftStamina": 5,
+      "groundShiftInitialSpeedMps": 27,
+      "existingAltStamina": 6,
+      "existingAltInvulnerabilityTicks": 6,
+      "existingAltAllowAir": false,
+      "perfectGuard": "保留现有可调金闪与 C 新按判定，不改窗口或自动招架；成功后的 4 tick 左键反击、1.5 倍伤害与敌人 4 tick 僵直保留。"
+    },
+    "damageBasis": {
+      "rapier_base_slash": "现有 rules.rapier.baseSlashDamage，默认 D=6；不是右键突刺 9，也不叠执行缺血伤害。",
+      "dual_base_slash": "当前持用材质的单刀基础伤害，默认 D=4；两手分属不同倍率时各段用实际那只手的 D。",
+      "spear_thrust": "spear_thrust 的当前基础伤害，默认 D=7。",
+      "full_rapid_arrow": "同弓、附魔和合法被动下的一支普通满力速射箭，伤害结算基值 D；特殊箭的倍率只应用一次。",
+      "pipeline": "先取该动作/箭矢基础预算并乘提案倍率，再沿既有物品、属性、护甲/抗性和事件结算；不得重复乘材质或附魔。多段 hitMultipliers 之和等于总倍率，第二段不绕过原版受伤冷却来重复计算，需未来有明确 action-hit 去重通道。",
+      "noPassiveEscalation": "未来新技能需显式列入学习授权；不得因沿用某个旧 ID 就免费触发西洋剑右键专属推进、蓄力拨挡或缺血处决。弓已有被动只经原箭通道执行一次，本提案不新增穿墙或保证破盾。"
+    },
+    "timing": {
+      "ticksPerSecond": 20,
+      "contactConvention": "从接受动作的 tick 0 起；有效段为 [windupTicks, windupTicks+activeTicks)，contactTicks 必须位于其中。弓的 contactTicks 是箭离弦事件，实际伤害只在真实箭碰撞时发生。",
+      "cooldown": "接受并预扣成功即开始 CD；没有通过服务端资源/装备/地面/弹药/目标规则校验的不扣费、不进 CD。已接受后取消不退 CD。",
+      "telegraph": "对玩家可防的敌方版本必须在接触前发送已有金闪提示；特效只提示，不能靠特效本地时钟发伤害。"
+    },
+    "physics": {
+      "singleImpulse": "位移事件只在指定 tick 改一次 XZ 速度；Y 默认保留，之后原版输入、阻力、碰撞与重力继续。禁止逐 tick setVelocity / move / teleport、固定路程、墙后补偿和无输入锁向。冲量不提供隐含无敌。",
+      "ground": "除明确 airOnly 的落羽交锋外，全部要求接受时地面成立；延迟到 motion.triggerTick 才施冲量的还需再验地面，离地则取消未提交事件，不能变成空中二段冲。已经提交的地面冲量后可自然跳跃。",
+      "air": "不在水、骑乘、鞘翅或特殊载具中发起这些技能。空中唯一主动技能落羽交锋只加一次下坠候选，不给水平空冲、不重置 fallDistance；起跳箭从真实地面发起。",
+      "collision": "实体/玩家包围盒与方块碰撞沿原版处理，扫掠命中采样有固定上限；高速轨迹不漏命中也不穿越方块。默认不破坏方块，不强行穿过其它实体。",
+      "focus": "焦点丢失、GUI、角色/维度变化、死亡和换武器取消未提交意图；已发送授权需 requestId+UUID+维度+时钟校验和一次消费，复发包不能重复位移。"
+    },
+    "blinkPolicy": {
+      "rangeBlocks": 3.5,
+      "groundOnly": true,
+      "invulnerabilityTicks": 0,
+      "path": "从当前包围盒沿水平方向连续扫掠；不能跨过中间实心墙、关门、世界边界或不允许的碰撞。找沿路最远安全站位，不选择敌人背后，不以镜头位置为起点。",
+      "endpoint": "完全加载区块内、有足够脚/头空间、无实体重叠、脚下有可站面；高度差最多上 0.5 / 下 1.0 格，不落入岩浆/火/仙人掌等已知危险，不跨悬崖。禁止加载新块、穿屏障或改世界。",
+      "commit": "接受前和第 4 tick 各验证；预检不合法则不接受不扣费，已经接受后终点突变则取消位移并退本技能全额体力/灵力，CD 保留以防刷验证。失败不往回拉角色。",
+      "camera": "客户端仅在服务端落点确认后做约 0.12 秒位置缓动，不延迟角色真实碰撞；不旋转镜头、不给镜头通墙权限，可关闭闪现镜头缓动。"
+    },
+    "targetControl": {
+      "eligibility": "挑飞/击坠仅对可移动的轻型活体生效；Boss、载具、明确免疫目标不强改位置/AI。先完成正常伤害事件，仅成功且未被格挡/招架才施控制；击退抗性按现有语义缩放，一次 Y 候选不是逐 tick 强制速度。",
+      "launch": "同一目标共享 40 tick 重新挑飞保护；从首次成功挑飞起计。已经在空中的目标不再刷新正 Y，不重置保护，挑飞不自动重置玩家或目标重力。",
+      "slam": "向下候选取 min(当前 Y,抗性处理后的候选)，不把已经更快的下坠减速；地面目标不施负 Y。不得制造额外地震/百分比落地伤害，正常摔落按原版/目标自身规则。",
+      "fallback": "每技能定义 Boss 替代，额外倍率是普通可减伤伤害、每施放每目标最多一次；不创建未实现的削韧条，不以替代伤害触发多次成长/命中回执。",
+      "pvp": "首轮实现建议这些新控制技能只对现有合法非玩家敌对目标启用；玩家/盟友/宠物按既有关系规则拒绝附加控制。PvP 数值与权限另行评审。"
+    },
+    "resources": {
+      "affordability": "按完整体力+灵力+箭验证并预扣，不因预期空挥而允许余额不足发招。utilityStaminaShare+attackStaminaShare=stamina。",
+      "missRefund": "设计提案：纯攻击份额发出且全空才退 50%；位移、无敌、跳起、闪现等已获得效用的份额不退，灵力不走空挥退款。该拆分是未来需要新增的账本，不声称当前已支持。",
+      "contact": "任何真实命中、被格挡、被招架或拼刀都取消该施放的空挥退款；多段每施放只结算一次账本。纯前摇取消不产生空挥折扣。",
+      "projectile": "特殊箭固定提案倍率与完整技能费用，不重复套普通未拉满弓 70% 消耗；普通左右键射箭的 70% 规则保持。特殊箭空挥返还等箭撞墙/消失/移除终结后，不能放箭立退或掉线重退；无弹药拒绝。",
+      "regen": "沿用 3 秒半速战斗回复；实际接触、受击、防御/闪避/主动位移等战斗效用刷新计时。纯发出但无接触且没有获得位移/无敌效用的攻击不刷新；本来已有计时只保留剩余时间。",
+      "counter": "C 完美格挡后 4 tick 内左键执行既有 1.5 倍普通反击；新技能键不消费、延长或叠乘这个资格，不因优先技能输入抢掉反击。",
+      "budgetExample": "0级50体力：Shift5+普通C完美格挡10+普通单剑反击5+踏锋刺10=30，仍余20；不能靠空挥位移、原地反复闪现等把效用费用退掉。"
+    },
+    "serverArchitecture": {
+      "ownership": "服务端接收装配槽意图，校验装备/学习/状态/资源/时钟/方向；同步动作 ID、接触时间、位移一次回执和结果。客户端只采样动作与提示。",
+      "requiredNewCapabilities": [
+        "按 actionId 分组的多接触事件和命中预算",
+        "一次冲量授权及混合攻击/效用资源账本",
+        "安全闪现预检与提交时二次验证",
+        "真实箭矢终结后退款、来源隔离的短状态",
+        "共享浮空保护与 Boss 控制降级",
+        "三人称/越肩/第一人称接触和握点一致验证"
+      ],
+      "noConfigShortcut": "现有 skills.schema.json 只接受固定 damage/reach/knockback 等字段；SkillTreeCatalog 也有 effect 白名单。本文件不能通过改 JSON 就上线，必须新增显式实现、校验、迁移和 smoke 验证。"
+    }
+  },
+  "skills": [
+    {
+      "id": "proposal.rapier.fente",
+      "name": "踏锋刺",
+      "weaponGroup": "sword",
+      "role": "单目标进身；区别于已有短右键刺击",
+      "status": "DESIGN_PROPOSAL_NOT_IMPLEMENTED",
+      "learning": {
+        "existingRoot": "rapier",
+        "proposedNode": "proposal_rapier_fente",
+        "numericRequirementsConfirmed": false
+      },
+      "timing": {
+        "windupTicks": 4,
+        "activeTicks": 2,
+        "recoveryTicks": 6,
+        "cooldownTicks": 60,
+        "contactTicks": [
+          4
+        ]
+      },
+      "resources": {
+        "stamina": 10,
+        "spirit": 0,
+        "attackStaminaShare": 6,
+        "utilityStaminaShare": 4,
+        "arrows": 0,
+        "durabilityPolicy": "沿用实际 ItemStack 命中耐久与事件；同一接触不重复扣耐久。"
+      },
+      "damage": {
+        "basis": "rapier_base_slash",
+        "totalMultiplier": 1.35,
+        "hitMultipliers": [
+          1.35
+        ],
+        "friendlyFirePolicy": "existing_server_relationship_rules"
+      },
+      "motion": {
+        "type": "single_impulse",
+        "groundRequired": true,
+        "airOnly": false,
+        "horizontalSpeedMps": 9,
+        "verticalVelocityBlocksPerTick": null,
+        "distanceCapBlocks": null,
+        "direction": "已有锁定时沿锁定目标的地面方向；否则沿当前镜头水平前方。服务器提交时固定一次，不追踪转弯。",
+        "triggerTick": 2,
+        "invulnerabilityTicks": 0,
+        "invulnerabilityStartTick": 0
+      },
+      "contact": {
+        "rangeBlocks": 3.8,
+        "arcDegrees": 25,
+        "launchVelocityY": 0,
+        "slamVelocityY": 0,
+        "slowMultiplier": 1,
+        "slowTicks": 0,
+        "groundedTarget": "正常伤害；沿用目标原版碰撞和击退抗性。",
+        "airborneTarget": "正常伤害；不延长滞空、不重置目标重力。",
+        "bossFallback": "沿用伤害、击退抗性与事件结果；不附加控制，也不强改 Boss AI。"
+      },
+      "aim": "已有合法锁定时仅朝目标当前可达方向出招；无锁时用当前镜头投影方向。服务器校验视线与身体前方，技能不建立新锁、不把镜头强转向角色。",
+      "animationBeats": [
+        "0–3 tick：后足蹬地、骨盆先移，右肘保持收束，剑尖不先绕回默认点。",
+        "第 2 tick 一次前向水平冲量；第 4 tick 剑尖伸至有效接触，胸与髋同步承接。",
+        "6–11 tick：前脚承重、肘回收；从实际末姿直接回 READY 或衔接已缓存普攻。"
+      ],
+      "interactions": {
+        "hit": "命中与被防御均按真实接触处理；每个接触事件对每目标最多一次，总命中预算见 hitMultipliers。真实命中依现有规则刷新 3 秒战斗回复。",
+        "miss": "完整发出且所有接触均空挥时，仅退攻击份额的一半，即 3 体力；位移份额 4、灵力 0、箭与已发生耐久不退。空挥不新开战斗计时；确实使用位移/无敌的技能仍按战斗能力计时。",
+        "blocked": "有效接触不算空挥；可正常格挡与精准格挡，任一刀被成功招架立即取消该动作剩余攻击事件，不能用多段绕开同次招架。箭矢保留已学分支的既有规则，不额外添加破盾/穿墙。",
+        "interrupt": "金闪后的合法 C 新按始终具有既有精准格挡优先级；取消未发出的接触与缓存，不移除已提交冲量。受击、失焦、死亡、换物品或断线清理技能状态；已消费能力、前摇取消按现有规则不发空挥返还。"
+      },
+      "dependencies": [
+        "单剑弓步前后脚承重动作与越肩/第一人称对应稿",
+        "带起点 swept 检测的单次冲量突刺事件；不复用固定距离移动"
+      ]
+    },
+    {
+      "id": "proposal.rapier.slip_return",
+      "name": "让锋回刺",
+      "weaponGroup": "sword",
+      "role": "侧移让出攻击线，同时以剑尖短刺；没有自动格挡",
+      "status": "DESIGN_PROPOSAL_NOT_IMPLEMENTED",
+      "learning": {
+        "existingRoot": "rapier",
+        "proposedNode": "proposal_rapier_slip_return",
+        "numericRequirementsConfirmed": false
+      },
+      "timing": {
+        "windupTicks": 3,
+        "activeTicks": 2,
+        "recoveryTicks": 7,
+        "cooldownTicks": 80,
+        "contactTicks": [
+          4
+        ]
+      },
+      "resources": {
+        "stamina": 10,
+        "spirit": 0,
+        "attackStaminaShare": 6,
+        "utilityStaminaShare": 4,
+        "arrows": 0,
+        "durabilityPolicy": "沿用实际 ItemStack 命中耐久与事件；同一接触不重复扣耐久。"
+      },
+      "damage": {
+        "basis": "rapier_base_slash",
+        "totalMultiplier": 1.15,
+        "hitMultipliers": [
+          1.15
+        ],
+        "friendlyFirePolicy": "existing_server_relationship_rules"
+      },
+      "motion": {
+        "type": "single_impulse",
+        "groundRequired": true,
+        "airOnly": false,
+        "horizontalSpeedMps": 7,
+        "verticalVelocityBlocksPerTick": null,
+        "distanceCapBlocks": null,
+        "direction": "取按键当下的镜头左右方向；无左右输入默认向角色后脚侧。已有锁定保持面对原目标，镜头独立。",
+        "triggerTick": 1,
+        "invulnerabilityTicks": 0,
+        "invulnerabilityStartTick": 0
+      },
+      "contact": {
+        "rangeBlocks": 3.2,
+        "arcDegrees": 35,
+        "launchVelocityY": 0,
+        "slamVelocityY": 0,
+        "slowMultiplier": 1,
+        "slowTicks": 0,
+        "groundedTarget": "正常伤害；本技能不强制击退，依靠真实侧移避开敌方攻击。",
+        "airborneTarget": "正常伤害；不延长滞空、不重置目标重力。",
+        "bossFallback": "沿用伤害、击退抗性与事件结果；不附加控制，也不强改 Boss AI。"
+      },
+      "aim": "已有合法锁定时仅朝目标当前可达方向出招；无锁时用当前镜头投影方向。服务器校验视线与身体前方，技能不建立新锁、不把镜头强转向角色。",
+      "animationBeats": [
+        "0–2 tick：胯与双足向侧方错位，上胸朝敌保留单剑原侧身。",
+        "第 1 tick 只写一次侧向速度；第 4 tick 在新位置短刺，武器不经过躯干。",
+        "5–11 tick：落脚收稳，头胸和骨盆共同回位；无全身绕轴旋转。"
+      ],
+      "interactions": {
+        "hit": "命中与被防御均按真实接触处理；每个接触事件对每目标最多一次，总命中预算见 hitMultipliers。真实命中依现有规则刷新 3 秒战斗回复。",
+        "miss": "完整发出且所有接触均空挥时，仅退攻击份额的一半，即 3 体力；位移份额 4、灵力 0、箭与已发生耐久不退。空挥不新开战斗计时；确实使用位移/无敌的技能仍按战斗能力计时。",
+        "blocked": "有效接触不算空挥；可正常格挡与精准格挡，任一刀被成功招架立即取消该动作剩余攻击事件，不能用多段绕开同次招架。箭矢保留已学分支的既有规则，不额外添加破盾/穿墙。",
+        "interrupt": "金闪后的合法 C 新按始终具有既有精准格挡优先级；取消未发出的接触与缓存，不移除已提交冲量。受击、失焦、死亡、换物品或断线清理技能状态；已消费能力、前摇取消按现有规则不发空挥返还。"
+      },
+      "dependencies": [
+        "侧步而非翻滚的低幅单剑动作",
+        "真实玩家碰撞与脚底支撑；没有碰撞穿过敌人的通行特权"
+      ]
+    },
+    {
+      "id": "proposal.rapier.wrist_lift",
+      "name": "挑星",
+      "weaponGroup": "sword",
+      "role": "短距离单目标挑飞，方便普通跳跃后追击",
+      "status": "DESIGN_PROPOSAL_NOT_IMPLEMENTED",
+      "learning": {
+        "existingRoot": "rapier",
+        "proposedNode": "proposal_rapier_wrist_lift",
+        "numericRequirementsConfirmed": false
+      },
+      "timing": {
+        "windupTicks": 5,
+        "activeTicks": 3,
+        "recoveryTicks": 8,
+        "cooldownTicks": 100,
+        "contactTicks": [
+          6
+        ]
+      },
+      "resources": {
+        "stamina": 12,
+        "spirit": 0,
+        "attackStaminaShare": 12,
+        "utilityStaminaShare": 0,
+        "arrows": 0,
+        "durabilityPolicy": "沿用实际 ItemStack 命中耐久与事件；同一接触不重复扣耐久。"
+      },
+      "damage": {
+        "basis": "rapier_base_slash",
+        "totalMultiplier": 1,
+        "hitMultipliers": [
+          1
+        ],
+        "friendlyFirePolicy": "existing_server_relationship_rules"
+      },
+      "motion": {
+        "type": "none",
+        "groundRequired": true,
+        "airOnly": false,
+        "horizontalSpeedMps": 0,
+        "verticalVelocityBlocksPerTick": null,
+        "distanceCapBlocks": null,
+        "direction": "沿原版实际移动输入；技能不改速度",
+        "triggerTick": 0,
+        "invulnerabilityTicks": 0,
+        "invulnerabilityStartTick": 0
+      },
+      "contact": {
+        "rangeBlocks": 3.0,
+        "arcDegrees": 45,
+        "launchVelocityY": 0.42,
+        "slamVelocityY": 0,
+        "slowMultiplier": 1,
+        "slowTicks": 0,
+        "groundedTarget": "对允许挑飞的轻型目标，在伤害成功后追加一次 Y=0.42 格/tick 的起挑候选，再按抗性缩放；不移动玩家。",
+        "airborneTarget": "本次正常伤害；已经浮空的目标不再追加向上速度，不重置浮空保护。",
+        "bossFallback": "Boss、禁止位移目标或本次抗挑飞保护中的目标不改 Y；改为本次额外 0.15D 普通可减伤伤害，不触发强制僵直。"
+      },
+      "aim": "已有合法锁定时仅朝目标当前可达方向出招；无锁时用当前镜头投影方向。服务器校验视线与身体前方，技能不建立新锁、不把镜头强转向角色。",
+      "animationBeats": [
+        "0–4 tick：前膝微沉、腕旋让剑尖从身体外侧下探，剑不穿腹。",
+        "第 6 tick：前腿伸展带剑尖上挑，只有此时接触才产生挑飞。",
+        "8–15 tick：剑尖停在肩前再自然回收；玩家不自动跟飞，不悬停。"
+      ],
+      "interactions": {
+        "hit": "命中与被防御均按真实接触处理；每个接触事件对每目标最多一次，总命中预算见 hitMultipliers。真实命中依现有规则刷新 3 秒战斗回复。",
+        "miss": "完整发出且所有接触均空挥时，仅退攻击份额的一半，即 6 体力；位移份额 0、灵力 0、箭与已发生耐久不退。空挥不新开战斗计时；确实使用位移/无敌的技能仍按战斗能力计时。",
+        "blocked": "有效接触不算空挥；可正常格挡与精准格挡，任一刀被成功招架立即取消该动作剩余攻击事件，不能用多段绕开同次招架。箭矢保留已学分支的既有规则，不额外添加破盾/穿墙。",
+        "interrupt": "金闪后的合法 C 新按始终具有既有精准格挡优先级；取消未发出的接触与缓存，不移除已提交冲量。受击、失焦、死亡、换物品或断线清理技能状态；已消费能力、前摇取消按现有规则不发空挥返还。"
+      },
+      "dependencies": [
+        "前脚承重与转腕挑刺动作；剑尖接触点事件",
+        "服务端轻型目标资格、抗性、共享浮空保护与 Boss 分类"
+      ]
+    },
+    {
+      "id": "proposal.rapier.refraction",
+      "name": "折光步",
+      "weaponGroup": "sword",
+      "role": "有明确终点的灵力短闪现；用于换位，不自动背刺",
+      "status": "DESIGN_PROPOSAL_NOT_IMPLEMENTED",
+      "learning": {
+        "existingRoot": "rapier",
+        "proposedNode": "proposal_rapier_refraction",
+        "numericRequirementsConfirmed": false
+      },
+      "timing": {
+        "windupTicks": 4,
+        "activeTicks": 1,
+        "recoveryTicks": 7,
+        "cooldownTicks": 180,
+        "contactTicks": []
+      },
+      "resources": {
+        "stamina": 8,
+        "spirit": 18,
+        "attackStaminaShare": 0,
+        "utilityStaminaShare": 8,
+        "arrows": 0,
+        "durabilityPolicy": "沿用实际 ItemStack 命中耐久与事件；同一接触不重复扣耐久。"
+      },
+      "damage": {
+        "basis": "rapier_base_slash",
+        "totalMultiplier": 0,
+        "hitMultipliers": [],
+        "friendlyFirePolicy": "existing_server_relationship_rules"
+      },
+      "motion": {
+        "type": "blink",
+        "groundRequired": true,
+        "airOnly": false,
+        "horizontalSpeedMps": 0,
+        "verticalVelocityBlocksPerTick": null,
+        "distanceCapBlocks": 3.5,
+        "direction": "镜头平面 WASD，未输入为前方；最多 3.5 格，遵循 sharedRules.blinkPolicy；不自动选择敌人背后。",
+        "triggerTick": 0,
+        "invulnerabilityTicks": 0,
+        "invulnerabilityStartTick": 0
+      },
+      "contact": {
+        "rangeBlocks": 0,
+        "arcDegrees": 0,
+        "launchVelocityY": 0,
+        "slamVelocityY": 0,
+        "slowMultiplier": 1,
+        "slowTicks": 0,
+        "groundedTarget": "正常伤害；沿用目标原版碰撞和击退抗性。",
+        "airborneTarget": "正常伤害；不延长滞空、不重置目标重力。",
+        "bossFallback": "沿用伤害、击退抗性与事件结果；不附加控制，也不强改 Boss AI。"
+      },
+      "aim": "已有合法锁定时仅朝目标当前可达方向出招；无锁时用当前镜头投影方向。服务器校验视线与身体前方，技能不建立新锁、不把镜头强转向角色。",
+      "animationBeats": [
+        "0–3 tick：后手张开、剑贴体侧蓄势，双脚保持真实支撑。",
+        "第 4 tick：落点通过最终验证后瞬间换位；起终点各一个低亮残影，镜头做约 0.12 秒缓动。",
+        "5–11 tick：用落点地面接脚；没有自动攻击，左键仍执行现有普通攻击/反击。"
+      ],
+      "interactions": {
+        "hit": "纯位移不产生攻击、命中或反击加成；按已使用的战斗能力刷新战斗回复计时。",
+        "miss": "纯位移没有空挥结算，体力与灵力不因未攻击返还；落点无效且能力尚未提交时全额不扣。",
+        "blocked": "没有攻击事件；不替代 C 格挡，不提供穿过武器伤害判定的隐含无敌。",
+        "interrupt": "金闪后的合法 C 新按始终具有既有精准格挡优先级；取消未发出的接触与缓存，不移除已提交冲量。受击、失焦、死亡、换物品或断线清理技能状态；已消费能力、前摇取消按现有规则不发空挥返还。"
+      },
+      "dependencies": [
+        "闪现起终点姿态、残影与音效；第一人称镜头舒适选项",
+        "服务器完整玩家包围盒扫掠、已加载区块与终点二次验证；不是普通位移模板"
+      ]
+    },
+    {
+      "id": "proposal.dual.crossing_cut",
+      "name": "燕剪",
+      "weaponGroup": "dual_blade",
+      "role": "斜向短冲中双刀错时剪切，移动攻击而非站桩转圈",
+      "status": "DESIGN_PROPOSAL_NOT_IMPLEMENTED",
+      "learning": {
+        "existingRoot": "dual_sword",
+        "proposedNode": "proposal_dual_crossing_cut",
+        "numericRequirementsConfirmed": false
+      },
+      "timing": {
+        "windupTicks": 3,
+        "activeTicks": 4,
+        "recoveryTicks": 7,
+        "cooldownTicks": 100,
+        "contactTicks": [
+          3,
+          6
+        ]
+      },
+      "resources": {
+        "stamina": 12,
+        "spirit": 0,
+        "attackStaminaShare": 8,
+        "utilityStaminaShare": 4,
+        "arrows": 0,
+        "durabilityPolicy": "沿用实际 ItemStack 命中耐久与事件；同一接触不重复扣耐久。"
+      },
+      "damage": {
+        "basis": "dual_base_slash",
+        "totalMultiplier": 1.6,
+        "hitMultipliers": [
+          0.8,
+          0.8
+        ],
+        "friendlyFirePolicy": "existing_server_relationship_rules"
+      },
+      "motion": {
+        "type": "single_impulse",
+        "groundRequired": true,
+        "airOnly": false,
+        "horizontalSpeedMps": 8.5,
+        "verticalVelocityBlocksPerTick": null,
+        "distanceCapBlocks": null,
+        "direction": "镜头斜前方，左右由当下 WASD 选择；无侧向输入取当前前脚侧。不能穿过实体。",
+        "triggerTick": 1,
+        "invulnerabilityTicks": 0,
+        "invulnerabilityStartTick": 0
+      },
+      "contact": {
+        "rangeBlocks": 2.25,
+        "arcDegrees": 85,
+        "launchVelocityY": 0,
+        "slamVelocityY": 0,
+        "slowMultiplier": 1,
+        "slowTicks": 0,
+        "groundedTarget": "正常伤害；沿用目标原版碰撞和击退抗性。",
+        "airborneTarget": "正常伤害；不延长滞空、不重置目标重力。",
+        "bossFallback": "沿用伤害、击退抗性与事件结果；不附加控制，也不强改 Boss AI。"
+      },
+      "aim": "已有合法锁定时仅朝目标当前可达方向出招；无锁时用当前镜头投影方向。服务器校验视线与身体前方，技能不建立新锁、不把镜头强转向角色。",
+      "animationBeats": [
+        "0–2 tick：双刀各在身体外侧，前脚转向斜前方，不先合拢穿胸。",
+        "第 1 tick：一次斜向冲量；第 3 / 6 tick 分别由前后手短斩，骨盆沿足部方向走。",
+        "7–13 tick：后脚补到真实位置，双肩不过度内收，连续姿态接回原双刀 READY。"
+      ],
+      "interactions": {
+        "hit": "命中与被防御均按真实接触处理；每个接触事件对每目标最多一次，总命中预算见 hitMultipliers。真实命中依现有规则刷新 3 秒战斗回复。",
+        "miss": "完整发出且所有接触均空挥时，仅退攻击份额的一半，即 4 体力；位移份额 4、灵力 0、箭与已发生耐久不退。空挥不新开战斗计时；确实使用位移/无敌的技能仍按战斗能力计时。",
+        "blocked": "有效接触不算空挥；可正常格挡与精准格挡，任一刀被成功招架立即取消该动作剩余攻击事件，不能用多段绕开同次招架。箭矢保留已学分支的既有规则，不额外添加破盾/穿墙。",
+        "interrupt": "金闪后的合法 C 新按始终具有既有精准格挡优先级；取消未发出的接触与缓存，不移除已提交冲量。受击、失焦、死亡、换物品或断线清理技能状态；已消费能力、前摇取消按现有规则不发空挥返还。"
+      },
+      "dependencies": [
+        "两次真实武器尖端事件及独立命中去重",
+        "双刀原稿风格的新斜步动作；不覆盖原普攻素材"
+      ]
+    },
+    {
+      "id": "proposal.dual.crescent_evade",
+      "name": "残月避斩",
+      "weaponGroup": "dual_blade",
+      "role": "短无敌侧后步附带一次回刀；比 Alt 成本更高且冷却更长",
+      "status": "DESIGN_PROPOSAL_NOT_IMPLEMENTED",
+      "learning": {
+        "existingRoot": "dual_sword",
+        "proposedNode": "proposal_dual_crescent_evade",
+        "numericRequirementsConfirmed": false
+      },
+      "timing": {
+        "windupTicks": 2,
+        "activeTicks": 3,
+        "recoveryTicks": 7,
+        "cooldownTicks": 120,
+        "contactTicks": [
+          4
+        ]
+      },
+      "resources": {
+        "stamina": 10,
+        "spirit": 4,
+        "attackStaminaShare": 4,
+        "utilityStaminaShare": 6,
+        "arrows": 0,
+        "durabilityPolicy": "沿用实际 ItemStack 命中耐久与事件；同一接触不重复扣耐久。"
+      },
+      "damage": {
+        "basis": "dual_base_slash",
+        "totalMultiplier": 1.1,
+        "hitMultipliers": [
+          1.1
+        ],
+        "friendlyFirePolicy": "existing_server_relationship_rules"
+      },
+      "motion": {
+        "type": "single_impulse",
+        "groundRequired": true,
+        "airOnly": false,
+        "horizontalSpeedMps": 7,
+        "verticalVelocityBlocksPerTick": null,
+        "distanceCapBlocks": null,
+        "direction": "当下镜头左右/后方输入；纯前输入转为侧前 45°，无输入后退。",
+        "triggerTick": 2,
+        "invulnerabilityTicks": 4,
+        "invulnerabilityStartTick": 2
+      },
+      "contact": {
+        "rangeBlocks": 2.25,
+        "arcDegrees": 90,
+        "launchVelocityY": 0,
+        "slamVelocityY": 0,
+        "slowMultiplier": 1,
+        "slowTicks": 0,
+        "groundedTarget": "正常伤害；沿用目标原版碰撞和击退抗性。",
+        "airborneTarget": "正常伤害；不延长滞空、不重置目标重力。",
+        "bossFallback": "沿用伤害、击退抗性与事件结果；不附加控制，也不强改 Boss AI。"
+      },
+      "aim": "已有合法锁定时仅朝目标当前可达方向出招；无锁时用当前镜头投影方向。服务器校验视线与身体前方，技能不建立新锁、不把镜头强转向角色。",
+      "animationBeats": [
+        "0–1 tick：双膝屈起、双刀分离护在外侧，不做格挡替代动作。",
+        "第 2 tick：一次侧后速度，2–5 tick 为提案受击无敌段；第 4 tick 外侧手回刀。",
+        "5–11 tick：按实际落脚收住，另一只手保持身体外侧；不锁死移动方向。"
+      ],
+      "interactions": {
+        "hit": "命中与被防御均按真实接触处理；每个接触事件对每目标最多一次，总命中预算见 hitMultipliers。真实命中依现有规则刷新 3 秒战斗回复。",
+        "miss": "完整发出且所有接触均空挥时，仅退攻击份额的一半，即 2 体力；位移份额 6、灵力 4、箭与已发生耐久不退。空挥不新开战斗计时；确实使用位移/无敌的技能仍按战斗能力计时。",
+        "blocked": "有效接触不算空挥；可正常格挡与精准格挡，任一刀被成功招架立即取消该动作剩余攻击事件，不能用多段绕开同次招架。箭矢保留已学分支的既有规则，不额外添加破盾/穿墙。",
+        "interrupt": "金闪后的合法 C 新按始终具有既有精准格挡优先级；取消未发出的接触与缓存，不移除已提交冲量。受击、失焦、死亡、换物品或断线清理技能状态；已消费能力、前摇取消按现有规则不发空挥返还。"
+      },
+      "dependencies": [
+        "侧后交叉步与短刀回切新动作",
+        "按现有 Alt 伤害白名单限定无敌来源；新技能不改 Alt 的 6 tick 规则"
+      ]
+    },
+    {
+      "id": "proposal.dual.paired_lift",
+      "name": "并翼挑",
+      "weaponGroup": "dual_blade",
+      "role": "先短斩压住，再第二刀挑飞；两手都参与受力",
+      "status": "DESIGN_PROPOSAL_NOT_IMPLEMENTED",
+      "learning": {
+        "existingRoot": "dual_sword",
+        "proposedNode": "proposal_dual_paired_lift",
+        "numericRequirementsConfirmed": false
+      },
+      "timing": {
+        "windupTicks": 5,
+        "activeTicks": 4,
+        "recoveryTicks": 9,
+        "cooldownTicks": 140,
+        "contactTicks": [
+          5,
+          8
+        ]
+      },
+      "resources": {
+        "stamina": 14,
+        "spirit": 0,
+        "attackStaminaShare": 14,
+        "utilityStaminaShare": 0,
+        "arrows": 0,
+        "durabilityPolicy": "沿用实际 ItemStack 命中耐久与事件；同一接触不重复扣耐久。"
+      },
+      "damage": {
+        "basis": "dual_base_slash",
+        "totalMultiplier": 1.5,
+        "hitMultipliers": [
+          0.6,
+          0.9
+        ],
+        "friendlyFirePolicy": "existing_server_relationship_rules"
+      },
+      "motion": {
+        "type": "none",
+        "groundRequired": true,
+        "airOnly": false,
+        "horizontalSpeedMps": 0,
+        "verticalVelocityBlocksPerTick": null,
+        "distanceCapBlocks": null,
+        "direction": "沿原版实际移动输入；技能不改速度",
+        "triggerTick": 0,
+        "invulnerabilityTicks": 0,
+        "invulnerabilityStartTick": 0
+      },
+      "contact": {
+        "rangeBlocks": 2.25,
+        "arcDegrees": 70,
+        "launchVelocityY": 0.4,
+        "slamVelocityY": 0,
+        "slowMultiplier": 1,
+        "slowTicks": 0,
+        "groundedTarget": "第二刀伤害成功才对合格轻型目标追加一次 Y=0.40 格/tick；第一刀不挑飞。",
+        "airborneTarget": "空中目标不再向上加速；每刀仍各结算一次正常伤害，总倍率 1.50D。",
+        "bossFallback": "第二刀对 Boss / 抗挑飞目标不改 Y；整招最多额外 0.15D 普通伤害，不能每刀重复取替代奖励。"
+      },
+      "aim": "已有合法锁定时仅朝目标当前可达方向出招；无锁时用当前镜头投影方向。服务器校验视线与身体前方，技能不建立新锁、不把镜头强转向角色。",
+      "animationBeats": [
+        "0–4 tick：双刀在两侧下沉，腰腿一起蓄力，保持原肩宽。",
+        "第 5 tick：一手水平短切；第 8 tick：另一手从外下方向上提，第二接触才施加挑飞。",
+        "9–17 tick：双手分别收回，身体重量回到双脚；不强制玩家跳跃。"
+      ],
+      "interactions": {
+        "hit": "命中与被防御均按真实接触处理；每个接触事件对每目标最多一次，总命中预算见 hitMultipliers。真实命中依现有规则刷新 3 秒战斗回复。",
+        "miss": "完整发出且所有接触均空挥时，仅退攻击份额的一半，即 7 体力；位移份额 0、灵力 0、箭与已发生耐久不退。空挥不新开战斗计时；确实使用位移/无敌的技能仍按战斗能力计时。",
+        "blocked": "有效接触不算空挥；可正常格挡与精准格挡，任一刀被成功招架立即取消该动作剩余攻击事件，不能用多段绕开同次招架。箭矢保留已学分支的既有规则，不额外添加破盾/穿墙。",
+        "interrupt": "金闪后的合法 C 新按始终具有既有精准格挡优先级；取消未发出的接触与缓存，不移除已提交冲量。受击、失焦、死亡、换物品或断线清理技能状态；已消费能力、前摇取消按现有规则不发空挥返还。"
+      },
+      "dependencies": [
+        "双手错时下切/上提动作与各自官方物品接触点",
+        "服务端多事件阶段、共享浮空保护；完美招架第一刀必须取消第二刀"
+      ]
+    },
+    {
+      "id": "proposal.dual.fall_cross",
+      "name": "落羽交锋",
+      "weaponGroup": "dual_blade",
+      "role": "空中已有姿态接双刃下压，处理已浮空敌人",
+      "status": "DESIGN_PROPOSAL_NOT_IMPLEMENTED",
+      "learning": {
+        "existingRoot": "dual_sword",
+        "proposedNode": "proposal_dual_fall_cross",
+        "numericRequirementsConfirmed": false
+      },
+      "timing": {
+        "windupTicks": 2,
+        "activeTicks": 3,
+        "recoveryTicks": 8,
+        "cooldownTicks": 120,
+        "contactTicks": [
+          2,
+          4
+        ]
+      },
+      "resources": {
+        "stamina": 10,
+        "spirit": 4,
+        "attackStaminaShare": 10,
+        "utilityStaminaShare": 0,
+        "arrows": 0,
+        "durabilityPolicy": "沿用实际 ItemStack 命中耐久与事件；同一接触不重复扣耐久。"
+      },
+      "damage": {
+        "basis": "dual_base_slash",
+        "totalMultiplier": 1.8,
+        "hitMultipliers": [
+          0.9,
+          0.9
+        ],
+        "friendlyFirePolicy": "existing_server_relationship_rules"
+      },
+      "motion": {
+        "type": "single_impulse",
+        "groundRequired": false,
+        "airOnly": true,
+        "horizontalSpeedMps": 0,
+        "verticalVelocityBlocksPerTick": -0.1,
+        "distanceCapBlocks": null,
+        "direction": "沿原版实际移动输入；技能不改速度",
+        "triggerTick": 0,
+        "invulnerabilityTicks": 0,
+        "invulnerabilityStartTick": 0
+      },
+      "contact": {
+        "rangeBlocks": 2.4,
+        "arcDegrees": 80,
+        "launchVelocityY": 0,
+        "slamVelocityY": -0.45,
+        "slowMultiplier": 1,
+        "slowTicks": 0,
+        "groundedTarget": "地面目标正常伤害，仅水平小击退，不向地里推，不额外地震波。",
+        "airborneTarget": "最后有效刀伤害成功后，合格浮空目标追加一次 Y=-0.45 格/tick 向下候选，受抗性限制。",
+        "bossFallback": "Boss / 禁止位移目标仅受正常伤害；整招最多额外 0.15D 普通伤害，不强制击坠或播放硬直。"
+      },
+      "aim": "已有锁定时保持朝原目标的水平前方，允许斜下接触；无锁沿当前镜头。鼠标独立；不能空中闪现、改变 XZ 速度或取消摔落伤害。",
+      "animationBeats": [
+        "只在普通跳落、脚底离地至少 0.5 格时发起；以当前姿态为起点，不切到格挡。",
+        "第 0 tick：Y 速度只做一次 min(当前 Y,-0.10)，不消除已有更快下落；第 2 / 4 tick 两刀向斜下方交错。",
+        "接触期间保留真实重力与骨盆惯性；提前落地即转接落地收招，不硬性悬停等动画结束。"
+      ],
+      "interactions": {
+        "hit": "命中与被防御均按真实接触处理；每个接触事件对每目标最多一次，总命中预算见 hitMultipliers。真实命中依现有规则刷新 3 秒战斗回复。",
+        "miss": "完整发出且所有接触均空挥时，仅退攻击份额的一半，即 5 体力；位移份额 0、灵力 4、箭与已发生耐久不退。空挥不新开战斗计时；确实使用位移/无敌的技能仍按战斗能力计时。",
+        "blocked": "有效接触不算空挥；可正常格挡与精准格挡，任一刀被成功招架立即取消该动作剩余攻击事件，不能用多段绕开同次招架。箭矢保留已学分支的既有规则，不额外添加破盾/穿墙。",
+        "interrupt": "金闪后的合法 C 新按始终具有既有精准格挡优先级；取消未发出的接触与缓存，不移除已提交冲量。受击、失焦、死亡、换物品或断线清理技能状态；已消费能力、前摇取消按现有规则不发空挥返还。"
+      },
+      "dependencies": [
+        "从任意离地上身姿态接入的双刀下压与落地收招",
+        "空中资格、实际脚底高度与一次向下速度处理；不重置玩家 fallDistance"
+      ]
+    },
+    {
+      "id": "proposal.spear.advance_thrust",
+      "name": "进关贯",
+      "weaponGroup": "spear",
+      "role": "双手直线进枪；比 Shift 多伤害但需要前摇和命中",
+      "status": "DESIGN_PROPOSAL_NOT_IMPLEMENTED",
+      "learning": {
+        "existingRoot": null,
+        "proposedNode": "proposal_spear_advance_thrust",
+        "numericRequirementsConfirmed": false
+      },
+      "timing": {
+        "windupTicks": 5,
+        "activeTicks": 2,
+        "recoveryTicks": 8,
+        "cooldownTicks": 100,
+        "contactTicks": [
+          5
+        ]
+      },
+      "resources": {
+        "stamina": 14,
+        "spirit": 0,
+        "attackStaminaShare": 10,
+        "utilityStaminaShare": 4,
+        "arrows": 0,
+        "durabilityPolicy": "沿用实际 ItemStack 命中耐久与事件；同一接触不重复扣耐久。"
+      },
+      "damage": {
+        "basis": "spear_thrust",
+        "totalMultiplier": 1.55,
+        "hitMultipliers": [
+          1.55
+        ],
+        "friendlyFirePolicy": "existing_server_relationship_rules"
+      },
+      "motion": {
+        "type": "single_impulse",
+        "groundRequired": true,
+        "airOnly": false,
+        "horizontalSpeedMps": 10,
+        "verticalVelocityBlocksPerTick": null,
+        "distanceCapBlocks": null,
+        "direction": "服务器接受时的合法长枪瞄准方向在地面的投影，不向摄像机反方向/身体背后推进。",
+        "triggerTick": 3,
+        "invulnerabilityTicks": 0,
+        "invulnerabilityStartTick": 0
+      },
+      "contact": {
+        "rangeBlocks": 4.5,
+        "arcDegrees": 25,
+        "launchVelocityY": 0,
+        "slamVelocityY": 0,
+        "slowMultiplier": 1,
+        "slowTicks": 0,
+        "groundedTarget": "正常伤害；沿用目标原版碰撞和击退抗性。",
+        "airborneTarget": "正常伤害；不延长滞空、不重置目标重力。",
+        "bossFallback": "沿用伤害、击退抗性与事件结果；不附加控制，也不强改 Boss AI。"
+      },
+      "aim": "沿长枪现有合法瞄准框、眼睛到实际目标射线和身体前方限位；不新增自动锁敌，不自动追踪目标。",
+      "animationBeats": [
+        "0–2 tick：右手收枪、左手扶在前握位，躯干与双腿一起转向刺出线。",
+        "第 3 tick：一次前进冲量；第 5 tick 动态握距伸展到尖端接触，前脚承重。",
+        "7–14 tick：原位回收枪杆，不用枪尖穿体回到背后；移动由实际惯性继续。"
+      ],
+      "interactions": {
+        "hit": "命中与被防御均按真实接触处理；每个接触事件对每目标最多一次，总命中预算见 hitMultipliers。真实命中依现有规则刷新 3 秒战斗回复。",
+        "miss": "完整发出且所有接触均空挥时，仅退攻击份额的一半，即 5 体力；位移份额 4、灵力 0、箭与已发生耐久不退。空挥不新开战斗计时；确实使用位移/无敌的技能仍按战斗能力计时。",
+        "blocked": "有效接触不算空挥；可正常格挡与精准格挡，任一刀被成功招架立即取消该动作剩余攻击事件，不能用多段绕开同次招架。箭矢保留已学分支的既有规则，不额外添加破盾/穿墙。",
+        "interrupt": "金闪后的合法 C 新按始终具有既有精准格挡优先级；取消未发出的接触与缓存，不移除已提交冲量。受击、失焦、死亡、换物品或断线清理技能状态；已消费能力、前摇取消按现有规则不发空挥返还。"
+      },
+      "dependencies": [
+        "长枪正常双握与快跑背枪之间的攻击抢占转接",
+        "一次冲量与移动起点 swept 枪尖检测；完整枪杆/肘部避碰"
+      ]
+    },
+    {
+      "id": "proposal.spear.withdraw_sweep",
+      "name": "撤步横拦",
+      "weaponGroup": "spear",
+      "role": "后退拉开距离，同时在身前横向拦截",
+      "status": "DESIGN_PROPOSAL_NOT_IMPLEMENTED",
+      "learning": {
+        "existingRoot": null,
+        "proposedNode": "proposal_spear_withdraw_sweep",
+        "numericRequirementsConfirmed": false
+      },
+      "timing": {
+        "windupTicks": 3,
+        "activeTicks": 4,
+        "recoveryTicks": 8,
+        "cooldownTicks": 100,
+        "contactTicks": [
+          4
+        ]
+      },
+      "resources": {
+        "stamina": 12,
+        "spirit": 0,
+        "attackStaminaShare": 8,
+        "utilityStaminaShare": 4,
+        "arrows": 0,
+        "durabilityPolicy": "沿用实际 ItemStack 命中耐久与事件；同一接触不重复扣耐久。"
+      },
+      "damage": {
+        "basis": "spear_thrust",
+        "totalMultiplier": 1.1,
+        "hitMultipliers": [
+          1.1
+        ],
+        "friendlyFirePolicy": "existing_server_relationship_rules"
+      },
+      "motion": {
+        "type": "single_impulse",
+        "groundRequired": true,
+        "airOnly": false,
+        "horizontalSpeedMps": 7.5,
+        "verticalVelocityBlocksPerTick": null,
+        "distanceCapBlocks": null,
+        "direction": "相对当前身体/枪线向后；左右键入方向只决定横拦方向，不让位移变成追踪曲线。",
+        "triggerTick": 1,
+        "invulnerabilityTicks": 0,
+        "invulnerabilityStartTick": 0
+      },
+      "contact": {
+        "rangeBlocks": 3.8,
+        "arcDegrees": 100,
+        "launchVelocityY": 0,
+        "slamVelocityY": 0,
+        "slowMultiplier": 1,
+        "slowTicks": 0,
+        "groundedTarget": "枪尖轨迹切向击退，沿用现有扫击强度 50% 与目标抗性；纯向下分量不推地面目标。",
+        "airborneTarget": "保持现有轨迹切向半量击退；不额外向上托举或冻结目标。",
+        "bossFallback": "沿用伤害、击退抗性与事件结果；不附加控制，也不强改 Boss AI。"
+      },
+      "aim": "保留长枪现有瞄准框与身体前方限位；不建立新锁。后退时摄像机自由，枪线不会被反向套用到移动朝向。",
+      "animationBeats": [
+        "0–2 tick：后足先探，右肘向后带枪，前手沿杆略滑；枪始终在身体前侧。",
+        "第 1 tick：一次向后速度；第 4 tick 胸与骨盆有限转动带动枪尖横拦，左右由当前输入选定。",
+        "7–14 tick：前脚补步收稳，落点和腰扭由实际脚部支撑决定。"
+      ],
+      "interactions": {
+        "hit": "命中与被防御均按真实接触处理；每个接触事件对每目标最多一次，总命中预算见 hitMultipliers。真实命中依现有规则刷新 3 秒战斗回复。",
+        "miss": "完整发出且所有接触均空挥时，仅退攻击份额的一半，即 4 体力；位移份额 4、灵力 0、箭与已发生耐久不退。空挥不新开战斗计时；确实使用位移/无敌的技能仍按战斗能力计时。",
+        "blocked": "有效接触不算空挥；可正常格挡与精准格挡，任一刀被成功招架立即取消该动作剩余攻击事件，不能用多段绕开同次招架。箭矢保留已学分支的既有规则，不额外添加破盾/穿墙。",
+        "interrupt": "金闪后的合法 C 新按始终具有既有精准格挡优先级；取消未发出的接触与缓存，不移除已提交冲量。受击、失焦、死亡、换物品或断线清理技能状态；已消费能力、前摇取消按现有规则不发空挥返还。"
+      },
+      "dependencies": [
+        "后步、滑握与身前横拦动作；不能复用绕背舞枪动作",
+        "接触轨迹切向与现有半量扫击击退一致"
+      ]
+    },
+    {
+      "id": "proposal.spear.moon_lift",
+      "name": "托月",
+      "weaponGroup": "spear",
+      "role": "用枪杆和前腿共同托起近身轻敌，近处控场而非远距挑人",
+      "status": "DESIGN_PROPOSAL_NOT_IMPLEMENTED",
+      "learning": {
+        "existingRoot": null,
+        "proposedNode": "proposal_spear_moon_lift",
+        "numericRequirementsConfirmed": false
+      },
+      "timing": {
+        "windupTicks": 6,
+        "activeTicks": 3,
+        "recoveryTicks": 9,
+        "cooldownTicks": 140,
+        "contactTicks": [
+          7
+        ]
+      },
+      "resources": {
+        "stamina": 14,
+        "spirit": 4,
+        "attackStaminaShare": 14,
+        "utilityStaminaShare": 0,
+        "arrows": 0,
+        "durabilityPolicy": "沿用实际 ItemStack 命中耐久与事件；同一接触不重复扣耐久。"
+      },
+      "damage": {
+        "basis": "spear_thrust",
+        "totalMultiplier": 1.25,
+        "hitMultipliers": [
+          1.25
+        ],
+        "friendlyFirePolicy": "existing_server_relationship_rules"
+      },
+      "motion": {
+        "type": "none",
+        "groundRequired": true,
+        "airOnly": false,
+        "horizontalSpeedMps": 0,
+        "verticalVelocityBlocksPerTick": null,
+        "distanceCapBlocks": null,
+        "direction": "沿原版实际移动输入；技能不改速度",
+        "triggerTick": 0,
+        "invulnerabilityTicks": 0,
+        "invulnerabilityStartTick": 0
+      },
+      "contact": {
+        "rangeBlocks": 3.4,
+        "arcDegrees": 45,
+        "launchVelocityY": 0.5,
+        "slamVelocityY": 0,
+        "slowMultiplier": 1,
+        "slowTicks": 0,
+        "groundedTarget": "伤害成功后合格轻型目标追加一次 Y=0.50 格/tick；只在 3.4 格真实接触内有效。",
+        "airborneTarget": "目标已浮空则不再抬升；仍有正常伤害，不能连续托举永久滞空。",
+        "bossFallback": "Boss / 抗挑飞目标不改 Y；本次替换为额外 0.15D 普通伤害，不硬控 Boss 或打断不可打断阶段。"
+      },
+      "aim": "沿身体前方合法枪线；目标近处视差按现有实际伤害射线，不把摄像机远处点当枪杆握点。",
+      "animationBeats": [
+        "0–5 tick：枪尖从身体外下方探出，左手前移但不越过合法握距，双膝降低重心。",
+        "第 7 tick：前腿伸展与左掌上托同步，枪杆不擦过脸或胸；接触后才施加向上冲量。",
+        "9–17 tick：回收至身前双握，脚步承接余量，不让上身单独拧回。"
+      ],
+      "interactions": {
+        "hit": "命中与被防御均按真实接触处理；每个接触事件对每目标最多一次，总命中预算见 hitMultipliers。真实命中依现有规则刷新 3 秒战斗回复。",
+        "miss": "完整发出且所有接触均空挥时，仅退攻击份额的一半，即 7 体力；位移份额 0、灵力 4、箭与已发生耐久不退。空挥不新开战斗计时；确实使用位移/无敌的技能仍按战斗能力计时。",
+        "blocked": "有效接触不算空挥；可正常格挡与精准格挡，任一刀被成功招架立即取消该动作剩余攻击事件，不能用多段绕开同次招架。箭矢保留已学分支的既有规则，不额外添加破盾/穿墙。",
+        "interrupt": "金闪后的合法 C 新按始终具有既有精准格挡优先级；取消未发出的接触与缓存，不移除已提交冲量。受击、失焦、死亡、换物品或断线清理技能状态；已消费能力、前摇取消按现有规则不发空挥返还。"
+      },
+      "dependencies": [
+        "前手上托、后肘外展与伸膝动作；全杆避碰",
+        "轻型目标筛选、目标浮空保护与单次垂直冲量"
+      ]
+    },
+    {
+      "id": "proposal.spear.press_point",
+      "name": "压锋",
+      "weaponGroup": "spear",
+      "role": "主动重压枪尖，对空击坠，对地只打实伤",
+      "status": "DESIGN_PROPOSAL_NOT_IMPLEMENTED",
+      "learning": {
+        "existingRoot": null,
+        "proposedNode": "proposal_spear_press_point",
+        "numericRequirementsConfirmed": false
+      },
+      "timing": {
+        "windupTicks": 5,
+        "activeTicks": 3,
+        "recoveryTicks": 10,
+        "cooldownTicks": 120,
+        "contactTicks": [
+          6
+        ]
+      },
+      "resources": {
+        "stamina": 12,
+        "spirit": 6,
+        "attackStaminaShare": 12,
+        "utilityStaminaShare": 0,
+        "arrows": 0,
+        "durabilityPolicy": "沿用实际 ItemStack 命中耐久与事件；同一接触不重复扣耐久。"
+      },
+      "damage": {
+        "basis": "spear_thrust",
+        "totalMultiplier": 1.4,
+        "hitMultipliers": [
+          1.4
+        ],
+        "friendlyFirePolicy": "existing_server_relationship_rules"
+      },
+      "motion": {
+        "type": "none",
+        "groundRequired": true,
+        "airOnly": false,
+        "horizontalSpeedMps": 0,
+        "verticalVelocityBlocksPerTick": null,
+        "distanceCapBlocks": null,
+        "direction": "沿原版实际移动输入；技能不改速度",
+        "triggerTick": 0,
+        "invulnerabilityTicks": 0,
+        "invulnerabilityStartTick": 0
+      },
+      "contact": {
+        "rangeBlocks": 4.5,
+        "arcDegrees": 35,
+        "launchVelocityY": 0,
+        "slamVelocityY": -0.55,
+        "slowMultiplier": 1,
+        "slowTicks": 0,
+        "groundedTarget": "正常 1.40D；最多按目标抗性给水平 0.20 格/tick 候选，不向地下推、不追加落地爆炸。",
+        "airborneTarget": "目标在本次接触时确实离地，才施加一次 Y=-0.55 格/tick 向下候选；不覆盖其更快下坠。",
+        "bossFallback": "Boss / 禁止位移目标无强制击坠；改为额外 0.15D 普通伤害，无真实落地额外伤害。"
+      },
+      "aim": "沿长枪现有上下限位和真实瞄准射线；范围外空中目标不能靠动画或锁定补命中。普通下扫仍保留既有规则。",
+      "animationBeats": [
+        "0–4 tick：前手略抬、后手贴腋收住，沿当前合法瞄准线蓄势，不越过后背。",
+        "第 6 tick：枪尖斜下压入接触点；目标在空中时才施加向下候选，玩家不跟着传送。",
+        "8–17 tick：枪杆沿外侧收回，保持双手约束，双腿按实位承重。"
+      ],
+      "interactions": {
+        "hit": "命中与被防御均按真实接触处理；每个接触事件对每目标最多一次，总命中预算见 hitMultipliers。真实命中依现有规则刷新 3 秒战斗回复。",
+        "miss": "完整发出且所有接触均空挥时，仅退攻击份额的一半，即 6 体力；位移份额 0、灵力 6、箭与已发生耐久不退。空挥不新开战斗计时；确实使用位移/无敌的技能仍按战斗能力计时。",
+        "blocked": "有效接触不算空挥；可正常格挡与精准格挡，任一刀被成功招架立即取消该动作剩余攻击事件，不能用多段绕开同次招架。箭矢保留已学分支的既有规则，不额外添加破盾/穿墙。",
+        "interrupt": "金闪后的合法 C 新按始终具有既有精准格挡优先级；取消未发出的接触与缓存，不移除已提交冲量。受击、失焦、死亡、换物品或断线清理技能状态；已消费能力、前摇取消按现有规则不发空挥返还。"
+      },
+      "dependencies": [
+        "双握压枪动作与接触点；不能把整杆直接跨过胸口",
+        "接触时服务端离地验证、抗性与击坠候选"
+      ]
+    },
+    {
+      "id": "proposal.bow.retreat_arrow",
+      "name": "离弦步",
+      "weaponGroup": "bow",
+      "role": "地面退步换空间，顺手射一支真实短引箭",
+      "status": "DESIGN_PROPOSAL_NOT_IMPLEMENTED",
+      "learning": {
+        "existingRoot": "archery",
+        "proposedNode": "proposal_bow_retreat_arrow",
+        "numericRequirementsConfirmed": false
+      },
+      "timing": {
+        "windupTicks": 4,
+        "activeTicks": 1,
+        "recoveryTicks": 7,
+        "cooldownTicks": 100,
+        "contactTicks": [
+          4
+        ]
+      },
+      "resources": {
+        "stamina": 9,
+        "spirit": 0,
+        "attackStaminaShare": 5,
+        "utilityStaminaShare": 4,
+        "arrows": 1,
+        "durabilityPolicy": "每次成功释放消耗 1 支真实箭；耐久按现有 rapidDurability；非创造且无合法弹药则接受前拒绝。"
+      },
+      "damage": {
+        "basis": "full_rapid_arrow",
+        "totalMultiplier": 0.85,
+        "hitMultipliers": [
+          0.85
+        ],
+        "friendlyFirePolicy": "existing_server_relationship_rules"
+      },
+      "motion": {
+        "type": "single_impulse",
+        "groundRequired": true,
+        "airOnly": false,
+        "horizontalSpeedMps": 8,
+        "verticalVelocityBlocksPerTick": null,
+        "distanceCapBlocks": null,
+        "direction": "镜头水平后方；有侧向输入可斜后，锁定不把后退变成沿旧镜头前进。",
+        "triggerTick": 2,
+        "invulnerabilityTicks": 0,
+        "invulnerabilityStartTick": 0
+      },
+      "contact": {
+        "rangeBlocks": 24,
+        "arcDegrees": 0,
+        "launchVelocityY": 0,
+        "slamVelocityY": 0,
+        "slowMultiplier": 1,
+        "slowTicks": 0,
+        "groundedTarget": "正常伤害；沿用目标原版碰撞和击退抗性。",
+        "airborneTarget": "正常伤害；不延长滞空、不重置目标重力。",
+        "bossFallback": "沿用伤害、击退抗性与事件结果；不附加控制，也不强改 Boss AI。"
+      },
+      "aim": "释放 tick 的服务端合法准星眼睛射线，不使用镜头墙后位置作箭起点；已有锁定不提供制导，保留独立镜头。",
+      "animationBeats": [
+        "0–3 tick：弓在胸外侧短引，后足找位，头与箭线保持一致。",
+        "第 2 tick：一次向后速度；第 4 tick 发出一支普通实体箭，释放后不反复改速。",
+        "5–11 tick：弓手自然回收，双足随实际退步落下，移速/镜头不被动画覆盖。"
+      ],
+      "interactions": {
+        "hit": "命中与被防御均按真实接触处理；每个接触事件对每目标最多一次，总命中预算见 hitMultipliers。真实命中依现有规则刷新 3 秒战斗回复。",
+        "miss": "完整发出且所有接触均空挥时，仅退攻击份额的一半，即 2.5 体力；位移份额 4、灵力 0、箭与已发生耐久不退。空挥不新开战斗计时；确实使用位移/无敌的技能仍按战斗能力计时。",
+        "blocked": "有效接触不算空挥；可正常格挡与精准格挡，任一刀被成功招架立即取消该动作剩余攻击事件，不能用多段绕开同次招架。箭矢保留已学分支的既有规则，不额外添加破盾/穿墙。",
+        "interrupt": "金闪后的合法 C 新按始终具有既有精准格挡优先级；取消未发出的接触与缓存，不移除已提交冲量。受击、失焦、死亡、换物品或断线清理技能状态；已消费能力、前摇取消按现有规则不发空挥返还。"
+      },
+      "dependencies": [
+        "退步短引弓动作、实际弓弦/箭/官方物品显示",
+        "真实箭矢与终结回执；空射返还必须等箭飞行终结"
+      ]
+    },
+    {
+      "id": "proposal.bow.rising_arrow",
+      "name": "跃弦",
+      "weaponGroup": "bow",
+      "role": "从地面自然起跳后放箭；保留重力与玩家实际落点",
+      "status": "DESIGN_PROPOSAL_NOT_IMPLEMENTED",
+      "learning": {
+        "existingRoot": "archery",
+        "proposedNode": "proposal_bow_rising_arrow",
+        "numericRequirementsConfirmed": false
+      },
+      "timing": {
+        "windupTicks": 4,
+        "activeTicks": 3,
+        "recoveryTicks": 9,
+        "cooldownTicks": 140,
+        "contactTicks": [
+          6
+        ]
+      },
+      "resources": {
+        "stamina": 12,
+        "spirit": 0,
+        "attackStaminaShare": 7,
+        "utilityStaminaShare": 5,
+        "arrows": 1,
+        "durabilityPolicy": "每次成功释放消耗 1 支真实箭；耐久按现有 rapidDurability；非创造且无合法弹药则接受前拒绝。"
+      },
+      "damage": {
+        "basis": "full_rapid_arrow",
+        "totalMultiplier": 1.1,
+        "hitMultipliers": [
+          1.1
+        ],
+        "friendlyFirePolicy": "existing_server_relationship_rules"
+      },
+      "motion": {
+        "type": "single_impulse",
+        "groundRequired": true,
+        "airOnly": false,
+        "horizontalSpeedMps": 3,
+        "verticalVelocityBlocksPerTick": 0.42,
+        "distanceCapBlocks": null,
+        "direction": "取镜头水平后方；左右输入可给斜后；第 4 tick 再验地面，届时已离地则整项中止且不产生第二段跳跃。",
+        "triggerTick": 4,
+        "invulnerabilityTicks": 0,
+        "invulnerabilityStartTick": 0
+      },
+      "contact": {
+        "rangeBlocks": 28,
+        "arcDegrees": 0,
+        "launchVelocityY": 0,
+        "slamVelocityY": 0,
+        "slowMultiplier": 1,
+        "slowTicks": 0,
+        "groundedTarget": "正常伤害；沿用目标原版碰撞和击退抗性。",
+        "airborneTarget": "正常伤害；不延长滞空、不重置目标重力。",
+        "bossFallback": "沿用伤害、击退抗性与事件结果；不附加控制，也不强改 Boss AI。"
+      },
+      "aim": "第 6 tick 当前合法视线，不要求卡顶点时刻，不弹出第二次按键窗口；目标可自行移动躲避箭。",
+      "animationBeats": [
+        "0–3 tick：短蹲引弓，弓肩不抬进颈部，双脚留在当前支撑。",
+        "第 4 tick：一次后向水平初速与 Y=0.42 跳起候选；第 6 tick 在实际上升中放一支箭。",
+        "7–15 tick：按真实上升/下落叠加轻微惯性晃动，双手不丢握点；不悬停等箭、不减摔落。"
+      ],
+      "interactions": {
+        "hit": "命中与被防御均按真实接触处理；每个接触事件对每目标最多一次，总命中预算见 hitMultipliers。真实命中依现有规则刷新 3 秒战斗回复。",
+        "miss": "完整发出且所有接触均空挥时，仅退攻击份额的一半，即 3.5 体力；位移份额 5、灵力 0、箭与已发生耐久不退。空挥不新开战斗计时；确实使用位移/无敌的技能仍按战斗能力计时。",
+        "blocked": "有效接触不算空挥；可正常格挡与精准格挡，任一刀被成功招架立即取消该动作剩余攻击事件，不能用多段绕开同次招架。箭矢保留已学分支的既有规则，不额外添加破盾/穿墙。",
+        "interrupt": "金闪后的合法 C 新按始终具有既有精准格挡优先级；取消未发出的接触与缓存，不移除已提交冲量。受击、失焦、死亡、换物品或断线清理技能状态；已消费能力、前摇取消按现有规则不发空挥返还。"
+      },
+      "dependencies": [
+        "地面蓄势、上升放箭、下落惯性和真实落地收招",
+        "地面提交二次验证；先拒绝失效地面，不自动在半空补冲量"
+      ]
+    },
+    {
+      "id": "proposal.bow.binding_arrow",
+      "name": "绊足矢",
+      "weaponGroup": "bow",
+      "role": "以短减速帮助维持射击空间，不让敌人长时间站桩",
+      "status": "DESIGN_PROPOSAL_NOT_IMPLEMENTED",
+      "learning": {
+        "existingRoot": "archery",
+        "proposedNode": "proposal_bow_binding_arrow",
+        "numericRequirementsConfirmed": false
+      },
+      "timing": {
+        "windupTicks": 8,
+        "activeTicks": 1,
+        "recoveryTicks": 8,
+        "cooldownTicks": 180,
+        "contactTicks": [
+          8
+        ]
+      },
+      "resources": {
+        "stamina": 8,
+        "spirit": 8,
+        "attackStaminaShare": 8,
+        "utilityStaminaShare": 0,
+        "arrows": 1,
+        "durabilityPolicy": "每次成功释放消耗 1 支真实箭；耐久按现有 rapidDurability；非创造且无合法弹药则接受前拒绝。"
+      },
+      "damage": {
+        "basis": "full_rapid_arrow",
+        "totalMultiplier": 0.7,
+        "hitMultipliers": [
+          0.7
+        ],
+        "friendlyFirePolicy": "existing_server_relationship_rules"
+      },
+      "motion": {
+        "type": "none",
+        "groundRequired": true,
+        "airOnly": false,
+        "horizontalSpeedMps": 0,
+        "verticalVelocityBlocksPerTick": null,
+        "distanceCapBlocks": null,
+        "direction": "沿原版实际移动输入；技能不改速度",
+        "triggerTick": 0,
+        "invulnerabilityTicks": 0,
+        "invulnerabilityStartTick": 0
+      },
+      "contact": {
+        "rangeBlocks": 32,
+        "arcDegrees": 0,
+        "launchVelocityY": 0,
+        "slamVelocityY": 0,
+        "slowMultiplier": 0.75,
+        "slowTicks": 20,
+        "groundedTarget": "伤害成功后允许减速目标移动速度 ×0.75，持续 20 tick；不叠层，只刷新较强的合法效果。",
+        "airborneTarget": "同一短减速不取消当前速度或重力，不把浮空目标悬停；对飞行 AI 不强行改路径。",
+        "bossFallback": "可接受减速的 Boss 降为 ×0.90、10 tick；明确免疫状态的 Boss 只受正常伤害，不追加无来源的僵直。"
+      },
+      "aim": "准星当前真实弹道；已有锁定不锁脚、不修正箭线，不能隔墙自动施加状态。",
+      "animationBeats": [
+        "0–7 tick：较深引弓，箭头低于常规瞄准一小段只作显示，服务端仍按准星真实弹道。",
+        "第 8 tick：放出一支带低亮尾迹的实体箭；减速只在该箭真实伤害成功时添加。",
+        "9–16 tick：自然松弦；不召出虚拟地面网，也不强行钉住敌人。"
+      ],
+      "interactions": {
+        "hit": "命中与被防御均按真实接触处理；每个接触事件对每目标最多一次，总命中预算见 hitMultipliers。真实命中依现有规则刷新 3 秒战斗回复。",
+        "miss": "完整发出且所有接触均空挥时，仅退攻击份额的一半，即 4 体力；位移份额 0、灵力 8、箭与已发生耐久不退。空挥不新开战斗计时；确实使用位移/无敌的技能仍按战斗能力计时。",
+        "blocked": "有效接触不算空挥；可正常格挡与精准格挡，任一刀被成功招架立即取消该动作剩余攻击事件，不能用多段绕开同次招架。箭矢保留已学分支的既有规则，不额外添加破盾/穿墙。",
+        "interrupt": "金闪后的合法 C 新按始终具有既有精准格挡优先级；取消未发出的接触与缓存，不移除已提交冲量。受击、失焦、死亡、换物品或断线清理技能状态；已消费能力、前摇取消按现有规则不发空挥返还。"
+      },
+      "dependencies": [
+        "带区分色的短尾迹、命中减速反馈与图标",
+        "服务器效果来源隔离、属性修饰清理；目标免疫与 Boss 降级分支"
+      ]
+    },
+    {
+      "id": "proposal.bow.falling_feather",
+      "name": "坠羽矢",
+      "weaponGroup": "bow",
+      "role": "对空真实命中后击坠；对地保持普通重箭用途",
+      "status": "DESIGN_PROPOSAL_NOT_IMPLEMENTED",
+      "learning": {
+        "existingRoot": "archery",
+        "proposedNode": "proposal_bow_falling_feather",
+        "numericRequirementsConfirmed": false
+      },
+      "timing": {
+        "windupTicks": 10,
+        "activeTicks": 1,
+        "recoveryTicks": 10,
+        "cooldownTicks": 160,
+        "contactTicks": [
+          10
+        ]
+      },
+      "resources": {
+        "stamina": 12,
+        "spirit": 6,
+        "attackStaminaShare": 12,
+        "utilityStaminaShare": 0,
+        "arrows": 1,
+        "durabilityPolicy": "每次成功释放消耗 1 支真实箭；耐久按现有 rapidDurability；非创造且无合法弹药则接受前拒绝。"
+      },
+      "damage": {
+        "basis": "full_rapid_arrow",
+        "totalMultiplier": 1.3,
+        "hitMultipliers": [
+          1.3
+        ],
+        "friendlyFirePolicy": "existing_server_relationship_rules"
+      },
+      "motion": {
+        "type": "none",
+        "groundRequired": true,
+        "airOnly": false,
+        "horizontalSpeedMps": 0,
+        "verticalVelocityBlocksPerTick": null,
+        "distanceCapBlocks": null,
+        "direction": "沿原版实际移动输入；技能不改速度",
+        "triggerTick": 0,
+        "invulnerabilityTicks": 0,
+        "invulnerabilityStartTick": 0
+      },
+      "contact": {
+        "rangeBlocks": 40,
+        "arcDegrees": 0,
+        "launchVelocityY": 0,
+        "slamVelocityY": -0.5,
+        "slowMultiplier": 1,
+        "slowTicks": 0,
+        "groundedTarget": "正常 1.30D，不产生压地、爆炸或额外落地伤害。",
+        "airborneTarget": "箭矢真实命中瞬间目标确实离地且可击退，才施加一次 Y=-0.50 格/tick 候选；不覆盖更快下坠。",
+        "bossFallback": "Boss / 禁止位移目标无击坠，改为额外 0.15D 普通伤害；不打断不可打断阶段。"
+      },
+      "aim": "按释放时真实眼睛射线和既有箭矢物理；已有锁定不制导，不因目标被挑飞就保证命中。",
+      "animationBeats": [
+        "0–9 tick：长引弓，胸与骨盆保持合法朝向，准星可持续微调。",
+        "第 10 tick：一支较重尾迹实体箭离弦，不做锁定追踪；真实命中浮空目标才播放向下短促击中反馈。",
+        "11–20 tick：弓手自然收力；镜头仅有可关闭的小幅回弹，不强转朝向。"
+      ],
+      "interactions": {
+        "hit": "命中与被防御均按真实接触处理；每个接触事件对每目标最多一次，总命中预算见 hitMultipliers。真实命中依现有规则刷新 3 秒战斗回复。",
+        "miss": "完整发出且所有接触均空挥时，仅退攻击份额的一半，即 6 体力；位移份额 0、灵力 6、箭与已发生耐久不退。空挥不新开战斗计时；确实使用位移/无敌的技能仍按战斗能力计时。",
+        "blocked": "有效接触不算空挥；可正常格挡与精准格挡，任一刀被成功招架立即取消该动作剩余攻击事件，不能用多段绕开同次招架。箭矢保留已学分支的既有规则，不额外添加破盾/穿墙。",
+        "interrupt": "金闪后的合法 C 新按始终具有既有精准格挡优先级；取消未发出的接触与缓存，不移除已提交冲量。受击、失焦、死亡、换物品或断线清理技能状态；已消费能力、前摇取消按现有规则不发空挥返还。"
+      },
+      "dependencies": [
+        "重箭释放、普通/浮空命中两种反馈与清晰音效",
+        "真实投射物命中时离地判定；保留普通箭的方块/实体碰撞"
+      ]
+    }
+  ],
+  "reviewChecklist": [
+    {
+      "id": "design_numbers",
+      "owner": "策划/数值",
+      "done": false,
+      "deliverable": "确认 16 招倍率、体力/灵力、CD、各段时间；给出 0/10/30 级与常见材质、Boss / PvP 上限的试玩表。"
+    },
+    {
+      "id": "design_learning",
+      "owner": "策划/成长",
+      "done": false,
+      "deliverable": "确认每武器 4 选 2 与各新节点的成长门槛、学习成本、前置；长枪目前没有对应成长根节点，必须补独立方案。"
+    },
+    {
+      "id": "art_tp",
+      "owner": "动作美术",
+      "done": false,
+      "deliverable": "16 个三人称技能稿，含前中后摇、接触 tick、双腿承重、腰口、标准/纤细皮肤、盔甲、双手真实握点。原有普攻素材不直接覆盖。"
+    },
+    {
+      "id": "art_fp",
+      "owner": "动作美术",
+      "done": false,
+      "deliverable": "16 个第一人称/越肩对应稿和镜头舒适方案；每招给出从 READY、走跑、空中（仅允许技能）的起止姿态。"
+    },
+    {
+      "id": "art_control",
+      "owner": "动作美术",
+      "done": false,
+      "deliverable": "挑飞/轻型受击、空中下坠、落地、Boss 抗挑飞替代反馈；未交素材时不假称存在完整受击动作。"
+    },
+    {
+      "id": "vfx",
+      "owner": "特效",
+      "done": false,
+      "deliverable": "折光起终点残影、四类武器接触、普通箭/绊足箭/坠羽箭区分；金闪与技能特效色彩分离，避免遮准星。"
+    },
+    {
+      "id": "audio",
+      "owner": "音效",
+      "done": false,
+      "deliverable": "每招前摇/接触/落空/格挡差异，闪现起终点、箭命中减速/击坠，给出可商用源及距离衰减。"
+    },
+    {
+      "id": "ui",
+      "owner": "UI/交互",
+      "done": false,
+      "deliverable": "P 装配页签、默认无绑定的槽 A/B、冷却/资源不足/落点无效/地面限制提示；不占现有键，不在 GUI 内直接发招。"
+    },
+    {
+      "id": "server",
+      "owner": "战斗程序",
+      "done": false,
+      "deliverable": "实现明确定时事件、多段 action-hit 去重、普通受伤冷却兼容、资源份额账本、箭终结退款与断线存档幂等。"
+    },
+    {
+      "id": "motion",
+      "owner": "动作/物理程序",
+      "done": false,
+      "deliverable": "所有冲量只写一次；安全闪现连续包围盒扫掠和二次落点验证；流体/边界/梯子/墙角/低天花板/实体密集处拒绝规则。"
+    },
+    {
+      "id": "boss",
+      "owner": "生物策划/程序",
+      "done": false,
+      "deliverable": "给出可挑飞实体白名单、Boss/免疫分类、抗性规则、共享 40 tick 保护；逐个核对既有 27 类映射与原版特殊 Boss。"
+    },
+    {
+      "id": "qa",
+      "owner": "测试",
+      "done": false,
+      "deliverable": "服务端权威/延迟/复发包/丢包、满额/空挥/格挡/取消、现有 C 和左键反击、Shift/Alt/R/H 回归；复制世界 DISPLAY5 原生≥30 Hz 录屏。"
+    }
+  ]
+}
