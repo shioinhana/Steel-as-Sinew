@@ -1,0 +1,8 @@
+[
+  {
+    "id": "wither_outpost", "enabled": false,
+    "entityType": "minecraft:wither", "name": "公会讨伐目标",
+    "dimension": "minecraft:overworld", "x": 0, "y": 64, "z": 0,
+    "level": 20, "elite": true, "respawnSeconds": 3600
+  }
+]

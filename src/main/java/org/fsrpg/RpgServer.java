@@ -56,6 +56,15 @@ public final class RpgServer {
     private final MinecraftServer server;
     private final RpgConfig config;
     private QuestService quests;
+    private GuildAccess guildAccess;
+    private QuestSettings questSettings;
+    private GuildBossSpawns bossSpawns;
+    private GuildAccess validatedGuildAccess;
+    private GuildBossSpawns validatedBossSpawns;
+    private QuestSettings validatedQuestSettings;
+    private final Map<UUID, Map<UUID, Long>> bossContributors = new HashMap<>();
+    private final Map<UUID, Map<String, QuestService.Status>> questNotified = new HashMap<>();
+    private final Map<UUID, Map<String, Long>> questFailureNotified = new HashMap<>();
     private final Map<UUID,SwordMotionPlan> swordMotions=new HashMap<>();
     private static final Identifier SWORD_MOVE_ID=Identifier.fromNamespaceAndPath("fsrpg","sword_action_movement");
     private CollectionService collections;
@@ -151,8 +160,11 @@ public final class RpgServer {
         config.setValidator(this::validateRegistryIds);
         var definitions = config.reload();
         creatureMelee = new CreatureMeleeServer(validatedCreatureCombat, this::perfectGuardStunRemaining,validatedGuardCues);
-        quests = new QuestService(definitions.quests());
+        guildAccess = validatedGuildAccess;
+        questSettings = validatedQuestSettings;
+        quests = new QuestService(definitions.quests(), questSettings);
         Path data = server.getWorldPath(LevelResource.ROOT).resolve("data/fsrpg");
+        bossSpawns = validatedBossSpawns;
         store = new QuestStore(data.resolve("quests.json"), RpgConfig.JSON);
         quests.restore(store.load());
         collections = new CollectionService(definitions.collections());
@@ -206,6 +218,11 @@ public final class RpgServer {
         });
         bus.addListener((LivingDamageEvent.Post event) -> {if(instance!=null)instance.archery.onDamagePost(event);});
         bus.addListener((LivingDamageEvent.Post event) -> {if(instance!=null)instance.guardedDamageCommitted(event);});
+        bus.addListener((LivingDamageEvent.Post event) -> {
+            if (instance != null && event.getNewDamage() > 0 && event.getSource().getEntity() instanceof ServerPlayer p
+                    && isQuestBoss(event.getEntity()))
+                instance.bossContributors.computeIfAbsent(event.getEntity().getUUID(), ignored -> new HashMap<>()).put(p.getUUID(), System.currentTimeMillis());
+        });
         bus.addListener((ServerStoppedEvent event) -> instance = null);
         bus.addListener((ServerTickEvent.Post event) -> { if (instance != null) instance.tick(); });
         bus.addListener((EntityTickEvent.Pre event) -> { if (instance != null) instance.enemyTick(event); });
@@ -232,6 +249,9 @@ public final class RpgServer {
         });
         bus.addListener((LivingDeathEvent event) -> {
             if (instance != null) {
+                instance.questDeath(event);
+                try { instance.bossSpawns.died(event.getEntity()); }
+                catch (IOException error) { LOG.error("Could not save boss site death", error); }
                 instance.enemyStuns.remove(event.getEntity().getUUID());
                 instance.enemyCounters.remove(event.getEntity().getUUID());
                 instance.creatureMelee.cancel(event.getEntity());
@@ -240,7 +260,6 @@ public final class RpgServer {
             if(instance!=null)instance.archery.onDeath(event);
             if (instance != null && event.getSource().getEntity() instanceof ServerPlayer p) {
                 String entity = BuiltInRegistries.ENTITY_TYPE.getKey(event.getEntity().getType()).toString();
-                instance.quests.kill(p.getUUID(), entity, 1);
                 if(MinecraftProgression.hostile(event.getEntity())&&event.getSource().is(DamageTypeTags.IS_PLAYER_ATTACK)
                         &&instance.actor(p).drawn()&&instance.actor(p).style().presentationStyleId().equals("rapier"))
                     instance.progression.recordRapierKill(p.getUUID(),MinecraftProgression.epochDay());
@@ -259,6 +278,21 @@ public final class RpgServer {
                 ItemStack original = event.getOriginalStack();
                 int acquired = original.getCount() - event.getCurrentStack().getCount();
                 if (acquired > 0) instance.quests.collect(p.getUUID(), BuiltInRegistries.ITEM.getKey(original.getItem()).toString(), acquired);
+            }
+        });
+        bus.addListener((PlayerInteractEvent.EntityInteract event) -> {
+            if (instance != null && event.getEntity() instanceof ServerPlayer p
+                    && event.getHand() == net.minecraft.world.InteractionHand.MAIN_HAND
+                    && instance.guildAccess.isNpc(event.getTarget()) && p.distanceToSqr(event.getTarget()) <= 64) {
+                instance.openGuild(p); event.setCanceled(true);
+            }
+        });
+        bus.addListener((PlayerInteractEvent.RightClickBlock event) -> {
+            if (instance != null && event.getEntity() instanceof ServerPlayer p
+                    && event.getHand() == net.minecraft.world.InteractionHand.MAIN_HAND
+                    && instance.guildAccess.boardBlocks().contains(BuiltInRegistries.BLOCK.getKey(p.level().getBlockState(event.getPos()).getBlock()).toString())
+                    && p.distanceToSqr(net.minecraft.world.phys.Vec3.atCenterOf(event.getPos())) <= 64) {
+                instance.openGuild(p); event.setCanceled(true);
             }
         });
         bus.addListener((AttackEntityEvent event) -> {
@@ -349,6 +383,8 @@ public final class RpgServer {
         pendingStyles.remove(p.getUUID());
         drawControllers.remove(p.getUUID());
         rapierTargets.remove(p.getUUID()); sentTargetLocks.remove(p.getUUID());
+        questNotified.remove(p.getUUID());
+        questFailureNotified.remove(p.getUUID());
         requestCounts.remove(p.getUUID()); requestTicks.remove(p.getUUID()); save();
         swingOffhands.remove(p.getUUID());damageItems.remove(p.getUUID());
         animationStates.remove(p.getUUID()); animationSequences.remove(p.getUUID());
@@ -500,6 +536,11 @@ public final class RpgServer {
                 case "footwork" -> footwork.action(p, argument);
                 case "acceptQuest" -> { quests.accept(p.getUUID(), argument); saveQuests(); message = "已接受任务"; }
                 case "claimQuest" -> { claim(p, argument); message = "已领取奖励"; }
+                case "abandonQuest" -> { quests.abandon(p.getUUID(), argument); saveQuests(); message = "已放弃任务：" + quests.catalog().get(argument).label(); }
+                case "trackQuest", "untrackQuest" -> { quests.track(p.getUUID(), argument, action.equals("trackQuest")); saveQuests(); message = action.equals("trackQuest") ? "已追踪任务" : "已取消追踪"; }
+                case "claimQuestStage" -> { claimStage(p, argument); message = "已领取阶段奖励"; }
+                case "applyExam" -> { requireGuildNpc(p); quests.requestExam(p.getUUID()); saveQuests(); message = "晋升考试已登记，请完成考试任务后向公会申请晋升"; }
+                case "openGuild" -> { openGuild(p); }
                 case "collectionSubmitMob", "collectionSubmitCrop", "collectionClaimSeeds" -> {
                     recoverCollection(p);
                     CollectionService.Plan plan;
@@ -900,11 +941,14 @@ public final class RpgServer {
         }
     }
     private void applyConfig(RpgConfig.Definitions definitions) {
+        QuestService replacement = new QuestService(definitions.quests(), validatedQuestSettings);
+        replacement.restore(quests.snapshot());
         flushAllMelee();
         enemyCounters.clear();
         creatureMelee.reconfigure(validatedCreatureCombat,validatedGuardCues);
-        QuestService replacement = new QuestService(definitions.quests());
-        replacement.restore(quests.snapshot());
+        guildAccess = validatedGuildAccess;
+        questSettings = validatedQuestSettings;
+        bossSpawns = validatedBossSpawns;
         quests = replacement;
         CollectionService replacementCollections = new CollectionService(definitions.collections());
         replacementCollections.restore(collections.snapshot()); collections = replacementCollections; collectionSavedRevision = -1;
@@ -922,6 +966,12 @@ public final class RpgServer {
         for (ServerPlayer p : server.getPlayerList().getPlayers()) { send(p, "配置已更新", null); broadcastAnimation(p, true); }
     }
     private void tick() {
+        if (ticks % 100 == 0) {
+            try { bossSpawns.tick(); } catch (IOException error) { LOG.error("Configured boss spawn failed",error); }
+            long cutoff = System.currentTimeMillis() - 300_000;
+            bossContributors.values().forEach(values -> values.entrySet().removeIf(e -> e.getValue() < cutoff));
+            bossContributors.values().removeIf(Map::isEmpty);
+        }
         ticks++;
         enemyCounters.entrySet().removeIf(e->e.getValue().untilTick()<=server.overworld().getGameTime());
         enemyStuns.entrySet().removeIf(entry -> !entry.getValue().entity().isAlive() || entry.getValue().entity().isRemoved()
@@ -993,7 +1043,10 @@ public final class RpgServer {
             }
             if (a.phase() != CombatPhase.DODGING) dodgeDirections.remove(p.getUUID());
             if (ticks % 10 == 0) {
+                quests.tick(p.getUUID());
+                refreshQuestInventory(p);
                 quests.visit(p.getUUID(), p.level().dimension().identifier().toString(), p.getX(), p.getY(), p.getZ());
+                notifyQuestChanges(p);
             }
             if (skillStarted || advance.before() != advance.after() || ticks % 10 == 0) send(p, "", null);
             broadcastAnimation(p, ticks % 10 == 0);
@@ -1456,9 +1509,31 @@ public final class RpgServer {
         }
     }
     private void claim(ServerPlayer p, String id) throws IOException {
+        refreshQuestInventory(p);
+        int choice = -1;
+        if (id.startsWith("{")) {
+            JsonObject request = JsonParser.parseString(id).getAsJsonObject();
+            id = request.get("id").getAsString();
+            choice = request.has("choice") ? request.get("choice").getAsBigDecimal().intValueExact() : -1;
+        }
+        if (quests.catalog().get(id).rules().examRank() != null) requireGuildNpc(p);
         var before = quests.snapshot();
-        var reward = quests.claim(p.getUUID(), id);
+        var reward = quests.claim(p.getUUID(), id, choice);
         try { saveQuests(); } catch (IOException error) { quests.restore(before); throw error; }
+        giveQuestRewards(p, reward);
+    }
+    private void claimStage(ServerPlayer p, String argument) throws IOException {
+        refreshQuestInventory(p);
+        JsonObject request = JsonParser.parseString(argument).getAsJsonObject();
+        String id = request.get("id").getAsString();
+        String stage = request.get("stage").getAsString();
+        int choice = request.has("choice") ? request.get("choice").getAsBigDecimal().intValueExact() : -1;
+        var before = quests.snapshot();
+        var reward = quests.claimStage(p.getUUID(), id, stage, choice);
+        try { saveQuests(); } catch (IOException error) { quests.restore(before); throw error; }
+        giveQuestRewards(p, reward);
+    }
+    private static void giveQuestRewards(ServerPlayer p, QuestDefinition.Rewards reward) {
         for (var item : reward.items()) {
             var value = BuiltInRegistries.ITEM.getValue(Identifier.parse(item.id()));
             int remaining = item.count();
@@ -1469,6 +1544,62 @@ public final class RpgServer {
             }
         }
         p.giveExperiencePoints(reward.xp());
+    }
+    private void refreshQuestInventory(ServerPlayer p) {
+        Map<String, Integer> inventory = new HashMap<>();
+        for (int slot = 0; slot < p.getInventory().getContainerSize(); slot++) {
+            ItemStack stack = p.getInventory().getItem(slot);
+            if (!stack.isEmpty()) inventory.merge(BuiltInRegistries.ITEM.getKey(stack.getItem()).toString(), stack.getCount(), Integer::sum);
+        }
+        quests.inventory(p.getUUID(), inventory);
+    }
+    private static boolean isQuestBoss(LivingEntity entity) {
+        String type = BuiltInRegistries.ENTITY_TYPE.getKey(entity.getType()).toString();
+        return type.equals("minecraft:wither") || type.equals("minecraft:ender_dragon")
+                || entity.getTags().contains("fsrpg:boss") || entity.getPersistentData().getBooleanOr("fsrpg_boss",false);
+    }
+    private void questDeath(LivingDeathEvent event) {
+        LivingEntity victim = event.getEntity();
+        String type = BuiltInRegistries.ENTITY_TYPE.getKey(victim.getType()).toString();
+        var metadata = victim.getPersistentData();
+        Set<String> tags = new HashSet<>(victim.getTags());
+        if (isQuestBoss(victim)) tags.add("fsrpg:boss");
+        var context = new QuestDefinition.KillContext(type, Math.max(0,metadata.getIntOr("fsrpg_level",1)),
+                metadata.getBooleanOr("fsrpg_elite",false) || tags.contains("fsrpg_elite"), tags,
+                victim.getUUID(),victim instanceof ServerPlayer,victim.level().dimension().identifier().toString(),
+                victim.getX(),victim.getY(),victim.getZ(),victim.hasCustomName()?victim.getCustomName().getString():"");
+        ServerPlayer killer = event.getSource().getEntity() instanceof ServerPlayer p ? p : null;
+        if (killer != null) quests.kill(killer.getUUID(),context,1);
+        Map<UUID,Long> contributors = bossContributors.remove(victim.getUUID());
+        if (isQuestBoss(victim) && contributors != null) for (var contribution : contributors.entrySet()) {
+            ServerPlayer helper = server.getPlayerList().getPlayer(contribution.getKey());
+            if (helper != null && helper != killer && helper.level() == victim.level() && helper.distanceToSqr(victim) <= 128*128
+                    && System.currentTimeMillis()-contribution.getValue() <= 300_000) quests.kill(helper.getUUID(),context,1);
+        }
+    }
+    private void requireGuildNpc(ServerPlayer p) {
+        if (!guildAccess.nearNpc(p)) throw new IllegalStateException("请到公会接待员身边申请考试或晋升（8 格内）");
+    }
+    private void openGuild(ServerPlayer p) {
+        send(p, "公会任务板", null);
+        PacketDistributor.sendToPlayer(p, new RpgOpenGuildPayload(true));
+    }
+    private void notifyQuestChanges(ServerPlayer p) {
+        Map<String, QuestService.Status> previous = questNotified.computeIfAbsent(p.getUUID(), ignored -> new HashMap<>());
+        Map<String, Long> failures = questFailureNotified.computeIfAbsent(p.getUUID(), ignored -> new HashMap<>());
+        for (var progress : quests.progress(p.getUUID())) {
+            long lastFailure = progress.history().stream().filter(a -> a.status() == QuestService.Status.FAILED).mapToLong(QuestService.Attempt::endedAt).max().orElse(0);
+            if (lastFailure > failures.getOrDefault(progress.questId(), 0L)) {
+                failures.put(progress.questId(), lastFailure);
+                p.sendSystemMessage(Component.literal("[公会] " + quests.catalog().get(progress.questId()).label() + "：已失败"));
+            }
+            var old = previous.put(progress.questId(), progress.status());
+            if (old != progress.status()
+                    && progress.status() == QuestService.Status.READY) {
+                String text = progress.status() == QuestService.Status.READY ? "已完成，可以领取奖励" : "已失败";
+                p.sendSystemMessage(Component.literal("[公会] " + quests.catalog().get(progress.questId()).label() + "：" + text));
+            }
+        }
     }
     private void saveQuests() throws IOException { store.save(quests.snapshot()); savedRevision = quests.revision(); }
     private void saveCollections() throws IOException { collectionStore.save(collections.snapshot()); collectionSavedRevision = collections.revision(); }
@@ -1583,12 +1714,26 @@ public final class RpgServer {
         }
         for (String id : definitions.weapons().itemDamageMultipliers().keySet()) weaponItemExists(id);
         for (var quest : definitions.quests().definitions()) {
-            for (var reward : quest.rewards().items()) itemExists(reward.id());
+            validateQuestRewards(quest.rewards());
+            for (var stage : quest.rules().stages()) validateQuestRewards(stage.rewards());
             for (var objective : quest.objectives()) {
                 if (objective.type() == QuestDefinition.ObjectiveType.COLLECT) itemExists(objective.target());
                 if (objective.type() == QuestDefinition.ObjectiveType.KILL && !BuiltInRegistries.ENTITY_TYPE.containsKey(Identifier.parse(objective.target()))) throw new IllegalArgumentException("Unknown entity " + objective.target());
             }
         }
+        try {
+            GuildAccess access = GuildAccess.load(config.directory(),RpgConfig.JSON);
+            QuestSettings settings = QuestSettingsConfig.load(config.directory());
+            settings.validate(definitions.quests());
+            GuildBossSpawns sites = new GuildBossSpawns(server,config.directory(),server.getWorldPath(LevelResource.ROOT).resolve("data/fsrpg"));
+            validatedGuildAccess = access; validatedQuestSettings = settings; validatedBossSpawns = sites;
+        } catch (IOException error) { throw new IllegalArgumentException("Guild configuration: " + error.getMessage(),error); }
+    }
+    private static void validateQuestRewards(QuestDefinition.Rewards rewards) {
+        for (var reward : rewards.items()) itemExists(reward.id());
+        for (var reward : rewards.currency()) itemExists(reward.id());
+        for (var reward : rewards.choices()) itemExists(reward.id());
+        for (var reward : rewards.randomPool()) itemExists(reward.item().id());
     }
     private static void itemExists(String id) { if (!BuiltInRegistries.ITEM.containsKey(Identifier.parse(id)) || id.equals("minecraft:air")) throw new IllegalArgumentException("Unknown/reward-invalid item " + id); }
     private static void weaponItemExists(String id) { if (!BuiltInRegistries.ITEM.containsKey(Identifier.parse(id))) throw new IllegalArgumentException("Unknown weapon item " + id); }
@@ -1774,7 +1919,20 @@ public final class RpgServer {
             quest.addProperty("id", definition.id()); quest.addProperty("label", definition.label());
             quest.addProperty("description", definition.description()); quest.addProperty("status", progress.status().name());
             quest.addProperty("repeatable", definition.repeatable());
+            quest.addProperty("completions", progress.completions());
+            if (definition.rules().daily()) quest.addProperty("dailySelected", quests.dailyAvailable(p.getUUID(),definition.id()));
             quest.addProperty("rewardText", RpgConfig.JSON.toJson(definition.rewards()));
+            quest.add("rules", RpgConfig.JSON.toJsonTree(definition.rules()));
+            quest.add("rewards", RpgConfig.JSON.toJsonTree(definition.rewards()));
+            quest.addProperty("tracked", progress.tracked());
+            quest.addProperty("cooldownUntil", progress.cooldownUntil());
+            quest.addProperty("deadline", progress.deadline());
+            quest.addProperty("stage", progress.stage());
+            quest.add("claimedStages", RpgConfig.JSON.toJsonTree(progress.claimedStages()));
+            quest.add("history", RpgConfig.JSON.toJsonTree(progress.history()));
+            quest.addProperty("lockReason", progress.lockReason());
+            quest.addProperty("canAccept", progress.lockReason().isEmpty()
+                    && progress.status() != QuestService.Status.ACTIVE && progress.status() != QuestService.Status.READY);
             JsonArray objectives = new JsonArray();
             for (var objective : definition.objectives()) {
                 JsonObject obj = RpgConfig.JSON.toJsonTree(objective).getAsJsonObject();
@@ -1785,9 +1943,16 @@ public final class RpgServer {
             quest.add("objectives", objectives); journal.add(quest);
         }
         snapshot.add("quests", journal);
+        JsonObject guild = RpgConfig.JSON.toJsonTree(quests.promotionProgress(p.getUUID())).getAsJsonObject();
+        guild.addProperty("rank", quests.rank(p.getUUID()).name());
+        guild.addProperty("reputation", quests.reputation(p.getUUID()));
+        guild.addProperty("nearGuildNpc", guildAccess.nearNpc(p));
+        guild.addProperty("dailyDate", java.time.LocalDate.now(java.time.ZoneId.of(questSettings.timezone())).toString());
+        guild.addProperty("trackLimit", questSettings.maxTracked());
+        snapshot.add("guild", guild);
         snapshot.add("collection", collectionSnapshot(p));
         if (editResult != null) snapshot.add("editResult", editResult);
-        PacketDistributor.sendToPlayer(p, new RpgSnapshotPayload(RpgConfig.JSON.toJson(snapshot)));
+        PacketDistributor.sendToPlayer(p, new RpgSnapshotPayload(QuestSnapshotProjection.encode(snapshot)));
     }
     private static void commands(RegisterCommandsEvent event) {
         var root = Commands.literal("fsrpg");
@@ -1814,6 +1979,22 @@ public final class RpgServer {
             else { try { instance.applyConfig(instance.config.reload()); ctx.getSource().sendSuccess(() -> Component.literal("FSRPG config reloaded"), true); } catch (Exception error) { ctx.getSource().sendFailure(Component.literal(error.getMessage())); } }
             return 1;
         }));
+        for (String verb : List.of("abandon", "track", "untrack")) root.then(Commands.literal(verb)
+                .then(Commands.argument("id", StringArgumentType.word()).executes(ctx -> {
+                    instance.action(ctx.getSource().getPlayerOrException(), verb.equals("abandon") ? "abandonQuest" : verb.equals("track") ? "trackQuest" : "untrackQuest", StringArgumentType.getString(ctx, "id")); return 1;
+                })));
+        root.then(Commands.literal("exam").executes(ctx -> { instance.action(ctx.getSource().getPlayerOrException(), "applyExam", ""); return 1; }));
+        root.then(Commands.literal("guild").executes(ctx -> { instance.openGuild(ctx.getSource().getPlayerOrException()); return 1; }));
+        root.then(Commands.literal("questCreate").requires(Commands.hasPermission(Commands.LEVEL_GAMEMASTERS))
+                .then(Commands.argument("json", StringArgumentType.greedyString()).executes(ctx -> {
+                    try {
+                        String json = StringArgumentType.getString(ctx, "json");
+                        if (json.length() > 16384) throw new IllegalArgumentException("Task JSON exceeds 16 KiB");
+                        instance.applyConfig(instance.config.createQuest(JsonParser.parseString(json).getAsJsonObject()));
+                        ctx.getSource().sendSuccess(() -> Component.literal("任务已创建并保存"), true);
+                    } catch (Exception error) { ctx.getSource().sendFailure(Component.literal(error.getMessage())); }
+                    return 1;
+                })));
         event.getDispatcher().register(root);
     }
 }

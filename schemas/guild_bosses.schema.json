@@ -1,0 +1,70 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "FSRPG BOSS 刷新点",
+  "type": "array",
+  "maxItems": 64,
+  "items": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": [
+      "id",
+      "enabled",
+      "entityType",
+      "name",
+      "dimension",
+      "x",
+      "y",
+      "z",
+      "level",
+      "elite",
+      "respawnSeconds"
+    ],
+    "properties": {
+      "id": {
+        "type": "string",
+        "pattern": "^[a-z0-9_.-]{1,64}$"
+      },
+      "enabled": {
+        "type": "boolean"
+      },
+      "entityType": {
+        "type": "string"
+      },
+      "name": {
+        "type": "string",
+        "maxLength": 256
+      },
+      "dimension": {
+        "type": "string"
+      },
+      "x": {
+        "type": "number",
+        "minimum": -30000000,
+        "maximum": 30000000
+      },
+      "y": {
+        "type": "number",
+        "minimum": -30000000,
+        "maximum": 30000000
+      },
+      "z": {
+        "type": "number",
+        "minimum": -30000000,
+        "maximum": 30000000
+      },
+      "level": {
+        "type": "integer",
+        "minimum": 0,
+        "maximum": 1000000
+      },
+      "elite": {
+        "type": "boolean"
+      },
+      "respawnSeconds": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 31536000
+      }
+    }
+  }
+}

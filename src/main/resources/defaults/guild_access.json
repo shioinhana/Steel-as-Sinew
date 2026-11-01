@@ -1,0 +1,6 @@
+{
+  "npcTag": "fsrpg_guild",
+  "npcName": "公会接待员",
+  "boardBlocks": ["minecraft:lectern"],
+  "examDistance": 8.0
+}

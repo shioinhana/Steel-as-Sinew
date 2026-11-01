@@ -203,6 +203,9 @@ public final class StaminaCostTest {
         Files.writeString(directory.resolve(RapierFencingMigration.MARKER),"{}");
         // Existing historical fixtures isolate divide-by-five costs from the 0.12 catalog addition.
         if(Files.exists(directory.resolve("combat.json")))Files.writeString(directory.resolve(SwordCombatMigration.MARKER),"{}");
+        // Settle the independently covered guild addition before recording the stamina-only baseline.
+        // Keep the byte-preservation assertions intact for the actual historical cost migration.
+        if(Files.exists(directory.resolve("quests.json")))QuestSystemMigration.migrate(directory);
     }
     // Project the separately tested later chain, full-body models and conditional return
     // onto the template comparison. Custom-upgrade/retry fixtures are never projected.

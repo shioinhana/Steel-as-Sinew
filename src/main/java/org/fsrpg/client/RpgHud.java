@@ -96,6 +96,7 @@ public final class RpgHud {
             game.gui.leftHeight = Math.max(game.gui.leftHeight, reserved);
             game.gui.rightHeight = Math.max(game.gui.rightHeight, reserved);
         }
+        QuestTrackingHud.render(gui);
     }
     private static Identifier texture(String kind, String layer) {
         return Identifier.fromNamespaceAndPath("fsrpg", "textures/gui/hud/" + kind + "_" + layer + ".png");

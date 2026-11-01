@@ -49,8 +49,8 @@ public final class QuestJournalScreen extends Screen {
             addRenderableWidget(Button.builder(Component.literal((tab == next ? "• " : "") + labels[i]), b -> showTab(next))
                     .bounds(left + 12 + i * (tabWidth + 3), top + 29, tabWidth, 20).build());
         }
-        addRenderableWidget(Button.builder(Component.literal("旧任务"), b -> minecraft.setScreen(new LegacyQuestJournalScreen(this)))
-                .bounds(left + panelWidth - 64, top + 9, 52, 18).build());
+        addRenderableWidget(Button.builder(Component.literal("公会任务"), b -> minecraft.setScreen(new GuildQuestScreen(this)))
+                .bounds(left + panelWidth - 80, top + 9, 68, 18).build());
         int bottom = top + panelHeight - 26;
         if (tab == Tab.START) {
             int actionWidth = Math.min(94, Math.max(64, (panelWidth - 83) / 2));

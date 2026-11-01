@@ -147,6 +147,7 @@ public final class ClientHooks {
             try {ClientState.acceptTargetLock(payload.json());}
             catch(RuntimeException error){LOG.warn("Ignored invalid target lock update",error);}
         });
+        event.register(org.fsrpg.network.RpgOpenGuildPayload.TYPE, (payload, context) -> { if(payload.open()) Minecraft.getInstance().setScreen(new GuildQuestScreen()); });
         event.register(RpgSnapshotPayload.TYPE, (payload, context) -> acceptSnapshot(payload.json()));
         event.register(RpgFootworkMotionPayload.TYPE, (payload, context) -> FootworkClient.accept(payload));
         event.register(RpgAnimationPayload.TYPE, (payload, context) -> {

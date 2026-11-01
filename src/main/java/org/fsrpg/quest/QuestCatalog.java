@@ -8,6 +8,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.UUID;
 import java.util.regex.Pattern;
 
 /** Validates an entire catalog before it can become the server's active config. */
@@ -56,6 +57,24 @@ public final class QuestCatalog {
             fail(quest.id() + ": label must contain 1..256 characters");
         }
         if (quest.description().length() > 4096) fail(quest.id() + ": description exceeds 4096 characters");
+        QuestDefinition.Rules rules=quest.rules();
+        if(rules.difficulty().isBlank() || rules.difficulty().length()>32)fail(quest.id()+": difficulty must contain 1..32 characters");
+        if(rules.completionCooldownSeconds()<0 || rules.completionCooldownSeconds()>31_536_000L
+                || rules.abandonCooldownSeconds()<0 || rules.abandonCooldownSeconds()>31_536_000L
+                || rules.timeLimitSeconds()<0 || rules.timeLimitSeconds()>31_536_000L)fail(quest.id()+": durations must be 0..31536000 seconds");
+        if(rules.stages().size()>64)fail(quest.id()+": at most 64 stages");
+        Set<String> stages=new HashSet<>();
+        for(var stage:rules.stages()) {
+            if(stage==null)fail(quest.id()+": null stage");
+            validId(stage.id(),quest.id()+": stage id");
+            if(!stages.add(stage.id()))fail(quest.id()+": duplicate stage id");
+            if(stage.label()==null || stage.label().isBlank() || stage.label().length()>256)fail(quest.id()+": invalid stage label");
+            validateRewards(stage.rewards(),quest.id()+"/"+stage.id());
+        }
+        if(rules.examRank()==QuestDefinition.Rank.D || (rules.examRank()!=null && (quest.autoAccept() || rules.daily() || quest.repeatable())))
+            fail(quest.id()+": exams cannot target D or be auto-accepted, daily, or repeatable");
+        if(rules.bountyTier()!=QuestDefinition.BountyTier.NONE && quest.objectives().stream().anyMatch(o->o==null || o.type()!=QuestDefinition.ObjectiveType.PLAYER_KILL))
+            fail(quest.id()+": bounty orders must target players only; use ordinary elite hunt quests for monsters");
         Set<String> prerequisiteIds = new HashSet<>();
         for (String required : quest.prerequisites()) {
             validId(required, quest.id() + ": prerequisite");
@@ -73,27 +92,60 @@ public final class QuestCatalog {
             if (objective.count() < 1 || objective.count() > 1_000_000) {
                 fail(quest.id() + "/" + objective.id() + ": count must be 1..1000000");
             }
+            if(objective.stage()<0 || (rules.stages().isEmpty()?objective.stage()!=0:objective.stage()>=rules.stages().size()))fail(quest.id()+": invalid objective stage index");
+            if(objective.inventory() && objective.type()!=QuestDefinition.ObjectiveType.COLLECT)fail(quest.id()+": inventory mode is only valid for COLLECT");
+            QuestDefinition.Criteria criteria=objective.criteria();
+            if((criteria.minLevel()!=null && (criteria.minLevel()<0 || criteria.minLevel()>1_000_000))
+                    || (criteria.maxLevel()!=null && (criteria.maxLevel()<0 || criteria.maxLevel()>1_000_000))
+                    || (criteria.minLevel()!=null && criteria.maxLevel()!=null && criteria.minLevel()>criteria.maxLevel()))fail(quest.id()+": invalid monster level range");
+            if(criteria.requiredTag()!=null)validId(criteria.requiredTag(),quest.id()+": required tag");
+            if(criteria.entityName()!=null && (criteria.entityName().isBlank() || criteria.entityName().length()>256))fail(quest.id()+": invalid entity name filter");
+            if(criteria.playerUuid()!=null) {
+                try { if(!UUID.fromString(criteria.playerUuid()).toString().equals(criteria.playerUuid()))fail(quest.id()+": noncanonical player UUID"); }
+                catch(IllegalArgumentException error){fail(quest.id()+": invalid player UUID");}
+                if(objective.type()!=QuestDefinition.ObjectiveType.PLAYER_KILL)fail(quest.id()+": player UUID filter requires PLAYER_KILL");
+            }
+            if(objective.type()==QuestDefinition.ObjectiveType.PLAYER_KILL && !"minecraft:player".equals(objective.target()))fail(quest.id()+": PLAYER_KILL requires minecraft:player target");
+            if(objective.type()==QuestDefinition.ObjectiveType.KILL && "minecraft:player".equals(objective.target()))fail(quest.id()+": use PLAYER_KILL for player targets");
             if (objective.type() == QuestDefinition.ObjectiveType.VISIT) {
                 if (objective.count() != 1) fail(quest.id() + ": VISIT count must be 1");
                 QuestDefinition.Location location = objective.location();
                 if (location == null) fail(quest.id() + ": VISIT requires location");
-                validResourceId(location.dimension(), quest.id() + ": visit dimension");
-                if (!coordinate(location.x()) || !coordinate(location.y()) || !coordinate(location.z())
-                        || !Double.isFinite(location.radius()) || location.radius() <= 0 || location.radius() > 10_000) {
-                    fail(quest.id() + ": visit coordinates must be finite within world bounds; radius must be (0,10000]");
-                }
             } else if (objective.type() == QuestDefinition.ObjectiveType.USE_SKILL) {
                 validId(objective.target(), quest.id() + ": skill target");
             } else {
                 validResourceId(objective.target(), quest.id() + ": objective target");
+                if(objective.type()==QuestDefinition.ObjectiveType.COLLECT && "minecraft:air".equals(objective.target()))fail(quest.id()+": cannot collect air");
             }
+            if(objective.location()!=null)validateLocation(objective.location(),quest.id());
         }
-        if (quest.rewards().xp() < 0 || quest.rewards().xp() > 1_000_000) fail(quest.id() + ": reward xp must be 0..1000000");
-        if (quest.rewards().items().size() > 64) fail(quest.id() + ": at most 64 reward items are allowed");
-        for (QuestDefinition.RewardItem item : quest.rewards().items()) {
-            if (item == null) fail(quest.id() + ": reward item must not be null");
-            validResourceId(item.id(), quest.id() + ": reward item id");
-            if (item.count() < 1 || item.count() > 4096) fail(quest.id() + ": reward item count must be 1..4096");
+        for(int stage=0;stage<rules.stages().size();stage++) {
+            final int index=stage;
+            if(quest.objectives().stream().noneMatch(o->o.stage()==index))fail(quest.id()+": every stage must have objectives");
+        }
+        validateRewards(quest.rewards(),quest.id());
+    }
+
+    private static void validateLocation(QuestDefinition.Location location,String id) {
+        validResourceId(location.dimension(),id+": location dimension");
+        if(!coordinate(location.x()) || !coordinate(location.y()) || !coordinate(location.z())
+                || !Double.isFinite(location.radius()) || location.radius()<=0 || location.radius()>10_000)fail(id+": invalid location coordinates or radius");
+    }
+    private static void validateRewards(QuestDefinition.Rewards rewards,String id) {
+        if(rewards.xp()<0 || rewards.xp()>1_000_000)fail(id+": reward xp must be 0..1000000");
+        if(rewards.reputation()<0 || rewards.reputation()>1_000_000)fail(id+": reputation must be 0..1000000");
+        if(rewards.items().size()>64 || rewards.currency().size()>64 || rewards.choices().size()>64 || rewards.randomPool().size()>64)fail(id+": reward lists at most 64 entries");
+        var all=new ArrayList<QuestDefinition.RewardItem>();all.addAll(rewards.items());all.addAll(rewards.currency());all.addAll(rewards.choices());
+        double total=0;
+        for(var entry:rewards.randomPool()) {
+            if(entry==null || !Double.isFinite(entry.weight()) || entry.weight()<=0 || entry.weight()>1_000_000)fail(id+": random weights must be finite in (0,1000000]");
+            total+=entry.weight();all.add(entry.item());
+        }
+        if(!Double.isFinite(total) || rewards.randomRolls()<0 || rewards.randomRolls()>16 || (rewards.randomPool().isEmpty() && rewards.randomRolls()!=0))fail(id+": invalid random reward rolls");
+        for(var item:all) {
+            if(item==null)fail(id+": null reward item");
+            validResourceId(item.id(),id+": reward item id");
+            if("minecraft:air".equals(item.id()) || item.count()<1 || item.count()>4096)fail(id+": invalid reward item count/id");
         }
     }
 

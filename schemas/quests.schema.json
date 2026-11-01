@@ -2,75 +2,504 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://fsrpg.local/schemas/quests.schema.json",
   "title": "FSRPG 任务配置",
-  "description": "config/fsrpg/quests.json。修改后使用 /fsrpg reload。服务器还会校验任务与目标 ID 唯一、前置任务存在且无循环、技能引用存在，以及实体和物品注册表；JSON Schema 无法替代这些跨定义校验。",
+  "description": "config/fsrpg/quests.json。服务端校验任务、目标、阶段、称号、冷却、实体物品技能引用。悬赏令 bountyTier 仅用于 PLAYER_KILL，与 difficulty 独立。材料 inventory=true 实时核对背包。修改后 /fsrpg reload。",
   "type": "array",
   "maxItems": 512,
-  "items": { "$ref": "#/$defs/quest" },
+  "items": {
+    "$ref": "#/$defs/quest"
+  },
   "$defs": {
-    "stableId": { "type": "string", "pattern": "^[a-z0-9_.:/-]{1,128}$" },
-    "resourceId": { "type": "string", "pattern": "^[a-z0-9_.-]+:[a-z0-9_./-]+$" },
-    "itemId": { "allOf": [{ "$ref": "#/$defs/resourceId" }, { "not": { "const": "minecraft:air" } }] },
+    "stableId": {
+      "type": "string",
+      "pattern": "^[a-z0-9_.:/-]{1,128}$"
+    },
+    "resourceId": {
+      "type": "string",
+      "pattern": "^[a-z0-9_.-]+:[a-z0-9_./-]+$"
+    },
+    "itemId": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/resourceId"
+        },
+        {
+          "not": {
+            "const": "minecraft:air"
+          }
+        }
+      ]
+    },
     "quest": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["id", "label", "objectives"],
+      "required": [
+        "id",
+        "label",
+        "objectives"
+      ],
       "properties": {
-        "id": { "$ref": "#/$defs/stableId", "description": "稳定任务 ID。改名将产生新任务记录。" },
-        "label": { "type": "string", "minLength": 1, "maxLength": 256, "pattern": "\\S" },
-        "description": { "type": "string", "maxLength": 4096, "default": "" },
-        "prerequisites": { "type": "array", "uniqueItems": true, "items": { "$ref": "#/$defs/stableId" }, "default": [], "description": "玩家必须领取所有前置任务的奖励后才能接取此任务。" },
-        "objectives": { "type": "array", "minItems": 1, "maxItems": 64, "items": { "$ref": "#/$defs/objective" } },
-        "rewards": { "$ref": "#/$defs/rewards", "default": { "items": [], "xp": 0 } },
-        "repeatable": { "type": "boolean", "default": false, "description": "领奖后可以手动重新接取；目标进度清零，已完成次数保留。" },
-        "autoAccept": { "type": "boolean", "default": false, "description": "首次满足前置条件时自动接取；不会自动重开已完成的重复任务。" }
+        "id": {
+          "$ref": "#/$defs/stableId",
+          "description": "稳定任务 ID。改名将产生新任务记录。"
+        },
+        "label": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256,
+          "pattern": "\\S"
+        },
+        "description": {
+          "type": "string",
+          "maxLength": 4096,
+          "default": ""
+        },
+        "prerequisites": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/stableId"
+          },
+          "default": [],
+          "description": "玩家必须领取所有前置任务的奖励后才能接取此任务。"
+        },
+        "objectives": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 64,
+          "items": {
+            "$ref": "#/$defs/objective"
+          }
+        },
+        "rewards": {
+          "$ref": "#/$defs/rewards",
+          "default": {
+            "items": [],
+            "xp": 0
+          }
+        },
+        "repeatable": {
+          "type": "boolean",
+          "default": false,
+          "description": "领奖后可以手动重新接取；目标进度清零，已完成次数保留。"
+        },
+        "autoAccept": {
+          "type": "boolean",
+          "default": false,
+          "description": "首次满足前置条件时自动接取；不会自动重开已完成的重复任务。"
+        },
+        "rules": {
+          "$ref": "#/$defs/rules"
+        }
       }
     },
     "objective": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["id", "type", "count"],
+      "required": [
+        "id",
+        "type",
+        "count"
+      ],
       "properties": {
-        "id": { "$ref": "#/$defs/stableId", "description": "任务内唯一的稳定目标 ID，配置重载按此 ID 保留并限制现有进度。" },
-        "type": { "enum": ["KILL", "COLLECT", "VISIT", "USE_SKILL"] },
-        "target": { "type": "string" },
-        "count": { "type": "integer", "minimum": 1, "maximum": 1000000 },
-        "location": { "$ref": "#/$defs/location" }
+        "id": {
+          "$ref": "#/$defs/stableId",
+          "description": "任务内唯一的稳定目标 ID，配置重载按此 ID 保留并限制现有进度。"
+        },
+        "type": {
+          "enum": [
+            "KILL",
+            "COLLECT",
+            "VISIT",
+            "USE_SKILL",
+            "PLAYER_KILL"
+          ]
+        },
+        "target": {
+          "type": "string"
+        },
+        "count": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 1000000
+        },
+        "location": {
+          "$ref": "#/$defs/location"
+        },
+        "criteria": {
+          "$ref": "#/$defs/criteria"
+        },
+        "stage": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 63,
+          "default": 0
+        },
+        "inventory": {
+          "type": "boolean",
+          "default": false,
+          "description": "true实时核对背包；false沿用接取后拾取累计。领奖不消耗材料。"
+        }
       },
       "allOf": [
-        { "if": { "properties": { "type": { "const": "VISIT" } }, "required": ["type"] }, "then": { "required": ["location"], "properties": { "count": { "const": 1 } } } },
-        { "if": { "properties": { "type": { "enum": ["KILL", "COLLECT", "USE_SKILL"] } }, "required": ["type"] }, "then": { "required": ["target"] } },
-        { "if": { "properties": { "type": { "const": "USE_SKILL" } }, "required": ["type"] }, "then": { "properties": { "target": { "$ref": "#/$defs/stableId" } } } },
-        { "if": { "properties": { "type": { "const": "KILL" } }, "required": ["type"] }, "then": { "properties": { "target": { "$ref": "#/$defs/resourceId" } } } },
-        { "if": { "properties": { "type": { "const": "COLLECT" } }, "required": ["type"] }, "then": { "properties": { "target": { "$ref": "#/$defs/itemId" } }, "description": "累计接取任务后获得的目标物品数量，领奖不消耗物品。实际游戏适配器目前统计物品拾取。" } }
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "VISIT"
+              }
+            },
+            "required": [
+              "type"
+            ]
+          },
+          "then": {
+            "required": [
+              "location"
+            ],
+            "properties": {
+              "count": {
+                "const": 1
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "enum": [
+                  "KILL",
+                  "COLLECT",
+                  "USE_SKILL",
+                  "PLAYER_KILL"
+                ]
+              }
+            },
+            "required": [
+              "type"
+            ]
+          },
+          "then": {
+            "required": [
+              "target"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "USE_SKILL"
+              }
+            },
+            "required": [
+              "type"
+            ]
+          },
+          "then": {
+            "properties": {
+              "target": {
+                "$ref": "#/$defs/stableId"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "KILL"
+              }
+            },
+            "required": [
+              "type"
+            ]
+          },
+          "then": {
+            "properties": {
+              "target": {
+                "$ref": "#/$defs/resourceId"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "COLLECT"
+              }
+            },
+            "required": [
+              "type"
+            ]
+          },
+          "then": {
+            "properties": {
+              "target": {
+                "$ref": "#/$defs/itemId"
+              }
+            },
+            "description": "累计接取任务后获得的目标物品数量，领奖不消耗物品。实际游戏适配器目前统计物品拾取。"
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "PLAYER_KILL"
+              }
+            },
+            "required": [
+              "type"
+            ]
+          },
+          "then": {
+            "properties": {
+              "target": {
+                "const": "minecraft:player"
+              }
+            }
+          }
+        }
       ]
     },
     "location": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["dimension", "radius"],
+      "required": [
+        "dimension",
+        "radius"
+      ],
       "properties": {
-        "dimension": { "$ref": "#/$defs/resourceId" },
-        "x": { "type": "number", "minimum": -30000000, "maximum": 30000000, "default": 0 },
-        "y": { "type": "number", "minimum": -30000000, "maximum": 30000000, "default": 0 },
-        "z": { "type": "number", "minimum": -30000000, "maximum": 30000000, "default": 0 },
-        "radius": { "type": "number", "exclusiveMinimum": 0, "maximum": 10000, "description": "球形范围半径，边界包括在内。" }
+        "dimension": {
+          "$ref": "#/$defs/resourceId"
+        },
+        "x": {
+          "type": "number",
+          "minimum": -30000000,
+          "maximum": 30000000,
+          "default": 0
+        },
+        "y": {
+          "type": "number",
+          "minimum": -30000000,
+          "maximum": 30000000,
+          "default": 0
+        },
+        "z": {
+          "type": "number",
+          "minimum": -30000000,
+          "maximum": 30000000,
+          "default": 0
+        },
+        "radius": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "maximum": 10000,
+          "description": "球形范围半径，边界包括在内。"
+        }
       }
     },
     "rewards": {
       "type": "object",
       "additionalProperties": false,
       "properties": {
-        "items": { "type": "array", "maxItems": 64, "items": { "$ref": "#/$defs/rewardItem" }, "default": [] },
-        "xp": { "type": "integer", "minimum": 0, "maximum": 1000000, "default": 0 }
+        "items": {
+          "type": "array",
+          "maxItems": 64,
+          "items": {
+            "$ref": "#/$defs/rewardItem"
+          },
+          "default": []
+        },
+        "xp": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 1000000,
+          "default": 0
+        },
+        "currency": {
+          "type": "array",
+          "maxItems": 64,
+          "items": {
+            "$ref": "#/$defs/rewardItem"
+          }
+        },
+        "choices": {
+          "type": "array",
+          "maxItems": 64,
+          "items": {
+            "$ref": "#/$defs/rewardItem"
+          }
+        },
+        "randomPool": {
+          "type": "array",
+          "maxItems": 64,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "item",
+              "weight"
+            ],
+            "properties": {
+              "item": {
+                "$ref": "#/$defs/rewardItem"
+              },
+              "weight": {
+                "type": "number",
+                "exclusiveMinimum": 0
+              }
+            }
+          }
+        },
+        "randomRolls": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 16
+        },
+        "reputation": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 1000000
+        }
       }
     },
     "rewardItem": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["id", "count"],
+      "required": [
+        "id",
+        "count"
+      ],
       "properties": {
-        "id": { "$ref": "#/$defs/itemId" },
-        "count": { "type": "integer", "minimum": 1, "maximum": 4096 }
+        "id": {
+          "$ref": "#/$defs/itemId"
+        },
+        "count": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 4096
+        }
+      }
+    },
+    "rank": {
+      "enum": [
+        "D",
+        "C",
+        "B",
+        "A",
+        "S"
+      ]
+    },
+    "rules": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "difficulty": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 32,
+          "default": "D"
+        },
+        "minimumRank": {
+          "$ref": "#/$defs/rank"
+        },
+        "bountyTier": {
+          "enum": [
+            "NONE",
+            "NORMAL",
+            "HIGH",
+            "S"
+          ]
+        },
+        "completionCooldownSeconds": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 31536000
+        },
+        "abandonCooldownSeconds": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 31536000
+        },
+        "allowReacceptAfterAbandon": {
+          "type": "boolean",
+          "default": true
+        },
+        "timeLimitSeconds": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 31536000
+        },
+        "daily": {
+          "type": "boolean",
+          "default": false
+        },
+        "examRank": {
+          "$ref": "#/$defs/rank"
+        },
+        "stages": {
+          "type": "array",
+          "maxItems": 64,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "id",
+              "label"
+            ],
+            "properties": {
+              "id": {
+                "$ref": "#/$defs/stableId"
+              },
+              "label": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 256
+              },
+              "rewards": {
+                "$ref": "#/$defs/rewards"
+              }
+            }
+          }
+        }
+      }
+    },
+    "criteria": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "minLevel": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 1000000
+        },
+        "maxLevel": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 1000000
+        },
+        "elite": {
+          "type": "boolean"
+        },
+        "requiredTag": {
+          "type": "string",
+          "maxLength": 128
+        },
+        "playerUuid": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "boss": {
+          "type": "boolean"
+        },
+        "entityName": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        }
       }
     }
   }

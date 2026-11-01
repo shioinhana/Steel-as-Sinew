@@ -1,0 +1,39 @@
+{
+  "maxTracked": 3,
+  "dailyCount": 3,
+  "timezone": "Asia/Shanghai",
+  "promotions": [
+    {
+      "rank": "C",
+      "totalCompletions": 3,
+      "requiredQuests": {
+        "fsrpg:guild_supplies": 1
+      },
+      "examQuest": "fsrpg:guild_exam_c"
+    },
+    {
+      "rank": "B",
+      "totalCompletions": 8,
+      "requiredQuests": {
+        "fsrpg:guild_supplies": 1
+      },
+      "examQuest": "fsrpg:guild_exam_b"
+    },
+    {
+      "rank": "A",
+      "totalCompletions": 15,
+      "requiredQuests": {
+        "fsrpg:guild_supplies": 1
+      },
+      "examQuest": "fsrpg:guild_exam_a"
+    },
+    {
+      "rank": "S",
+      "totalCompletions": 25,
+      "requiredQuests": {
+        "fsrpg:guild_supplies": 1
+      },
+      "examQuest": "fsrpg:guild_exam_s"
+    }
+  ]
+}

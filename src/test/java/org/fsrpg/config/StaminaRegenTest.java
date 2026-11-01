@@ -146,6 +146,8 @@ public final class StaminaRegenTest {
         Files.writeString(directory.resolve(PerfectGuardMigration.MARKER), "{}");
         Files.writeString(directory.resolve(GuardCueMigration.MARKER), "{}");
         Files.writeString(directory.resolve(DefenseFlowMigration.MARKER), "{}");
+        // Finish the independently tested guild seed before taking the regeneration-only byte baseline.
+        QuestSystemMigration.migrate(directory);
         return directory;
     }
     private static void copyDefaults(Path directory) throws Exception {

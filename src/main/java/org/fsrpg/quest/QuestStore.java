@@ -30,6 +30,10 @@ public final class QuestStore {
         try (var reader = Files.newBufferedReader(file, StandardCharsets.UTF_8)) {
             QuestService.Snapshot snapshot = gson.fromJson(reader, QuestService.Snapshot.class);
             if (snapshot == null) throw new IOException("quest progress file is empty: " + file);
+            if (snapshot.schemaVersion() == 1) {
+                Path backup = file.resolveSibling(file.getFileName() + ".schema1-backup");
+                if (!Files.exists(backup)) Files.copy(file, backup, StandardCopyOption.COPY_ATTRIBUTES);
+            }
             return snapshot;
         } catch (JsonParseException | IllegalArgumentException error) {
             throw new IOException("invalid quest progress JSON: " + file, error);

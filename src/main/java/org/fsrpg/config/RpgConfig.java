@@ -33,6 +33,7 @@ public final class RpgConfig {
         seed();
         Definitions candidate = parse(read("combat.json"), read("skills.json"), read("quests.json"), read("weapons.json"), read("styles.json"), read("collections.json"),read("skill_trees.json"),read("archery.json"));
         validateSwordReferences(candidate);
+        QuestSettingsConfig.load(directory).validate(candidate.quests());
         validator.accept(candidate);
         current = candidate;
         return candidate;
@@ -47,7 +48,7 @@ public final class RpgConfig {
         StaminaLevelMigration staminaLevelMigration = StaminaLevelMigration.capture(directory);
         StaminaCostMigration staminaMigration = StaminaCostMigration.capture(directory);
         StaminaRegenMigration staminaRegenMigration = StaminaRegenMigration.capture(directory);
-        for (String name : List.of("combat.json", "skills.json", "quests.json", "weapons.json", "collections.json", "skill_trees.json", "archery.json", "guard_cues.json")) {
+        for (String name : List.of("combat.json", "skills.json", "quests.json", "weapons.json", "collections.json", "skill_trees.json", "archery.json", "guard_cues.json", "guild_access.json", "guild_bosses.json")) {
             Path target = directory.resolve(name);
             if (!Files.exists(target)) {
                 try (InputStream in = RpgConfig.class.getResourceAsStream("/defaults/" + name)) {
@@ -80,6 +81,8 @@ public final class RpgConfig {
         FootworkSkillMigration.migrate(directory);
         RapierRenewalMigration.migrate(directory);
         SwordCombatMigration.migrate(directory,explicitSwordRules);
+        QuestSystemMigration.migrate(directory);
+        QuestSettingsConfig.load(directory);
     }
     static void validateSwordReferences(Definitions definitions) {
         var rules=definitions.combat();var skills=definitions.skills();
@@ -271,15 +274,23 @@ public final class RpgConfig {
         if (!value.isJsonPrimitive()) throw new IllegalArgumentException(path + " must be a scalar");
         JsonPrimitive primitive = value.getAsJsonPrimitive();
         if ((clazz == String.class || clazz.isEnum()) && !primitive.isString()) throw new IllegalArgumentException(path + " must be text");
+        if (clazz.isEnum() && Arrays.stream(clazz.getEnumConstants()).noneMatch(v -> ((Enum<?>)v).name().equals(primitive.getAsString())))
+            throw new IllegalArgumentException(path + " has an unknown value: " + primitive.getAsString());
         if ((clazz == boolean.class || clazz == Boolean.class) && !primitive.isBoolean()) throw new IllegalArgumentException(path + " must be boolean");
-        if (clazz == int.class || clazz == Integer.class || clazz == double.class || clazz == Double.class) {
+        if (clazz == int.class || clazz == Integer.class || clazz == long.class || clazz == Long.class || clazz == double.class || clazz == Double.class) {
             if (!primitive.isNumber() || !Double.isFinite(primitive.getAsDouble())) throw new IllegalArgumentException(path + " must be a finite number");
             if (clazz == int.class || clazz == Integer.class) {
                 try { primitive.getAsBigDecimal().intValueExact(); }
                 catch (ArithmeticException error) { throw new IllegalArgumentException(path + " must be a 32-bit integer"); }
             }
+            if (clazz == long.class || clazz == Long.class) {
+                try { primitive.getAsBigDecimal().longValueExact(); }
+                catch (ArithmeticException error) { throw new IllegalArgumentException(path + " must be a 64-bit integer"); }
+            }
         }
     }
+    /** Shared strict JSON validation for optional server-side record configuration files. */
+    public static void validateRecord(JsonObject value, Class<?> record) { recordFields(value, record, false); }
     /** Server permission must be checked before calling. A failed patch never changes live config. */
     public Definitions editSkill(String id, JsonObject changes) throws IOException {
         if (!current().skills().containsKey(id)) throw new IllegalArgumentException("Unknown skill: " + id);
@@ -305,6 +316,23 @@ public final class RpgConfig {
         atomicWrite(target, JSON.toJson(patched));
         current = candidate;
         return candidate;
+    }
+    /** Operator-only full task creation; validate all references before any filesystem mutation. */
+    public Definitions createQuest(JsonObject quest) throws IOException {
+        recordFields(quest, QuestDefinition.class, false);
+        String id = quest.get("id").getAsString();
+        JsonArray tasks = read("quests.json").getAsJsonArray();
+        for (JsonElement existing : tasks)
+            if (existing.getAsJsonObject().get("id").getAsString().equals(id))
+                throw new IllegalArgumentException("Task ID already exists: " + id + "; edit quests.json then /fsrpg reload");
+        tasks.add(quest);
+        Definitions candidate = parse(read("combat.json"), read("skills.json"), tasks, read("weapons.json"),
+                read("styles.json"), read("collections.json"), read("skill_trees.json"), read("archery.json"));
+        QuestSettingsConfig.load(directory).validate(candidate.quests());
+        validator.accept(candidate);
+        Path target = directory.resolve("quests.json");
+        Files.copy(target, directory.resolve("quests.json.bak"), StandardCopyOption.REPLACE_EXISTING);
+        atomicWrite(target, JSON.toJson(tasks)); current = candidate; return candidate;
     }
     public static void atomicWrite(Path target, String text) throws IOException {
         Files.createDirectories(target.toAbsolutePath().getParent());

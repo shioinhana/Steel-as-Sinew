@@ -1,0 +1,33 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "FSRPG 公会交互设置",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "npcTag": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 64
+    },
+    "npcName": {
+      "type": "string",
+      "maxLength": 128
+    },
+    "boardBlocks": {
+      "type": "array",
+      "maxItems": 32,
+      "items": {
+        "type": "string",
+        "pattern": "^[a-z0-9_.-]+:[a-z0-9_./-]+$"
+      }
+    },
+    "examDistance": {
+      "type": "number",
+      "minimum": 1,
+      "maximum": 16
+    }
+  },
+  "required": [
+    "examDistance"
+  ]
+}
