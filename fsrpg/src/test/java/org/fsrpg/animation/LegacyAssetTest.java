@@ -4,6 +4,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
+import java.util.Arrays;
 import org.fsvoxel.render.ModelLoader;
 
 /** Parse with the shipped engine and sample actual FK, including FP and persistent dual ready poses. */
@@ -44,8 +45,12 @@ public final class LegacyAssetTest {
                 }
                 clips++;
             }
+            try(var bundled=LegacyAssetTest.class.getResourceAsStream("/assets/fsrpg/fsvoxel/models/"+file.getFileName())) {
+                if(bundled==null || !Arrays.equals(Files.readAllBytes(file),bundled.readAllBytes()))
+                    throw new AssertionError("Bundled model differs from source: "+file);
+            }
             Path config=Path.of("run/client/config/fsrpg/models").resolve(file.getFileName());
-            if(Files.mismatch(file,config)!=-1)throw new AssertionError("Config copy differs: "+file);
+            if(Files.exists(config) && Files.mismatch(file,config)!=-1)throw new AssertionError("Config copy differs: "+file);
             System.out.println("Loaded and sampled "+file.getFileName()+": "+rig.clips().size()+" clips");
         }
         System.out.println("LegacyAssetTest passed: "+clips+" imported playback nodes / "+frames+" actual engine FK samples");
